@@ -23,9 +23,12 @@ std::span<const Band> amateurBands();
 bool isAllowedFreq(uint64_t hz);
 inline bool isTxAllowed(uint64_t hz) { return isAllowedFreq(hz); }
 
-// 接收是否允许：收听不限于业余段（广播/航空接收合法），只受电台接收范围约束。
-// IC-705 接收范围约 500kHz–1.45GHz，此处取宽容下界 100kHz。
+// 接收是否允许：收听不限于业余段（广播/航空接收合法），范围以原厂
+// IC-705.ini [FREQUENCY] 为准（30kHz–200MHz + 400–470MHz）。
 bool isRxAllowed(uint64_t hz);
+
+// 常用接收波段（AIR / BC-FM / BC-SW），收听快捷用；中心=区间中点。
+std::span<const Band> rxBroadcastBands();
 
 // 命中频段；不在白名单返回 nullopt。
 std::optional<Band> bandFor(uint64_t hz);

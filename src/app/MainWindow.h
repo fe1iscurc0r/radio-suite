@@ -51,6 +51,11 @@ class MainWindow : public QMainWindow {
   QPushButton* nb_btn_ = nullptr;        // NB（回读驱动）
   QPushButton* nr_btn_ = nullptr;        // NR（回读驱动）
   QPushButton* moni_btn_ = nullptr;      // MONI（回读驱动）
+  QPushButton* notch_btn_ = nullptr;     // Auto Notch（回读驱动）
+  QPushButton* vox_btn_ = nullptr;       // VOX（回读驱动）
+  QPushButton* pamp_btn_ = nullptr;      // PAMP 循环 OFF/P1/P2（回读驱动）
+  QPushButton* agc_btn_ = nullptr;       // AGC 循环 F/M/S（回读驱动）
+  QPushButton* dup_btn_ = nullptr;       // Dup 循环 SPLX/DUP-/DUP+（回读驱动）
   QLineEdit* freq_edit_ = nullptr;       // 手动输频（MHz）
   QTimer status_timer_;                  // 状态栏红字自动恢复
 

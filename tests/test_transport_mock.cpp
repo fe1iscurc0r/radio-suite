@@ -87,6 +87,43 @@ TEST_CASE("mock: ATT only settable on HF/50MHz", "[mock]") {
   }
 }
 
+TEST_CASE("mock: duplex write/read with simplex normalization", "[mock]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  CHECK(mt.send(civ::duplexFrame(0x11)));  // DUP-
+  mt.poll();
+  REQUIRE(frames.size() == 1);
+  CHECK(civ::isAck(frames[0]));
+
+  frames.clear();
+  CHECK(mt.send(civ::readDuplexFrame()));
+  mt.poll();
+  auto d = civ::parseDuplexResponse(frames[0]);
+  REQUIRE(d.has_value());
+  CHECK(*d == 0x11);
+
+  // 真机语义：simplex 写 0x10，读回归一化为 0x00（radio_link 2026-08-24 实测）
+  CHECK(mt.send(civ::duplexFrame(0x10)));
+  mt.poll();
+  frames.clear();
+  CHECK(mt.send(civ::readDuplexFrame()));
+  mt.poll();
+  d = civ::parseDuplexResponse(frames[0]);
+  REQUIRE(d.has_value());
+  CHECK(*d == 0x00);
+
+  // 非法值 → NAK
+  frames.clear();
+  CHECK(mt.send(civ::duplexFrame(0x07)));
+  mt.poll();
+  CHECK(civ::isNak(frames[0]));
+}
+
 TEST_CASE("mock: sw16 NB set and readback", "[mock]") {
   MockTransport mt;
   mt.open(nullptr);

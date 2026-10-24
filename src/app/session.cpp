@@ -46,11 +46,16 @@ void RadioSession::pollRadio() {
   transport_->send(core::civ::readFreqFrame(radio_addr_));
   transport_->send(core::civ::readModeFrame(radio_addr_));
   transport_->send(core::civ::readSmeterFrame(radio_addr_));
-  // 功能开关回读（0x11 + 0x16 族），mock/真机均支持裸查询
+  // 功能开关回读（0x11 + 0x16 族 + 0x0F），mock/真机均支持裸查询
   transport_->send(core::civ::readAttFrame(radio_addr_));
   transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Nb, radio_addr_));
   transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Nr, radio_addr_));
   transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Moni, radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16NotchAuto, radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Vox, radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Pamp, radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Agc, radio_addr_));
+  transport_->send(core::civ::readDuplexFrame(radio_addr_));
   transport_->poll();  // mock：同步回调 onFrame
 }
 
@@ -101,6 +106,21 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
   } else if (auto moni = core::civ::parseSw16Response(*f, core::civ::kSub16Moni)) {
     s.moni = *moni != 0;
     changed = true;
+  } else if (auto na = core::civ::parseSw16Response(*f, core::civ::kSub16NotchAuto)) {
+    s.notch_auto = *na != 0;
+    changed = true;
+  } else if (auto vox = core::civ::parseSw16Response(*f, core::civ::kSub16Vox)) {
+    s.vox = *vox != 0;
+    changed = true;
+  } else if (auto pamp = core::civ::parseSw16Response(*f, core::civ::kSub16Pamp)) {
+    s.pamp = *pamp;
+    changed = true;
+  } else if (auto agc = core::civ::parseSw16Response(*f, core::civ::kSub16Agc)) {
+    s.agc = *agc;
+    changed = true;
+  } else if (auto dup = core::civ::parseDuplexResponse(*f)) {
+    s.duplex_raw = *dup;
+    changed = true;
   } else if (core::civ::isNak(*f)) {
     qWarning() << "radio NAK — 命令被拒（频段限制或参数）";  // M3：进原始帧抽屉
   }
@@ -140,8 +160,15 @@ void RadioSession::pttButtonPressed() {
 
 bool RadioSession::tuneTo(uint64_t hz) {
   if (!core::SafetyGate::authorizeSetFreq(hz)) {
-    qWarning() << "tuneTo rejected by band whitelist:" << hz << "Hz";
+    qWarning() << "tuneTo rejected by RX range:" << hz << "Hz";
     emit tuneRejected(static_cast<quint64>(hz));
+    return false;
+  }
+  // 发射中调谐：目标频率必须仍可发射（否则把 TX 频率挪出业余段=违规发射）
+  if (gate_.phase() == core::PttPhase::Tx &&
+      !core::SafetyGate::authorizeTx(hz)) {
+    qWarning() << "tuneTo rejected while TX (non-amateur target):" << hz << "Hz";
+    emit txBlocked(static_cast<quint64>(hz));
     return false;
   }
   transport_->send(core::civ::setFreqFrame(hz, radio_addr_));
@@ -168,6 +195,11 @@ void RadioSession::setAtt(bool on_20db) {
 
 void RadioSession::setSw16(uint8_t sub, uint8_t value) {
   transport_->send(core::civ::sw16SetFrame(sub, value, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setDuplex(uint8_t val) {
+  transport_->send(core::civ::duplexFrame(val, radio_addr_));
   transport_->poll();
 }
 

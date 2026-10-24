@@ -149,9 +149,9 @@ void MainWindow::buildUi() {
   tune->addWidget(down);
   tune->addWidget(up);
 
-  // 手动输频（MHz）+ 快捷收听：广播/航空接收开放（发射仍锁业余段）
+  // 手动输频（MHz）+ 接收波段（区间中点，非点频；发射仍锁业余段）
   freq_edit_ = new QLineEdit(central);
-  freq_edit_->setPlaceholderText("MHz，如 121.500");
+  freq_edit_->setPlaceholderText("MHz，如 127.500");
   freq_edit_->setFixedWidth(120);
   freq_edit_->setAlignment(Qt::AlignRight);
   connect(freq_edit_, &QLineEdit::returnPressed, this, &MainWindow::onManualFreq);
@@ -160,18 +160,28 @@ void MainWindow::buildUi() {
   go->setMinimumWidth(44);
   connect(go, &QPushButton::clicked, this, &MainWindow::onManualFreq);
   tune->addWidget(go);
-  auto* air = new QPushButton("航空 121.5", central);
+  // 接收波段：进区间中点 + 合适模式；▲▼ 步进在波段内连续可调
+  auto* air = new QPushButton("AIR 118-137", central);
+  air->setToolTip("民航话音波段（AM），进入波段中点 127.500，可听不可发");
   connect(air, &QPushButton::clicked, this, [this] {
     session_.setMode(radio::core::civ::Mode::AM);
-    session_.tuneTo(121'500'000);
+    session_.tuneTo(127'500'000);
   });
   tune->addWidget(air);
-  auto* bc = new QPushButton("调频 98.0", central);
+  auto* bc = new QPushButton("BC-FM 87.5-108", central);
+  bc->setToolTip("调频广播波段（WFM），进入波段中点 97.750，可听不可发");
   connect(bc, &QPushButton::clicked, this, [this] {
     session_.setMode(radio::core::civ::Mode::WFM);
-    session_.tuneTo(98'000'000);
+    session_.tuneTo(97'750'000);
   });
   tune->addWidget(bc);
+  auto* bcsw = new QPushButton("BC-SW", central);
+  bcsw->setToolTip("短波广播（AM），进入 31m 段 9.500，可听不可发");
+  connect(bcsw, &QPushButton::clicked, this, [this] {
+    session_.setMode(radio::core::civ::Mode::AM);
+    session_.tuneTo(9'500'000);
+  });
+  tune->addWidget(bcsw);
   root->addLayout(tune);
 
   // ---- 模式 + 功能行：模式组（回读驱动） / ATT / NB / NR / MONI ----
@@ -211,6 +221,35 @@ void MainWindow::buildUi() {
   moni_btn_ = mk_toggle("MONI", [this](bool on) {
     session_.setSw16(radio::core::civ::kSub16Moni, on ? 1 : 0);
   });
+  notch_btn_ = mk_toggle("NOTCH", [this](bool on) {
+    session_.setSw16(radio::core::civ::kSub16NotchAuto, on ? 1 : 0);
+  });
+  vox_btn_ = mk_toggle("VOX", [this](bool on) {
+    session_.setSw16(radio::core::civ::kSub16Vox, on ? 1 : 0);
+  });
+  // 循环档按钮：点击按当前回读值切下一档（回读纠偏）
+  pamp_btn_ = new QPushButton("PAMP", central);
+  connect(pamp_btn_, &QPushButton::clicked, this, [this] {
+    const int cur = session_.store().snapshot().pamp;
+    session_.setSw16(radio::core::civ::kSub16Pamp,
+                     static_cast<uint8_t>((cur + 1) % 3));
+  });
+  funcs->addWidget(pamp_btn_);
+  agc_btn_ = new QPushButton("AGC", central);
+  connect(agc_btn_, &QPushButton::clicked, this, [this] {
+    const int cur = session_.store().snapshot().agc;
+    session_.setSw16(radio::core::civ::kSub16Agc,
+                     static_cast<uint8_t>(cur >= 3 ? 1 : cur + 1));
+  });
+  funcs->addWidget(agc_btn_);
+  dup_btn_ = new QPushButton("DUP", central);
+  connect(dup_btn_, &QPushButton::clicked, this, [this] {
+    // 读回值 0x00=simplex(归一)/0x11/0x12；写入用 0x10/0x11/0x12
+    const int cur = session_.store().snapshot().duplex_raw;
+    const uint8_t next = cur == 0x00 || cur == 0x10 ? 0x11 : (cur == 0x11 ? 0x12 : 0x10);
+    session_.setDuplex(next);
+  });
+  funcs->addWidget(dup_btn_);
   root->addLayout(funcs);
 
   // ---- 瀑布 ----
@@ -238,6 +277,14 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
   block(nb_btn_, s.nb);
   block(nr_btn_, s.nr);
   block(moni_btn_, s.moni);
+  block(notch_btn_, s.notch_auto);
+  block(vox_btn_, s.vox);
+  // 循环档按钮：文字随回读值更新
+  const char* pamp_txt[] = {"PAMP", "PAMP P1", "PAMP P2"};
+  pamp_btn_->setText(pamp_txt[s.pamp <= 2 ? s.pamp : 0]);
+  const char* agc_txt[] = {"AGC", "AGC F", "AGC M", "AGC S"};
+  agc_btn_->setText(agc_txt[s.agc >= 1 && s.agc <= 3 ? s.agc : 2]);
+  dup_btn_->setText(s.duplex_raw == 0x11 ? "DUP-" : (s.duplex_raw == 0x12 ? "DUP+" : "SPLX"));
 }
 
 void MainWindow::refreshState() {

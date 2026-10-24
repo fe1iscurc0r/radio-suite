@@ -59,11 +59,13 @@ TEST_CASE("safety: requestTx ignored while TX; requestRx immediate", "[safety]")
 }
 
 TEST_CASE("safety: set-freq gate uses wide RX range", "[safety]") {
-  // 设频（调谐）按接收范围门禁：广播/航空可收听
+  // 设频（调谐）按接收范围门禁：广播/航空可收听（原厂两段 30k–200M + 400–470M）
   CHECK(SafetyGate::authorizeSetFreq(7'100'000));
   CHECK(SafetyGate::authorizeSetFreq(98'000'000));
   CHECK(SafetyGate::authorizeSetFreq(121'500'000));
-  CHECK_FALSE(SafetyGate::authorizeSetFreq(50'000));        // RX 下界外
+  CHECK(SafetyGate::authorizeSetFreq(433'000'000));
+  CHECK_FALSE(SafetyGate::authorizeSetFreq(20'000));        // RX 下界外
+  CHECK_FALSE(SafetyGate::authorizeSetFreq(350'000'000));   // 原厂空洞
   CHECK_FALSE(SafetyGate::authorizeSetFreq(2'400'000'000)); // RX 上界外
 }
 

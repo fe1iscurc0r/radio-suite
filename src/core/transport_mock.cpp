@@ -92,6 +92,21 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       }
       return true;
     }
+    case civ::kCmdDuplex: {
+      if (parsed->payload.empty()) {  // 裸查询：真机语义 simplex 归一为 0x00
+        const uint8_t p[] = {static_cast<uint8_t>(sim_.duplex == 0x10 ? 0x00 : sim_.duplex)};
+        pushResponse(civ::kCmdDuplex, p);
+        return true;
+      }
+      if (parsed->payload.size() != 1 ||
+          (parsed->payload[0] < 0x10 || parsed->payload[0] > 0x12)) {
+        pushResponse(civ::kNak, {});
+      } else {
+        sim_.duplex = parsed->payload[0];
+        pushResponse(civ::kAck, {});
+      }
+      return true;
+    }
     case civ::kCmdSw16: {
       if (parsed->payload.empty()) return true;
       const uint8_t sub = parsed->payload[0];
@@ -103,6 +118,8 @@ bool MockTransport::send(std::span<const uint8_t> data) {
           case civ::kSub16Nb:   val = sim_.nb ? 1 : 0; break;
           case civ::kSub16Nr:   val = sim_.nr ? 1 : 0; break;
           case civ::kSub16Moni: val = sim_.moni ? 1 : 0; break;
+          case civ::kSub16NotchAuto: val = sim_.notch_auto ? 1 : 0; break;
+          case civ::kSub16Vox: val = sim_.vox ? 1 : 0; break;
           default: return true;  // 未模拟的子命令静默
         }
         const uint8_t p[] = {sub, val};
@@ -122,6 +139,8 @@ bool MockTransport::send(std::span<const uint8_t> data) {
         case civ::kSub16Nb:   ok = val <= 1; if (ok) sim_.nb = val != 0; break;
         case civ::kSub16Nr:   ok = val <= 1; if (ok) sim_.nr = val != 0; break;
         case civ::kSub16Moni: ok = val <= 1; if (ok) sim_.moni = val != 0; break;
+        case civ::kSub16NotchAuto: ok = val <= 1; if (ok) sim_.notch_auto = val != 0; break;
+        case civ::kSub16Vox:  ok = val <= 1; if (ok) sim_.vox = val != 0; break;
         default: return true;  // 未模拟的子命令静默忽略
       }
       pushResponse(ok ? civ::kAck : civ::kNak, {});

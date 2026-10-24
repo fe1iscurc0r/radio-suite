@@ -153,6 +153,16 @@ std::vector<uint8_t> sw16ReadFrame(uint8_t sub, uint8_t to, uint8_t from) {
   return buildFrame(to, from, body);
 }
 
+std::vector<uint8_t> duplexFrame(uint8_t val, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdDuplex, val};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readDuplexFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdDuplex};
+  return buildFrame(to, from, body);
+}
+
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f) {
   if (f.cmd != kCmdReadFreq || f.payload.size() != 5) return std::nullopt;
   return bcdToFreq(f.payload);
@@ -186,6 +196,11 @@ std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub) {
   if (f.cmd != kCmdSw16 || f.payload.size() != 2 || f.payload[0] != sub)
     return std::nullopt;
   return f.payload[1];
+}
+
+std::optional<int> parseDuplexResponse(const CivFrame& f) {
+  if (f.cmd != kCmdDuplex || f.payload.size() != 1) return std::nullopt;
+  return f.payload[0];
 }
 
 }  // namespace radio::core::civ

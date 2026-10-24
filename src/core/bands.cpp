@@ -32,10 +32,22 @@ std::span<const Band> amateurBands() {
 bool isAllowedFreq(uint64_t hz) { return bandFor(hz).has_value(); }
 
 bool isRxAllowed(uint64_t hz) {
-  // 接收范围：100kHz – 1.45GHz（IC-705 实际 RX 约 500kHz 起，下界放宽便于短波广播）
-  constexpr uint64_t kRxMinHz = 100'000;
-  constexpr uint64_t kRxMaxHz = 1'450'000'000;
-  return hz >= kRxMinHz && hz <= kRxMaxHz;
+  // 原厂接收范围（RS-BA1 RemoteController/models/IC-705.ini [FREQUENCY]）：
+  // RANGE0 = 30kHz–199,999,999 Hz；RANGE1 = 400–470 MHz。
+  // 注：IC-705 无 1.2GHz 段；23cm 行在白名单表里是给后续电台的，收听不可达。
+  constexpr uint64_t kRx0Lo = 30'000, kRx0Hi = 199'999'999;
+  constexpr uint64_t kRx1Lo = 400'000'000, kRx1Hi = 470'000'000;
+  return (hz >= kRx0Lo && hz <= kRx0Hi) || (hz >= kRx1Lo && hz <= kRx1Hi);
+}
+
+// 常用接收波段（非业余，收听用；区间取自业余惯例划分，中心=区间中点）
+std::span<const Band> rxBroadcastBands() {
+  static constexpr Band kRx[] = {
+      {"AIR",   118'000'000, 137'000'000},  // 民航话音 AM
+      {"BC-FM",  87'500'000, 108'000'000},  // 调频广播
+      {"BC-SW",     5'800'000,  15'600'000}, // 短波广播（49/31m 等带）
+  };
+  return std::span<const Band>(kRx, sizeof(kRx) / sizeof(kRx[0]));
 }
 
 std::optional<Band> bandFor(uint64_t hz) {

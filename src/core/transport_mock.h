@@ -26,8 +26,11 @@ class MockTransport final : public ICivTransport {
     bool nb = false;         // 0x16 0x22
     bool nr = false;         // 0x16 0x40
     bool moni = false;       // 0x16 0x45
+    bool notch_auto = false; // 0x16 0x41
+    bool vox = false;        // 0x16 0x46
     int pamp = 0;            // 0x16 0x02：0/1/2
     int agc = 2;             // 0x16 0x12：1=fast/2=mid/3=slow
+    int duplex = 0x10;       // 0x0F：0x10 simplex/0x11 dup-/0x12 dup+（读回 simplex 归一 0x00）
   };
 
   explicit MockTransport(SimConfig cfg = {});

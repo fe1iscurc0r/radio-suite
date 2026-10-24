@@ -47,6 +47,7 @@ inline constexpr uint8_t kSub16NotchAuto = 0x41; // Auto Notch 0/1
 inline constexpr uint8_t kSub16Moni = 0x45;      // MONI 监听 0/1
 inline constexpr uint8_t kSub16Vox = 0x46;       // VOX 声控 0/1
 inline constexpr uint8_t kSub16NotchMan = 0x48;  // Manual Notch 0/1
+inline constexpr uint8_t kCmdDuplex = 0x0F;     // 频差方向：写 0x10/0x11/0x12，读回 simplex 归一为 0x00（真机 2026-08-24 实测不归一）
 
 // ---- 模式表（radio_link.py:545）----
 enum class Mode : uint8_t {
@@ -114,6 +115,12 @@ std::vector<uint8_t> sw16SetFrame(uint8_t sub, uint8_t value,
 std::vector<uint8_t> sw16ReadFrame(uint8_t sub,
                                    uint8_t to = kIc705Addr,
                                    uint8_t from = kDefaultControllerAddr);
+// 频差方向（0x0F）：val = 0x10 simplex / 0x11 DUP- / 0x12 DUP+
+std::vector<uint8_t> duplexFrame(uint8_t val,
+                                 uint8_t to = kIc705Addr,
+                                 uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readDuplexFrame(uint8_t to = kIc705Addr,
+                                     uint8_t from = kDefaultControllerAddr);
 
 // ---- 应答解析（输入 parseFrame 的产物；cmd/子命令/长度不符返回 nullopt）----
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f);   // cmd=0x03 + 5B BCD
@@ -126,6 +133,7 @@ std::optional<int> parseSmeterResponse(const CivFrame& f);      // cmd=0x1A + [0
 std::optional<bool> parsePttResponse(const CivFrame& f);        // cmd=0x14 + [0x0C, 0/1]
 std::optional<int> parseAttResponse(const CivFrame& f);         // cmd=0x11 + [val]
 std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub);  // cmd=0x16 + [sub, val]
+std::optional<int> parseDuplexResponse(const CivFrame& f);      // cmd=0x0F + [val]（simplex 读回 0x00）
 inline bool isAck(const CivFrame& f) { return f.cmd == kAck; }
 inline bool isNak(const CivFrame& f) { return f.cmd == kNak; }
 

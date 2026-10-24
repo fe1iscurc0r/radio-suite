@@ -23,8 +23,11 @@ struct RadioState {
   bool nb = false;
   bool nr = false;
   bool moni = false;
+  bool notch_auto = false;
+  bool vox = false;
   int pamp = 0;
   int agc = 2;
+  int duplex_raw = 0;  // 0x0F 读回值：0x00=simplex(归一) 0x11=DUP- 0x12=DUP+
   uint64_t last_update_ms = 0;  // 最后一次字段变更的单调时钟
 
   bool operator==(const RadioState&) const = default;

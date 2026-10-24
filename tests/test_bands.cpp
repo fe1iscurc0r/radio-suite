@@ -41,14 +41,20 @@ TEST_CASE("bands: bandFor lookup", "[bands]") {
 }
 
 // RX/TX 策略拆分：广播/航空收听开放，发射仍锁业余白名单
+// RX 范围对齐原厂 IC-705.ini [FREQUENCY]：30kHz–200MHz + 400–470MHz
 TEST_CASE("bands: RX open range vs TX whitelist", "[bands]") {
   CHECK(isRxAllowed(121'500'000));    // 航空波段：可收听
   CHECK(isRxAllowed(98'000'000));     // 调频广播：可收听
   CHECK(isRxAllowed(7'100'000));      // 业余段两者皆可
-  CHECK(isRxAllowed(100'000));        // 下界
-  CHECK(isRxAllowed(1'450'000'000));  // 上界
-  CHECK_FALSE(isRxAllowed(99'999));   // 下界外
-  CHECK_FALSE(isRxAllowed(1'450'000'001));
+  CHECK(isRxAllowed(30'000));         // 原厂下界
+  CHECK(isRxAllowed(199'999'999));    // 段一上界
+  CHECK(isRxAllowed(400'000'000));    // 段二下界
+  CHECK(isRxAllowed(433'000'000));    // 70cm
+  CHECK(isRxAllowed(470'000'000));    // 段二上界
+  CHECK_FALSE(isRxAllowed(29'999));   // 下界外
+  CHECK_FALSE(isRxAllowed(350'000'000));  // 200–400MHz 空洞（原厂不支持）
+  CHECK_FALSE(isRxAllowed(1'240'000'000)); // IC-705 无 1.2G 段
+  CHECK_FALSE(isRxAllowed(2'400'000'000));
 
   CHECK_FALSE(isTxAllowed(121'500'000));  // 航空：禁止发射
   CHECK_FALSE(isTxAllowed(98'000'000));   // 广播：禁止发射
