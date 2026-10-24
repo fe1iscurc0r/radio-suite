@@ -38,6 +38,7 @@ class RadioSession : public QObject {
  signals:
   void stateChanged();  // RadioState 有更新
   void pttPhaseChanged(int phase);
+  void tuneRejected(quint64 hz);  // 白名单/电台拒绝设频（UI 提示用）
 
  private:
   void onFrame(std::span<const uint8_t> raw);

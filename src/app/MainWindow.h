@@ -2,7 +2,6 @@
 // radio-suite · app/MainWindow.h — 主窗口（顶栏 / 调谐 / PTT / 瀑布）
 #pragma once
 
-#include <QComboBox>
 #include <QLabel>
 #include <QMainWindow>
 #include <QPushButton>
@@ -24,13 +23,15 @@ class MainWindow : public QMainWindow {
 
  private slots:
   void refreshState();    // RadioState → 标签
-  void refreshPtt();      // SafetyGate 相位 → PTT 按钮文案
+  void refreshPtt();      // SafetyGate 相位/剩余时间 → PTT 按钮文案
   void onBandClicked();   // 频段快捷
   void onTuneStep(int direction);
+  void onTuneRejected(quint64 hz);  // 白名单拒绝 → 状态栏红字提示
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
 
  private:
   void buildUi();
+  void flashStatus(const QString& text, bool warn);
 
   radio::app::RadioSession session_;
 
@@ -40,7 +41,11 @@ class MainWindow : public QMainWindow {
   QLabel* smeter_label_ = nullptr;
   QLabel* status_label_ = nullptr;
   QPushButton* ptt_btn_ = nullptr;
-  QComboBox* step_box_ = nullptr;
+  std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
+  QTimer status_timer_;                  // 状态栏红字自动恢复
+
+  // 显示刷新：TX 倒计时/确认窗口剩余秒每 250ms 重画（QTimer 只做显示，判定在 core）
+  QTimer ui_timer_;
 
   // 合成谱工作台（M0 spike：2048 点 FFT → 1024 显示列）
   static constexpr size_t kFftSize = 2048;

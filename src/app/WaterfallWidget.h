@@ -43,7 +43,9 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   bool row_pending_ = false;
   std::vector<uint8_t> row_;
   std::vector<float> line_db_;
-  std::vector<float> line_verts_;
+  std::vector<float> line_verts_;    // 谱线描边（2N）
+  std::vector<float> fill_verts_;    // 谱线下方填充（triangle strip：每列 2 顶点 = 4N float）
+  std::vector<float> grid_verts_;    // 频率网格竖线（GL_LINES）
   bool gl_ok_ = true;
 
   QOpenGLShaderProgram wf_prog_;

@@ -46,6 +46,15 @@ WaterfallWidget::WaterfallWidget(QWidget* parent) : QOpenGLWidget(parent) {
   row_.assign(kTexW, 0);
   line_db_.assign(kTexW, db_floor_);
   line_verts_.assign(static_cast<size_t>(kTexW) * 2, 0.0f);
+  fill_verts_.assign(static_cast<size_t>(kTexW) * 4, -1.0f);
+  grid_verts_.reserve(24);
+  for (int k = 0; k <= 4; ++k) {
+    const float x = -1.0f + 0.5f * k;
+    grid_verts_.push_back(x);
+    grid_verts_.push_back(-1.0f);
+    grid_verts_.push_back(x);
+    grid_verts_.push_back(1.0f);
+  }
 }
 
 WaterfallWidget::~WaterfallWidget() {
@@ -123,6 +132,8 @@ void WaterfallWidget::initializeGL() {
                GL_DYNAMIC_DRAW);
 
   glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void WaterfallWidget::resizeGL(int, int) { /* viewport 由 QOpenGLWidget 维护 */ }
@@ -154,26 +165,59 @@ void WaterfallWidget::paintGL() {
   wf_prog_.disableAttributeArray(a_pos_wf);
   wf_prog_.release();
 
-  // ---- 谱线（覆盖在瀑布上方 1/3 区带）----
+  // ---- 频率网格（8 等分竖线，暗色，画在谱线区）----
+  line_prog_.bind();
+  line_prog_.setUniformValue("uColor", QColor(255, 255, 255, 26));
+  glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * grid_verts_.size(),
+               grid_verts_.data(), GL_STATIC_DRAW);
+  const int a_pos_grid = line_prog_.attributeLocation("aPos");
+  line_prog_.enableAttributeArray(a_pos_grid);
+  line_prog_.setAttributeBuffer(a_pos_grid, GL_FLOAT, 0, 2);
+  glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(grid_verts_.size() / 2));
+  line_prog_.disableAttributeArray(a_pos_grid);
+  line_prog_.release();
+
+  // ---- 谱线（底部区带：半透明填充 triangle strip + 亮色描边）----
   const float span = db_ceil_ - db_floor_;
   const float y0 = -1.0f, y1 = -0.34f;  // 谱线画在底部区带，与瀑布叠一部分
   for (int i = 0; i < kTexW; ++i) {
-    float norm = (line_db_[i] - db_floor_) / span;
+    float norm = (line_db_[static_cast<size_t>(i)] - db_floor_) / span;
     if (norm < 0.0f) norm = 0.0f;
     if (norm > 1.0f) norm = 1.0f;
-    line_verts_[static_cast<size_t>(i) * 2] =
+    const float x =
         -1.0f + 2.0f * static_cast<float>(i) / static_cast<float>(kTexW - 1);
-    line_verts_[static_cast<size_t>(i) * 2 + 1] = y0 + (y1 - y0) * norm;
+    const float y = y0 + (y1 - y0) * norm;
+    line_verts_[static_cast<size_t>(i) * 2] = x;
+    line_verts_[static_cast<size_t>(i) * 2 + 1] = y;
+    // 填充：每列两个顶点（底、顶），triangle strip 交错
+    fill_verts_[static_cast<size_t>(i) * 4] = x;
+    fill_verts_[static_cast<size_t>(i) * 4 + 1] = y0;
+    fill_verts_[static_cast<size_t>(i) * 4 + 2] = x;
+    fill_verts_[static_cast<size_t>(i) * 4 + 3] = y;
   }
+
   line_prog_.bind();
-  line_prog_.setUniformValue("uColor", QColor(120, 255, 140, 230));
   glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
-  glBufferData(GL_ARRAY_BUFFER,
-               sizeof(float) * 2 * static_cast<size_t>(kTexW),
+
+  // 填充（半透明绿）
+  line_prog_.setUniformValue("uColor", QColor(0, 255, 120, 60));
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * fill_verts_.size(),
+               fill_verts_.data(), GL_DYNAMIC_DRAW);
+  const int a_pos_fill = line_prog_.attributeLocation("aPos");
+  line_prog_.enableAttributeArray(a_pos_fill);
+  line_prog_.setAttributeBuffer(a_pos_fill, GL_FLOAT, 0, 2);
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, kTexW * 2);
+  line_prog_.disableAttributeArray(a_pos_fill);
+
+  // 描边（亮绿，2px 在多数驱动上生效）
+  line_prog_.setUniformValue("uColor", QColor(140, 255, 170, 235));
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * line_verts_.size(),
                line_verts_.data(), GL_DYNAMIC_DRAW);
   const int a_pos_line = line_prog_.attributeLocation("aPos");
   line_prog_.enableAttributeArray(a_pos_line);
   line_prog_.setAttributeBuffer(a_pos_line, GL_FLOAT, 0, 2);
+  glLineWidth(2.0f);
   glDrawArrays(GL_LINE_STRIP, 0, kTexW);
   line_prog_.disableAttributeArray(a_pos_line);
   line_prog_.release();

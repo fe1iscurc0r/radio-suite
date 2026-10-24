@@ -115,6 +115,7 @@ void RadioSession::pttButtonPressed() {
 bool RadioSession::tuneTo(uint64_t hz) {
   if (!core::SafetyGate::authorizeSetFreq(hz)) {
     qWarning() << "tuneTo rejected by band whitelist:" << hz << "Hz";
+    emit tuneRejected(static_cast<quint64>(hz));
     return false;
   }
   transport_->send(core::civ::setFreqFrame(hz, radio_addr_));
