@@ -1,0 +1,23 @@
+# 构建产物
+build/
+build-*/
+out/
+packaging/out*/
+cmake-build-*/
+
+# IDE / 工具
+.vscode/
+.idea/
+*.user
+*.user.*
+.mimosa/
+__pycache__/
+*.pyc
+
+# 运行期产物
+*.log
+qso.db
+
+# OS
+.DS_Store
+Thumbs.db

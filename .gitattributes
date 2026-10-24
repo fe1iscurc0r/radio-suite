@@ -1,0 +1,18 @@
+# 跨平台统一：文本文件按 LF 入库，检出按平台
+* text=auto
+
+# 二进制
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.dll binary
+*.exe binary
+*.db binary
+*.zip binary
+*.tar.gz binary
+
+# 换行敏感的脚本
+*.bat text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
