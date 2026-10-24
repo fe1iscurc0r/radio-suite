@@ -41,7 +41,7 @@ ctest --test-dir build --output-on-failure
 
 | 目录 | target | 里程碑 | 内容 |
 |---|---|---|---|
-| `src/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport(mock→serial/udp) |
+| `src/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
 | `src/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
 | `src/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布 |
 | `src/audio` | — | M2 | RtAudio 输入 |

@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Catch2 v3 测试目标：协议对照 / 白名单 / 安全门禁 / mock 闭环 / DSP
+# Catch2 v3 测试目标：协议对照 / 白名单 / 安全门禁 / mock 闭环 / DSP / RS-BA1 UDP
 add_executable(radio_tests
   test_civ.cpp
   test_bands.cpp
   test_safety.cpp
   test_transport_mock.cpp
-  test_dsp.cpp)
+  test_dsp.cpp
+  test_rsba1_proto.cpp)
 
 target_link_libraries(radio_tests PRIVATE
   radio::core
