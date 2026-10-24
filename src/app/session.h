@@ -31,14 +31,17 @@ class RadioSession : public QObject {
 
   // ---- UI/总线命令（唯一出口，禁止绕过）----
   void pttButtonPressed();          // PTT 键按下：Rx→待确认→确认进入 Tx→再按回 Rx
-  bool tuneTo(uint64_t hz);         // 设频（白名单外拒绝）
+  bool tuneTo(uint64_t hz);         // 设频（接收按宽 RX 范围门禁）
   bool tuneBy(int64_t delta_hz);    // 步进
   void setMode(core::civ::Mode m);
+  void setAtt(bool on_20db);        // 0x11（电台侧仅 HF/50MHz 生效，NAK 由状态栏呈现）
+  void setSw16(uint8_t sub, uint8_t value);  // 0x16 族（NB/NR/MONI/PAMP/AGC/...）
 
  signals:
   void stateChanged();  // RadioState 有更新
   void pttPhaseChanged(int phase);
-  void tuneRejected(quint64 hz);  // 白名单/电台拒绝设频（UI 提示用）
+  void tuneRejected(quint64 hz);  // RX 范围外拒绝设频（UI 提示用）
+  void txBlocked(quint64 hz);     // 发射门禁：非业余段拒绝进入 TX
 
  private:
   void onFrame(std::span<const uint8_t> raw);

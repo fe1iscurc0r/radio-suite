@@ -58,9 +58,18 @@ TEST_CASE("safety: requestTx ignored while TX; requestRx immediate", "[safety]")
   CHECK(g.txDeadlineMs() == 0);
 }
 
-TEST_CASE("safety: set-freq gate matches whitelist", "[safety]") {
+TEST_CASE("safety: set-freq gate uses wide RX range", "[safety]") {
+  // 设频（调谐）按接收范围门禁：广播/航空可收听
   CHECK(SafetyGate::authorizeSetFreq(7'100'000));
-  CHECK(SafetyGate::authorizeSetFreq(145'000'000));
-  CHECK_FALSE(SafetyGate::authorizeSetFreq(100'000'000));
-  CHECK_FALSE(SafetyGate::authorizeSetFreq(150'000'000));
+  CHECK(SafetyGate::authorizeSetFreq(98'000'000));
+  CHECK(SafetyGate::authorizeSetFreq(121'500'000));
+  CHECK_FALSE(SafetyGate::authorizeSetFreq(50'000));        // RX 下界外
+  CHECK_FALSE(SafetyGate::authorizeSetFreq(2'400'000'000)); // RX 上界外
+}
+
+TEST_CASE("safety: TX gate locks to amateur whitelist", "[safety]") {
+  CHECK(SafetyGate::authorizeTx(7'100'000));
+  CHECK(SafetyGate::authorizeTx(145'000'000));
+  CHECK_FALSE(SafetyGate::authorizeTx(98'000'000));   // 广播：可听不可发
+  CHECK_FALSE(SafetyGate::authorizeTx(121'500'000));  // 航空：可听不可发
 }

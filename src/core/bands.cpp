@@ -31,6 +31,13 @@ std::span<const Band> amateurBands() {
 
 bool isAllowedFreq(uint64_t hz) { return bandFor(hz).has_value(); }
 
+bool isRxAllowed(uint64_t hz) {
+  // 接收范围：100kHz – 1.45GHz（IC-705 实际 RX 约 500kHz 起，下界放宽便于短波广播）
+  constexpr uint64_t kRxMinHz = 100'000;
+  constexpr uint64_t kRxMaxHz = 1'450'000'000;
+  return hz >= kRxMinHz && hz <= kRxMaxHz;
+}
+
 std::optional<Band> bandFor(uint64_t hz) {
   for (const Band& b : amateurBands())
     if (hz >= b.lo_hz && hz <= b.hi_hz) return b;

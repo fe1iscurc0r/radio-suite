@@ -55,8 +55,7 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       const uint8_t p[] = {0x03, static_cast<uint8_t>(sim_.smeter_raw & 0xFF)};
       pushResponse(civ::kCmdReadSmeter, p);
       return true;
-    }
-    case civ::kCmdReadPtt: {
+    }    case civ::kCmdReadPtt: {
       const uint8_t p[] = {0x0C, static_cast<uint8_t>(sim_.ptt ? 1 : 0)};
       pushResponse(civ::kCmdReadPtt, p);
       return true;
@@ -67,13 +66,65 @@ bool MockTransport::send(std::span<const uint8_t> data) {
         return true;
       }
       auto hz = civ::bcdToFreq(parsed->payload);
-      // 白名单门禁的模拟侧镜像：越界 NAK（真机语义：拒答/NAK）
-      if (!hz || !isAllowedFreq(*hz)) {
+      // 接收调谐按宽 RX 范围（广播/航空可收听）；发射门禁在 SafetyGate
+      if (!hz || !isRxAllowed(*hz)) {
         pushResponse(civ::kNak, {});
       } else {
         sim_.freq_hz = *hz;
         pushResponse(civ::kAck, {});
       }
+      return true;
+    }
+    case civ::kCmdAtt: {
+      if (parsed->payload.empty()) {  // 裸查询 → 回当前值
+        const uint8_t p[] = {static_cast<uint8_t>(sim_.att_20db ? 0x20 : 0x00)};
+        pushResponse(civ::kCmdAtt, p);
+        return true;
+      }
+      // 真机语义：ATT 仅 HF/50MHz（1.8–54 MHz）可设，其余 NAK
+      const bool in_hf = sim_.freq_hz >= 1'800'000 && sim_.freq_hz <= 54'000'000;
+      if (!in_hf || parsed->payload.size() != 1 ||
+          (parsed->payload[0] != 0x00 && parsed->payload[0] != 0x20)) {
+        pushResponse(civ::kNak, {});
+      } else {
+        sim_.att_20db = parsed->payload[0] == 0x20;
+        pushResponse(civ::kAck, {});
+      }
+      return true;
+    }
+    case civ::kCmdSw16: {
+      if (parsed->payload.empty()) return true;
+      const uint8_t sub = parsed->payload[0];
+      if (parsed->payload.size() == 1) {  // 读
+        uint8_t val = 0;
+        switch (sub) {
+          case civ::kSub16Pamp: val = static_cast<uint8_t>(sim_.pamp); break;
+          case civ::kSub16Agc:  val = static_cast<uint8_t>(sim_.agc); break;
+          case civ::kSub16Nb:   val = sim_.nb ? 1 : 0; break;
+          case civ::kSub16Nr:   val = sim_.nr ? 1 : 0; break;
+          case civ::kSub16Moni: val = sim_.moni ? 1 : 0; break;
+          default: return true;  // 未模拟的子命令静默
+        }
+        const uint8_t p[] = {sub, val};
+        pushResponse(civ::kCmdSw16, p);
+        return true;
+      }
+      // 写：值合法性按子命令校验后存并 ACK
+      if (parsed->payload.size() != 2) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const uint8_t val = parsed->payload[1];
+      bool ok = true;
+      switch (sub) {
+        case civ::kSub16Pamp: ok = val <= 2; if (ok) sim_.pamp = val; break;
+        case civ::kSub16Agc:  ok = val >= 1 && val <= 3; if (ok) sim_.agc = val; break;
+        case civ::kSub16Nb:   ok = val <= 1; if (ok) sim_.nb = val != 0; break;
+        case civ::kSub16Nr:   ok = val <= 1; if (ok) sim_.nr = val != 0; break;
+        case civ::kSub16Moni: ok = val <= 1; if (ok) sim_.moni = val != 0; break;
+        default: return true;  // 未模拟的子命令静默忽略
+      }
+      pushResponse(ok ? civ::kAck : civ::kNak, {});
       return true;
     }
     case civ::kCmdSetMode: {

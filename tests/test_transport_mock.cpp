@@ -38,13 +38,81 @@ TEST_CASE("mock: set-freq in-band ACK / out-of-band NAK", "[mock]") {
     CHECK(civ::isAck(frames[0]));
     CHECK(mt.sim().freq_hz == 7'100'000);
   }
-  SECTION("带外 100 MHz → NAK 且不变") {
-    CHECK(mt.send(civ::setFreqFrame(100'000'000)));
+  SECTION("广播段 98 MHz 可收听（RX 开放）→ ACK 生效") {
+    CHECK(mt.send(civ::setFreqFrame(98'000'000)));
+    mt.poll();
+    REQUIRE(frames.size() == 1);
+    CHECK(civ::isAck(frames[0]));
+    CHECK(mt.sim().freq_hz == 98'000'000);
+  }
+  SECTION("接收范围外 2.4 GHz → NAK 且不变") {
+    CHECK(mt.send(civ::setFreqFrame(2'400'000'000)));
     mt.poll();
     REQUIRE(frames.size() == 1);
     CHECK(civ::isNak(frames[0]));
     CHECK(mt.sim().freq_hz == 14'270'000);
   }
+}
+
+TEST_CASE("mock: ATT only settable on HF/50MHz", "[mock]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  SECTION("HF 段：ATT on → ACK，回读 0x20") {
+    CHECK(mt.send(civ::setFreqFrame(7'100'000)));
+    mt.poll();
+    frames.clear();
+    CHECK(mt.send(civ::attFrame(true)));
+    mt.poll();
+    CHECK(civ::isAck(frames[0]));
+    frames.clear();
+    CHECK(mt.send(civ::readAttFrame()));
+    mt.poll();
+    auto att = civ::parseAttResponse(frames[0]);
+    REQUIRE(att.has_value());
+    CHECK(*att == 0x20);
+  }
+  SECTION("VHF 段：ATT → NAK（真机拒绝）") {
+    CHECK(mt.send(civ::setFreqFrame(145'500'000)));
+    mt.poll();
+    frames.clear();
+    CHECK(mt.send(civ::attFrame(true)));
+    mt.poll();
+    CHECK(civ::isNak(frames[0]));
+    CHECK_FALSE(mt.sim().att_20db);
+  }
+}
+
+TEST_CASE("mock: sw16 NB set and readback", "[mock]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  CHECK(mt.send(civ::sw16SetFrame(civ::kSub16Nb, 0x01)));
+  mt.poll();
+  CHECK(civ::isAck(frames[0]));
+
+  frames.clear();
+  CHECK(mt.send(civ::sw16ReadFrame(civ::kSub16Nb)));
+  mt.poll();
+  auto nb = civ::parseSw16Response(frames[0], civ::kSub16Nb);
+  REQUIRE(nb.has_value());
+  CHECK(*nb == 1);
+  CHECK(mt.sim().nb);
+
+  // 非法值 → NAK
+  frames.clear();
+  CHECK(mt.send(civ::sw16SetFrame(civ::kSub16Nb, 0x07)));
+  mt.poll();
+  CHECK(civ::isNak(frames[0]));
+  CHECK(mt.sim().nb);
 }
 
 TEST_CASE("mock: PTT on ACK and readback", "[mock]") {

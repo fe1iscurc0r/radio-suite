@@ -18,6 +18,13 @@ struct RadioState {
   bool ptt_on = false;
   int smeter_raw = 0;
   float smeter_dbm = -999.0f;
+  // 电台功能开关（0x11 / 0x16 族回读）
+  bool att_20db = false;
+  bool nb = false;
+  bool nr = false;
+  bool moni = false;
+  int pamp = 0;
+  int agc = 2;
   uint64_t last_update_ms = 0;  // 最后一次字段变更的单调时钟
 
   bool operator==(const RadioState&) const = default;

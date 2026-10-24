@@ -21,6 +21,13 @@ class MockTransport final : public ICivTransport {
     bool ptt = false;
     int smeter_raw = 42;
     uint8_t radio_addr = civ::kIc705Addr;
+    // 电台功能状态（0x16 族 + ATT），UI 开关经 mock 状态回读
+    bool att_20db = false;   // 0x11：仅 1.8–54 MHz 接受
+    bool nb = false;         // 0x16 0x22
+    bool nr = false;         // 0x16 0x40
+    bool moni = false;       // 0x16 0x45
+    int pamp = 0;            // 0x16 0x02：0/1/2
+    int agc = 2;             // 0x16 0x12：1=fast/2=mid/3=slow
   };
 
   explicit MockTransport(SimConfig cfg = {});

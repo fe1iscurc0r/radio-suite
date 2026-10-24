@@ -146,6 +146,29 @@ TEST_CASE("civ: fixtures generated from python reference", "[civ][fixtures]") {
 }
 
 // 锚点：120=S9=-73dBm，0=S0，241=S9+60dB
+TEST_CASE("civ: att and sw16 switch frames", "[civ]") {
+  CHECK(toHex(civ::attFrame(true, 0xA4, 0xE0)) == "fefea4e01120fd");
+  CHECK(toHex(civ::attFrame(false, 0xA4, 0xE0)) == "fefea4e01100fd");
+  CHECK(toHex(civ::readAttFrame(0xA4, 0xE0)) == "fefea4e011fd");
+  CHECK(toHex(civ::sw16SetFrame(civ::kSub16Nb, 0x01, 0xA4, 0xE0)) ==
+        "fefea4e0162201fd");
+  CHECK(toHex(civ::sw16ReadFrame(civ::kSub16Agc, 0xA4, 0xE0)) ==
+        "fefea4e01612fd");
+
+  // 应答解析
+  auto mk = [](uint8_t cmd, std::span<const uint8_t> payload) {
+    civ::CivFrame f;
+    f.to = 0xE0; f.from = 0xA4; f.cmd = cmd;
+    f.payload.assign(payload.begin(), payload.end());
+    return f;
+  };
+  const uint8_t att_on[] = {0x20};
+  CHECK(*civ::parseAttResponse(mk(0x11, att_on)) == 0x20);
+  const uint8_t nb_on[] = {0x22, 0x01};
+  CHECK(*civ::parseSw16Response(mk(0x16, nb_on), 0x22) == 1);
+  CHECK_FALSE(civ::parseSw16Response(mk(0x16, nb_on), 0x40).has_value());
+}
+
 TEST_CASE("civ: smeter conversion anchors", "[civ]") {
   CHECK(civ::smeterToDbm(120) == Approx(-73.0f).margin(0.01f));
   CHECK(civ::smeterToDbm(0) == Approx(-127.0f).margin(0.01f));

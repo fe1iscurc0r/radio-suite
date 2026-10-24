@@ -133,6 +133,26 @@ std::vector<uint8_t> readSmeterFrame(uint8_t to, uint8_t from) {
   return buildFrame(to, from, body);
 }
 
+std::vector<uint8_t> attFrame(bool on_20db, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdAtt, static_cast<uint8_t>(on_20db ? 0x20 : 0x00)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readAttFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdAtt};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> sw16SetFrame(uint8_t sub, uint8_t value, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdSw16, sub, value};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> sw16ReadFrame(uint8_t sub, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdSw16, static_cast<uint8_t>(sub)};
+  return buildFrame(to, from, body);
+}
+
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f) {
   if (f.cmd != kCmdReadFreq || f.payload.size() != 5) return std::nullopt;
   return bcdToFreq(f.payload);
@@ -155,6 +175,17 @@ std::optional<bool> parsePttResponse(const CivFrame& f) {
   if (f.cmd != kCmdReadPtt || f.payload.size() != 2 || f.payload[0] != 0x0C)
     return std::nullopt;
   return f.payload[1] != 0x00;
+}
+
+std::optional<int> parseAttResponse(const CivFrame& f) {
+  if (f.cmd != kCmdAtt || f.payload.size() != 1) return std::nullopt;
+  return f.payload[0];
+}
+
+std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub) {
+  if (f.cmd != kCmdSw16 || f.payload.size() != 2 || f.payload[0] != sub)
+    return std::nullopt;
+  return f.payload[1];
 }
 
 }  // namespace radio::core::civ

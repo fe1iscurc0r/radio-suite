@@ -59,6 +59,8 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
           &MainWindow::refreshPtt);
   connect(&session_, &radio::app::RadioSession::tuneRejected, this,
           &MainWindow::onTuneRejected);
+  connect(&session_, &radio::app::RadioSession::txBlocked, this,
+          &MainWindow::onTxBlocked);
   connect(&bench_timer_, &QTimer::timeout, this, &MainWindow::onBenchTick);
   bench_timer_.start(66);  // ~15 fps（M0 红线验证在 M2 做满帧压测）
 
@@ -146,7 +148,70 @@ void MainWindow::buildUi() {
   connect(up, &QPushButton::clicked, this, [this] { onTuneStep(+1); });
   tune->addWidget(down);
   tune->addWidget(up);
+
+  // 手动输频（MHz）+ 快捷收听：广播/航空接收开放（发射仍锁业余段）
+  freq_edit_ = new QLineEdit(central);
+  freq_edit_->setPlaceholderText("MHz，如 121.500");
+  freq_edit_->setFixedWidth(120);
+  freq_edit_->setAlignment(Qt::AlignRight);
+  connect(freq_edit_, &QLineEdit::returnPressed, this, &MainWindow::onManualFreq);
+  tune->addWidget(freq_edit_);
+  auto* go = new QPushButton("GO", central);
+  go->setMinimumWidth(44);
+  connect(go, &QPushButton::clicked, this, &MainWindow::onManualFreq);
+  tune->addWidget(go);
+  auto* air = new QPushButton("航空 121.5", central);
+  connect(air, &QPushButton::clicked, this, [this] {
+    session_.setMode(radio::core::civ::Mode::AM);
+    session_.tuneTo(121'500'000);
+  });
+  tune->addWidget(air);
+  auto* bc = new QPushButton("调频 98.0", central);
+  connect(bc, &QPushButton::clicked, this, [this] {
+    session_.setMode(radio::core::civ::Mode::WFM);
+    session_.tuneTo(98'000'000);
+  });
+  tune->addWidget(bc);
   root->addLayout(tune);
+
+  // ---- 模式 + 功能行：模式组（回读驱动） / ATT / NB / NR / MONI ----
+  auto* funcs = new QHBoxLayout();
+  funcs->addWidget(new QLabel("模式", central));
+  const std::pair<const char*, radio::core::civ::Mode> kModes[] = {
+      {"LSB", radio::core::civ::Mode::LSB}, {"USB", radio::core::civ::Mode::USB},
+      {"AM", radio::core::civ::Mode::AM},   {"CW", radio::core::civ::Mode::CW},
+      {"FM", radio::core::civ::Mode::FM},   {"WFM", radio::core::civ::Mode::WFM}};
+  for (const auto& [name, m] : kModes) {
+    auto* btn = new QPushButton(name, central);
+    btn->setCheckable(true);
+    const auto mode = m;
+    connect(btn, &QPushButton::clicked, this, [this, btn, mode] {
+      session_.setMode(mode);
+      btn->setChecked(true);  // 乐观更新，250ms 回读纠偏
+    });
+    mode_btns_.push_back(btn);
+    funcs->addWidget(btn);
+  }
+  funcs->addStretch(1);
+
+  auto mk_toggle = [&](const QString& name, auto setter) {
+    auto* btn = new QPushButton(name, central);
+    btn->setCheckable(true);
+    connect(btn, &QPushButton::clicked, this, [btn, setter] { setter(btn->isChecked()); });
+    funcs->addWidget(btn);
+    return btn;
+  };
+  att_btn_ = mk_toggle("ATT 20dB", [this](bool on) { session_.setAtt(on); });
+  nb_btn_ = mk_toggle("NB", [this](bool on) {
+    session_.setSw16(radio::core::civ::kSub16Nb, on ? 1 : 0);
+  });
+  nr_btn_ = mk_toggle("NR", [this](bool on) {
+    session_.setSw16(radio::core::civ::kSub16Nr, on ? 1 : 0);
+  });
+  moni_btn_ = mk_toggle("MONI", [this](bool on) {
+    session_.setSw16(radio::core::civ::kSub16Moni, on ? 1 : 0);
+  });
+  root->addLayout(funcs);
 
   // ---- 瀑布 ----
   waterfall_ = new WaterfallWidget(central);
@@ -160,6 +225,21 @@ void MainWindow::buildUi() {
   setWindowTitle("radio-suite — M0 spike");
 }
 
+void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
+  // 回读驱动：模式/功能按钮以电台回读为准（点击时的乐观更新在此纠偏，
+  // 含 NAK 场景——如 ATT 在非 HF 段被电台拒绝，按钮会弹回）
+  const auto block = [](QPushButton* b, bool checked) {
+    QSignalBlocker guard(b);
+    b->setChecked(checked);
+  };
+  for (size_t i = 0; i < mode_btns_.size(); ++i)
+    block(mode_btns_[i], static_cast<int>(s.mode) == static_cast<int>(i));
+  block(att_btn_, s.att_20db);
+  block(nb_btn_, s.nb);
+  block(nr_btn_, s.nr);
+  block(moni_btn_, s.moni);
+}
+
 void MainWindow::refreshState() {
   const auto s = session_.store().snapshot();
   freq_label_->setText(formatFreq(s.freq_hz));
@@ -168,6 +248,7 @@ void MainWindow::refreshState() {
       QString("S%1 (%2 dBm)")
           .arg(s.smeter_raw * 9.0 / 120.0, 0, 'f', 1)
           .arg(s.smeter_dbm, 0, 'f', 1));
+  syncTogglesFromState(s);
 }
 
 void MainWindow::refreshPtt() {
@@ -201,8 +282,29 @@ void MainWindow::refreshPtt() {
 }
 
 void MainWindow::onTuneRejected(quint64 hz) {
-  flashStatus(QString("已拒绝 %1 MHz：超出业余频段白名单").arg(hz / 1'000'000.0, 0, 'f', 3),
+  flashStatus(QString("已拒绝 %1 MHz：超出接收范围（100kHz–1.45GHz）")
+                  .arg(hz / 1'000'000.0, 0, 'f', 3),
               true);
+}
+
+void MainWindow::onTxBlocked(quint64 hz) {
+  flashStatus(QString("发射被拒：%1 MHz 不在业余频段（收听开放，发射锁定白名单）")
+                  .arg(hz / 1'000'000.0, 0, 'f', 3),
+              true);
+}
+
+void MainWindow::onManualFreq() {
+  bool ok = false;
+  const double mhz = freq_edit_->text().toDouble(&ok);
+  if (!ok || mhz <= 0.0) {
+    flashStatus("频率输入无效（示例：121.500）", true);
+    return;
+  }
+  const quint64 hz = static_cast<quint64>(mhz * 1e6 + 0.5);
+  if (!session_.tuneTo(hz))
+    flashStatus(QString("%1 MHz 超出接收范围").arg(mhz, 0, 'f', 3), true);
+  else
+    freq_edit_->clear();
 }
 
 void MainWindow::flashStatus(const QString& text, bool warn) {

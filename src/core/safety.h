@@ -36,8 +36,10 @@ class SafetyGate {
   uint64_t txDeadlineMs() const { return tx_deadline_ms_; }     // 0 = 不在 Tx
   uint64_t confirmDeadlineMs() const { return confirm_deadline_ms_; }
 
-  // 设频门禁（唯一出口）：白名单外一律拒绝，UI 与总线共用。
-  static bool authorizeSetFreq(uint64_t hz) { return isAllowedFreq(hz); }
+  // 设频门禁（唯一出口）：接收调谐按宽 RX 范围；发射频率按业余白名单。
+  static bool authorizeSetFreq(uint64_t hz) { return isRxAllowed(hz); }
+  // 发射门禁：进入 TX 前最后检查——不在业余段一律拒绝（广播/航空可听不可发）。
+  static bool authorizeTx(uint64_t hz) { return isAllowedFreq(hz); }
 
  private:
   PttPhase phase_ = PttPhase::Rx;

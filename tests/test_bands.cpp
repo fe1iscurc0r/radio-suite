@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "core/bands.h"
+#include "core/safety.h"
 
 using namespace radio::core;
 
@@ -37,4 +38,21 @@ TEST_CASE("bands: bandFor lookup", "[bands]") {
   CHECK(b->lo_hz == 14'000'000);
   CHECK(b->hi_hz == 14'350'000);
   CHECK_FALSE(bandFor(100'000'000).has_value());
+}
+
+// RX/TX 策略拆分：广播/航空收听开放，发射仍锁业余白名单
+TEST_CASE("bands: RX open range vs TX whitelist", "[bands]") {
+  CHECK(isRxAllowed(121'500'000));    // 航空波段：可收听
+  CHECK(isRxAllowed(98'000'000));     // 调频广播：可收听
+  CHECK(isRxAllowed(7'100'000));      // 业余段两者皆可
+  CHECK(isRxAllowed(100'000));        // 下界
+  CHECK(isRxAllowed(1'450'000'000));  // 上界
+  CHECK_FALSE(isRxAllowed(99'999));   // 下界外
+  CHECK_FALSE(isRxAllowed(1'450'000'001));
+
+  CHECK_FALSE(isTxAllowed(121'500'000));  // 航空：禁止发射
+  CHECK_FALSE(isTxAllowed(98'000'000));   // 广播：禁止发射
+  CHECK(isTxAllowed(14'270'000));         // 业余段：允许发射
+  CHECK(SafetyGate::authorizeTx(145'500'000));
+  CHECK_FALSE(SafetyGate::authorizeTx(88'000'000));
 }

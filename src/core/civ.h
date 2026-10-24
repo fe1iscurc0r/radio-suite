@@ -33,8 +33,20 @@ inline constexpr uint8_t kCmdSetMode = 0x06;    // 设模式（携带 [mode, fil
 inline constexpr uint8_t kCmdReadPtt = 0x14;    // 读 PTT 状态（子命令 0x0C）
 inline constexpr uint8_t kCmdReadSmeter = 0x1A; // 读 S-meter（子命令 0x03）
 inline constexpr uint8_t kCmdPtt = 0x1C;        // PTT 控制（子命令 0x00，数据 01=TX/00=RX）
+inline constexpr uint8_t kCmdAtt = 0x11;        // ATT 衰减（0x00=OFF / 0x20=20dB，仅 HF/50MHz）
+inline constexpr uint8_t kCmdSw16 = 0x16;       // 0x16 子命令开关族（见 kSub16*）
 inline constexpr uint8_t kAck = 0xFB;           // 设置类命令成功应答
 inline constexpr uint8_t kNak = 0xFA;           // 设置类命令拒绝应答
+
+// 0x16 子命令（radio_link.py:778-835，真机验证）
+inline constexpr uint8_t kSub16Pamp = 0x02;      // 前置放大 0/1/2
+inline constexpr uint8_t kSub16Agc = 0x12;       // AGC 1=fast/2=mid/3=slow
+inline constexpr uint8_t kSub16Nb = 0x22;        // 噪声抑制 NB 0/1
+inline constexpr uint8_t kSub16Nr = 0x40;        // NR 降噪 0/1
+inline constexpr uint8_t kSub16NotchAuto = 0x41; // Auto Notch 0/1
+inline constexpr uint8_t kSub16Moni = 0x45;      // MONI 监听 0/1
+inline constexpr uint8_t kSub16Vox = 0x46;       // VOX 声控 0/1
+inline constexpr uint8_t kSub16NotchMan = 0x48;  // Manual Notch 0/1
 
 // ---- 模式表（radio_link.py:545）----
 enum class Mode : uint8_t {
@@ -89,6 +101,19 @@ std::vector<uint8_t> readPttFrame(uint8_t to = kIc705Addr,
                                   uint8_t from = kDefaultControllerAddr);
 std::vector<uint8_t> readSmeterFrame(uint8_t to = kIc705Addr,
                                      uint8_t from = kDefaultControllerAddr);
+// ATT（IC-705 语义：0x00=OFF，0x20=20dB；电台侧仅 HF/50MHz 接受，其余 NAK）
+std::vector<uint8_t> attFrame(bool on_20db,
+                              uint8_t to = kIc705Addr,
+                              uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readAttFrame(uint8_t to = kIc705Addr,
+                                  uint8_t from = kDefaultControllerAddr);
+// 0x16 子命令开关族：设 / 读
+std::vector<uint8_t> sw16SetFrame(uint8_t sub, uint8_t value,
+                                  uint8_t to = kIc705Addr,
+                                  uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> sw16ReadFrame(uint8_t sub,
+                                   uint8_t to = kIc705Addr,
+                                   uint8_t from = kDefaultControllerAddr);
 
 // ---- 应答解析（输入 parseFrame 的产物；cmd/子命令/长度不符返回 nullopt）----
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f);   // cmd=0x03 + 5B BCD
@@ -99,6 +124,8 @@ struct ModeInfo {
 std::optional<ModeInfo> parseModeResponse(const CivFrame& f);   // cmd=0x04 + [mode,filter]
 std::optional<int> parseSmeterResponse(const CivFrame& f);      // cmd=0x1A + [0x03, raw]
 std::optional<bool> parsePttResponse(const CivFrame& f);        // cmd=0x14 + [0x0C, 0/1]
+std::optional<int> parseAttResponse(const CivFrame& f);         // cmd=0x11 + [val]
+std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub);  // cmd=0x16 + [sub, val]
 inline bool isAck(const CivFrame& f) { return f.cmd == kAck; }
 inline bool isNak(const CivFrame& f) { return f.cmd == kNak; }
 

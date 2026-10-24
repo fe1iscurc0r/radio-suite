@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QTimer>
@@ -22,16 +23,19 @@ class MainWindow : public QMainWindow {
                       QWidget* parent = nullptr);
 
  private slots:
-  void refreshState();    // RadioState → 标签
+  void refreshState();    // RadioState → 标签 + 模式/功能按钮回读同步
   void refreshPtt();      // SafetyGate 相位/剩余时间 → PTT 按钮文案
   void onBandClicked();   // 频段快捷
   void onTuneStep(int direction);
-  void onTuneRejected(quint64 hz);  // 白名单拒绝 → 状态栏红字提示
+  void onTuneRejected(quint64 hz);  // RX 范围外拒绝 → 状态栏红字提示
+  void onTxBlocked(quint64 hz);     // 非业余段拒绝发射
+  void onManualFreq();              // 手动输频 GO
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
 
  private:
   void buildUi();
   void flashStatus(const QString& text, bool warn);
+  void syncTogglesFromState(const radio::core::RadioState& s);
 
   radio::app::RadioSession session_;
 
@@ -42,6 +46,12 @@ class MainWindow : public QMainWindow {
   QLabel* status_label_ = nullptr;
   QPushButton* ptt_btn_ = nullptr;
   std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
+  std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，回读驱动）
+  QPushButton* att_btn_ = nullptr;       // ATT 20dB（回读驱动）
+  QPushButton* nb_btn_ = nullptr;        // NB（回读驱动）
+  QPushButton* nr_btn_ = nullptr;        // NR（回读驱动）
+  QPushButton* moni_btn_ = nullptr;      // MONI（回读驱动）
+  QLineEdit* freq_edit_ = nullptr;       // 手动输频（MHz）
   QTimer status_timer_;                  // 状态栏红字自动恢复
 
   // 显示刷新：TX 倒计时/确认窗口剩余秒每 250ms 重画（QTimer 只做显示，判定在 core）

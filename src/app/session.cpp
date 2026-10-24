@@ -46,6 +46,11 @@ void RadioSession::pollRadio() {
   transport_->send(core::civ::readFreqFrame(radio_addr_));
   transport_->send(core::civ::readModeFrame(radio_addr_));
   transport_->send(core::civ::readSmeterFrame(radio_addr_));
+  // 功能开关回读（0x11 + 0x16 族），mock/真机均支持裸查询
+  transport_->send(core::civ::readAttFrame(radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Nb, radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Nr, radio_addr_));
+  transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Moni, radio_addr_));
   transport_->poll();  // mock：同步回调 onFrame
 }
 
@@ -84,8 +89,20 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
   } else if (auto ptt = core::civ::parsePttResponse(*f)) {
     s.ptt_on = *ptt;
     changed = true;
+  } else if (auto att = core::civ::parseAttResponse(*f)) {
+    s.att_20db = *att == 0x20;
+    changed = true;
+  } else if (auto nb = core::civ::parseSw16Response(*f, core::civ::kSub16Nb)) {
+    s.nb = *nb != 0;
+    changed = true;
+  } else if (auto nr = core::civ::parseSw16Response(*f, core::civ::kSub16Nr)) {
+    s.nr = *nr != 0;
+    changed = true;
+  } else if (auto moni = core::civ::parseSw16Response(*f, core::civ::kSub16Moni)) {
+    s.moni = *moni != 0;
+    changed = true;
   } else if (core::civ::isNak(*f)) {
-    qWarning() << "radio NAK — 命令被拒（白名单或参数）";  // M3：进原始帧抽屉
+    qWarning() << "radio NAK — 命令被拒（频段限制或参数）";  // M3：进原始帧抽屉
   }
   if (changed) {
     s.last_update_ms = nowMs();
@@ -101,7 +118,16 @@ void RadioSession::pttButtonPressed() {
       gate_.requestTx(now);
       break;
     case core::PttPhase::ConfirmPending:
-      if (gate_.confirmTx(now)) sendPtt(true);
+      if (gate_.confirmTx(now)) {
+        // 发射门禁最后一道：非业余段（广播/航空等）可听不可发
+        const uint64_t hz = store_.snapshot().freq_hz;
+        if (!core::SafetyGate::authorizeTx(hz)) {
+          gate_.requestRx(now);
+          emit txBlocked(static_cast<quint64>(hz));
+        } else {
+          sendPtt(true);
+        }
+      }
       break;
     case core::PttPhase::Tx:
       gate_.requestRx(now);
@@ -132,6 +158,16 @@ bool RadioSession::tuneBy(int64_t delta_hz) {
 
 void RadioSession::setMode(core::civ::Mode m) {
   transport_->send(core::civ::setModeFrame(m, 0, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setAtt(bool on_20db) {
+  transport_->send(core::civ::attFrame(on_20db, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setSw16(uint8_t sub, uint8_t value) {
+  transport_->send(core::civ::sw16SetFrame(sub, value, radio_addr_));
   transport_->poll();
 }
 
