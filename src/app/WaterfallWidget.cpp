@@ -150,14 +150,17 @@ void WaterfallWidget::paintGL() {
     row_pending_ = false;
   }
 
-  // ---- 瀑布 ----
+  // ---- 瀑布（下 2/3 区带，独立，不与谱线重叠）----
+  // 顶边 y=0.30：最新行在瀑布顶部，向下滚动
   wf_prog_.bind();
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, tex_);
   wf_prog_.setUniformValue("uTex", 0);
   wf_prog_.setUniformValue("uRowOff", static_cast<float>(next_row_) /
                                          static_cast<float>(kTexH));
+  const float quad[] = {-1, -1, 1, -1, 1, 0.30f, -1, -1, 1, 0.30f, -1, 0.30f};
   glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
   const int a_pos_wf = wf_prog_.attributeLocation("aPos");
   wf_prog_.enableAttributeArray(a_pos_wf);
   wf_prog_.setAttributeBuffer(a_pos_wf, GL_FLOAT, 0, 2);
@@ -165,7 +168,7 @@ void WaterfallWidget::paintGL() {
   wf_prog_.disableAttributeArray(a_pos_wf);
   wf_prog_.release();
 
-  // ---- 频率网格（8 等分竖线，暗色，画在谱线区）----
+  // ---- 频率网格（竖线跨全高，暗色）----
   line_prog_.bind();
   line_prog_.setUniformValue("uColor", QColor(255, 255, 255, 26));
   glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
@@ -178,9 +181,9 @@ void WaterfallWidget::paintGL() {
   line_prog_.disableAttributeArray(a_pos_grid);
   line_prog_.release();
 
-  // ---- 谱线（底部区带：半透明填充 triangle strip + 亮色描边）----
+  // ---- 谱线（上 1/3 区带：基线在 y=0.34，峰值向上到 y=0.96）----
   const float span = db_ceil_ - db_floor_;
-  const float y0 = -1.0f, y1 = -0.34f;  // 谱线画在底部区带，与瀑布叠一部分
+  const float y0 = 0.34f, y1 = 0.96f;
   for (int i = 0; i < kTexW; ++i) {
     float norm = (line_db_[static_cast<size_t>(i)] - db_floor_) / span;
     if (norm < 0.0f) norm = 0.0f;

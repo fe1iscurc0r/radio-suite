@@ -2,12 +2,17 @@
 #include "app/MainWindow.h"
 
 #include <QDateTime>
+#include <QFile>
+#include <QFileDialog>
 #include <QFont>
 #include <QHBoxLayout>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
 #include <cmath>
+
+#include "app/aprs_panel.h"
 
 namespace {
 
@@ -257,6 +262,47 @@ void MainWindow::buildUi() {
   waterfall_->setDbRange(-110.0f, -10.0f);
   root->addWidget(waterfall_, 1);
 
+  // ---- APRS-IS 台流（APRSLocus 融合第一片，可折叠）----
+  aprs_panel_ = new radio::app::AprsPanel(central);
+  aprs_panel_->hide();
+  connect(aprs_panel_, &radio::app::AprsPanel::statusMessage, this,
+          [this](const QString& m) { flashStatus(m, false); });
+  root->addWidget(aprs_panel_);
+
+  // ---- hamlog 融合行：记 QSO（写 HamLog 库）+ ADIF 导出 + APRS 开关 ----
+  auto* logrow = new QHBoxLayout();
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  const bool hamlog_ok = hamlog_.available();
+  logrow->addWidget(new QLabel(
+      hamlog_ok ? QString("HamLog：已连接（%1 条可见）").arg(hamlog_.recent(1).size())
+                : "HamLog：库未找到（先运行一次 HamLog）",
+      central));
+  qso_call_edit_ = new QLineEdit(central);
+  qso_call_edit_->setPlaceholderText("对方呼号，如 BG5ABC");
+  qso_call_edit_->setFixedWidth(140);
+  logrow->addWidget(qso_call_edit_);
+  auto* log_btn = new QPushButton("记 QSO", central);
+  log_btn->setEnabled(hamlog_ok);
+  connect(log_btn, &QPushButton::clicked, this, &MainWindow::onLogQso);
+  logrow->addWidget(log_btn);
+  auto* adif_btn = new QPushButton("ADIF 导出", central);
+  adif_btn->setEnabled(hamlog_ok);
+  connect(adif_btn, &QPushButton::clicked, this, &MainWindow::onExportAdif);
+  logrow->addWidget(adif_btn);
+  aprs_panel_->setLoginCall(hamlog_ok ? hamlog_.myCallsign() : QString());
+#else
+  logrow->addWidget(new QLabel("日志模块未编译（缺 Qt6::Sql）", central));
+#endif
+  logrow->addStretch(1);
+  auto* aprs_btn = new QPushButton("APRS 台流", central);
+  aprs_btn->setCheckable(true);
+  connect(aprs_btn, &QPushButton::toggled, this, [this](bool on) {
+    aprs_panel_->setVisible(on);
+    if (on && !aprs_panel_->isConnected()) aprs_panel_->toggleConnect();
+  });
+  logrow->addWidget(aprs_btn);
+  root->addLayout(logrow);
+
   status_label_ = new QLabel("transport: mock · radio: IC-705 sim", central);
   root->addWidget(status_label_);
 
@@ -390,3 +436,53 @@ void MainWindow::onBenchTick() {
   waterfall_->pushRow(row_bytes_.data(), static_cast<int>(row_bytes_.size()));
   waterfall_->pushSpectrum(col_db_.data(), static_cast<int>(col_db_.size()));
 }
+
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+void MainWindow::onLogQso() {
+  const QString call = qso_call_edit_->text().trimmed().toUpper();
+  if (call.isEmpty()) {
+    flashStatus("QSO 呼号为空", true);
+    return;
+  }
+  const auto s = session_.store().snapshot();
+  const QDateTime utc = QDateTime::currentDateTimeUtc();
+  radio::logbook::Qso q;
+  q.callsign = call;
+  q.freq_mhz = static_cast<double>(s.freq_hz) / 1e6;
+  q.year = utc.date().year();
+  q.month = utc.date().month();
+  q.day = utc.date().day();
+  q.time_hhmm = utc.time().toString("hhmm");
+  q.mode = radio::core::civ::modeName(s.mode);
+  if (hamlog_.insert(q)) {
+    flashStatus(QString("已写入 HamLog：%1 @ %2 MHz %3 %4Z")
+                    .arg(call)
+                    .arg(q.freq_mhz, 0, 'f', 4)
+                    .arg(q.mode, q.time_hhmm),
+                false);
+    qso_call_edit_->clear();
+  } else {
+    flashStatus("HamLog 写入失败：" + hamlog_.lastError(), true);
+  }
+}
+
+void MainWindow::onExportAdif() {
+  const auto qsos = hamlog_.recent(1000);
+  if (qsos.empty()) {
+    flashStatus("HamLog 无记录可导出", true);
+    return;
+  }
+  const QString path = QFileDialog::getSaveFileName(
+      this, "ADIF 导出", "radio-suite.adi", "ADIF (*.adi)");
+  if (path.isEmpty()) return;
+  QFile f(path);
+  if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    flashStatus("无法写文件：" + path, true);
+    return;
+  }
+  const QString adif = radio::logbook::toAdif(qsos, hamlog_.myCallsign());
+  f.write(adif.toUtf8());
+  f.close();
+  flashStatus(QString("已导出 %1 条 QSO → %2").arg(qsos.size()).arg(path), false);
+}
+#endif

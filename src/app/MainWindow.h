@@ -12,9 +12,17 @@
 
 #include "app/WaterfallWidget.h"
 #include "app/session.h"
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+#include "logbook/logbook.h"
+#endif
 #include "dsp/fft.h"
 #include "dsp/synth.h"
 #include "dsp/waterfall_frame.h"
+
+namespace radio::app {
+class AprsPanel;
+}
+class QLineEdit;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -31,6 +39,10 @@ class MainWindow : public QMainWindow {
   void onTxBlocked(quint64 hz);     // 非业余段拒绝发射
   void onManualFreq();              // 手动输频 GO
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  void onLogQso();        // 记一条 QSO（自动填频率/模式/UTC，写 HamLog 库）
+  void onExportAdif();    // 导出 ADIF（radio-suite 与 hamlog 的交换契约）
+#endif
 
  private:
   void buildUi();
@@ -57,6 +69,13 @@ class MainWindow : public QMainWindow {
   QPushButton* agc_btn_ = nullptr;       // AGC 循环 F/M/S（回读驱动）
   QPushButton* dup_btn_ = nullptr;       // Dup 循环 SPLX/DUP-/DUP+（回读驱动）
   QLineEdit* freq_edit_ = nullptr;       // 手动输频（MHz）
+
+  // hamlog / APRS 融合区
+  radio::app::AprsPanel* aprs_panel_ = nullptr;
+  QLineEdit* qso_call_edit_ = nullptr;   // QSO 对方呼号
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  radio::logbook::HamLogDb hamlog_;
+#endif
   QTimer status_timer_;                  // 状态栏红字自动恢复
 
   // 显示刷新：TX 倒计时/确认窗口剩余秒每 250ms 重画（QTimer 只做显示，判定在 core）

@@ -29,6 +29,7 @@ include(cmake/dependencies.cmake)
 
 add_subdirectory(src/core)
 add_subdirectory(src/dsp)
+add_subdirectory(src/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断）
 if(BUILD_GUI)
   add_subdirectory(src/app)
 endif()
