@@ -11,6 +11,7 @@ set(RADIO_CORE_SRC
   rsba1_proto.cpp
   sstv.cpp
   dtmf.cpp
+  audio_stream.cpp
   transport_mock.cpp)
 
 if(RADIO_SUITE_UDP)
