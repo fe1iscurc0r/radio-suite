@@ -53,7 +53,18 @@ OK ×13        （13 项全部出现 ✓）
   协议栈 MIT / 壳 AGPL 双许可链路干净。
 - **时间窗**：rigplane 3.0 stable 后 1–2 版周期（≈2–3 个月）；PWA 借力不竞速。
 
-## §4 未完成项 / 移交阶段二、三
+## §4 阶段三实施记录（师傅 2026-10-25 "ok" 点头后开工）
+
+| 批 | commit | 内容 | 验证 |
+|---|---|---|---|
+| ① | `70bedde` | kappanhang 音频通路移植（AudioTxPacker/AudioRxBuffer，MIT 标注+NOTICE 上游表） | 53/53 |
+| ② | `8238339` | transport_udp 音频双通路接入 + RigctldServer（rigplane 语义+dump_state 移植，IC-705 化） | 53/53 + **nc 实测 f/F/m/chk_vfo 全通** |
+| ③ 待办 | — | 0x27 频谱解帧（wfview 抓包参数）+ monorepo 平移 + PWA（阶段二） | — |
+
+精读修正记录：kappanhang 音频**无 u-law**——48kHz s16le 直传，TX 20ms=1920B 拆
+1364+556 两包；整合图谱 v1 的 u-law 说法待更正（下一版图谱更新）。
+
+## §未完成项 / 移交（原 §4 上移合并）
 
 - 阶段二（PWA 薄片）：等师傅点头；验收硬指标（ADIF 一条真记录 + 延迟数字文件 + K40 实拍）照工单执行。
 - 阶段三（monorepo 平移 + desktop delta 清单）：等师傅点头；本人即 268 领取人，可直接动 apps/desktop。
