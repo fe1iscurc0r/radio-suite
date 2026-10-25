@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <memory>
 #include <vector>
+class QHBoxLayout;
 
 #include "app/WaterfallWidget.h"
 #include "app/session.h"
@@ -24,6 +25,9 @@ namespace radio::app {
 class AprsPanel;
 }
 class QLineEdit;
+class QPushButton;
+class SMeterWidget;
+class PoSwrWidget;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -47,6 +51,8 @@ class MainWindow : public QMainWindow {
 
  private:
   void buildUi();
+  QHBoxLayout* buildTuneRow(QWidget* central);   // 调谐行（次级）
+  QHBoxLayout* buildFuncRow(QWidget* central);   // 模式+功能开关行（次级）
   void flashStatus(const QString& text, bool warn);
   void syncTogglesFromState(const radio::core::RadioState& s);
 
@@ -55,9 +61,12 @@ class MainWindow : public QMainWindow {
   WaterfallWidget* waterfall_ = nullptr;
   QLabel* freq_label_ = nullptr;
   QLabel* mode_label_ = nullptr;
-  QLabel* smeter_label_ = nullptr;
+  SMeterWidget* smeter_ = nullptr;      // 半圆指针 S 表（主信息）
+  PoSwrWidget* poswr_ = nullptr;        // Po/SWR 双条表（主信息）
   QLabel* status_label_ = nullptr;
   QPushButton* ptt_btn_ = nullptr;
+  QPushButton* aprs_big_btn_ = nullptr; // 右侧大按键（显眼件）
+  QPushButton* sstv_big_btn_ = nullptr;
   std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
   std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，回读驱动）
   QPushButton* att_btn_ = nullptr;       // ATT 20dB（回读驱动）

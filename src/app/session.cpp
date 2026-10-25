@@ -46,6 +46,7 @@ void RadioSession::pollRadio() {
   transport_->send(core::civ::readFreqFrame(radio_addr_));
   transport_->send(core::civ::readModeFrame(radio_addr_));
   transport_->send(core::civ::readSmeterFrame(radio_addr_));
+  transport_->send(core::civ::readMeterFrame(radio_addr_));
   // 功能开关回读（0x11 + 0x16 族 + 0x0F），mock/真机均支持裸查询
   transport_->send(core::civ::readAttFrame(radio_addr_));
   transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Nb, radio_addr_));
@@ -90,6 +91,11 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
   } else if (auto sm = core::civ::parseSmeterResponse(*f)) {
     s.smeter_raw = *sm;
     s.smeter_dbm = core::civ::smeterToDbm(*sm);
+    changed = true;
+  } else if (auto mi = core::civ::parseMeterResponse(*f)) {
+    s.po_w = static_cast<float>(mi->po_raw) * 0.1f;
+    s.swr = static_cast<float>(mi->swr_raw) * 0.1f;
+    s.alc = mi->alc;
     changed = true;
   } else if (auto ptt = core::civ::parsePttResponse(*f)) {
     s.ptt_on = *ptt;

@@ -13,6 +13,8 @@ set(APP_SRC
   session.cpp
   MainWindow.cpp
   WaterfallWidget.cpp
+  meter_widgets.cpp
+  sstv_dialog.cpp
   aprs_panel.cpp)
 
 if(Qt6HttpServer_FOUND)

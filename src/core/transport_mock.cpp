@@ -52,6 +52,20 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       return true;
     }
     case civ::kCmdReadSmeter: {
+      if (!parsed->payload.empty() && parsed->payload[0] == 0x11) {
+        // 复合表：TX 时给典型值（Po≈5W→50, SWR≈1.2→12），RX 全 0；量纲 M1 真机标定
+        const int po = sim_.ptt ? 50 : 0;
+        const int swr = sim_.ptt ? 12 : 0;
+        const int alc = sim_.ptt ? 30 : 0;
+        const uint8_t p[] = {0x11,
+                             static_cast<uint8_t>(po >> 8),
+                             static_cast<uint8_t>(po & 0xFF),
+                             static_cast<uint8_t>(swr >> 8),
+                             static_cast<uint8_t>(swr & 0xFF),
+                             static_cast<uint8_t>(alc & 0xFF)};
+        pushResponse(civ::kCmdReadSmeter, p);
+        return true;
+      }
       const uint8_t p[] = {0x03, static_cast<uint8_t>(sim_.smeter_raw & 0xFF)};
       pushResponse(civ::kCmdReadSmeter, p);
       return true;

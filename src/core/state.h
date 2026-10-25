@@ -18,6 +18,10 @@ struct RadioState {
   bool ptt_on = false;
   int smeter_raw = 0;
   float smeter_dbm = -999.0f;
+  // 复合表（0x1A 0x11；显示量纲待真机标定，暂 po=raw×0.1W, swr=raw×0.1）
+  float po_w = 0.0f;
+  float swr = 0.0f;
+  int alc = 0;
   // 电台功能开关（0x11 / 0x16 族回读）
   bool att_20db = false;
   bool nb = false;

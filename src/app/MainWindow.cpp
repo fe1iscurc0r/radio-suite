@@ -13,6 +13,8 @@
 #include <cmath>
 
 #include "app/aprs_panel.h"
+#include "app/meter_widgets.h"
+#include "app/sstv_dialog.h"
 
 namespace {
 
@@ -88,38 +90,131 @@ void MainWindow::buildUi() {
   auto* central = new QWidget(this);
   auto* root = new QVBoxLayout(central);
 
-  // ---- 顶栏：频率 / 模式 / S 表 / PTT ----
+  // ---- 顶栏（主）：频率大字 + 模式 + PTT 大键 ----
   auto* top = new QHBoxLayout();
   freq_label_ = new QLabel("__.__._ MHz", central);
   QFont mono("Cascadia Mono");
   mono.setStyleHint(QFont::Monospace);
-  mono.setPointSize(30);
+  mono.setPointSize(34);
   freq_label_->setFont(mono);
   top->addWidget(freq_label_, 1);
 
   mode_label_ = new QLabel("--", central);
   mode_label_->setAlignment(Qt::AlignCenter);
   mode_label_->setMinimumWidth(90);
+  QFont moded = mode_label_->font();
+  moded.setPointSize(16);
+  moded.setBold(true);
+  mode_label_->setFont(moded);
   top->addWidget(mode_label_);
 
-  smeter_label_ = new QLabel("S0", central);
-  smeter_label_->setAlignment(Qt::AlignCenter);
-  smeter_label_->setMinimumWidth(150);
-  top->addWidget(smeter_label_);
-
   ptt_btn_ = new QPushButton("PTT", central);
-  ptt_btn_->setMinimumHeight(56);
-  ptt_btn_->setMinimumWidth(180);
+  ptt_btn_->setMinimumHeight(72);
+  ptt_btn_->setMinimumWidth(210);
   QFont bold = ptt_btn_->font();
   bold.setBold(true);
-  bold.setPointSize(12);
+  bold.setPointSize(14);
   ptt_btn_->setFont(bold);
   connect(ptt_btn_, &QPushButton::clicked, this,
           [this] { session_.pttButtonPressed(); });
   top->addWidget(ptt_btn_);
-  root->addLayout(top);
+  root->addLayout(top, 0);
 
-  // ---- 调谐行：频段快捷 / 步进档（互斥按钮组）/ 升降 ----
+  // ---- 主体：左主列（仪表/调谐/功能/瀑布/日志） + 右竖大按键列 ----
+  auto* body = new QHBoxLayout();
+  auto* main_col = new QVBoxLayout();
+
+  // 仪表行（主信息）：指针 S 表 + Po/SWR
+  auto* meters = new QHBoxLayout();
+  smeter_ = new SMeterWidget(central);
+  poswr_ = new PoSwrWidget(central);
+  meters->addWidget(smeter_, 3);
+  meters->addWidget(poswr_, 2);
+  main_col->addLayout(meters);
+  main_col->addLayout(buildTuneRow(central));
+  main_col->addLayout(buildFuncRow(central));
+
+  waterfall_ = new WaterfallWidget(central);
+  waterfall_->setDbRange(-110.0f, -10.0f);
+  main_col->addWidget(waterfall_, 1);
+
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  if (hamlog_.available()) {
+    qso_list_ = new QListWidget(central);
+    qso_list_->setMaximumHeight(96);
+    main_col->addWidget(qso_list_);
+    refreshQsoList();
+  }
+#endif
+  body->addLayout(main_col, 1);
+
+  // ---- 右竖大按键列（显眼件：APRS / SSTV / 日志）----
+  auto* side = new QVBoxLayout();
+
+  // APRS 面板先建（下面 hamlog 块要用它 setLoginCall）
+  aprs_panel_ = new radio::app::AprsPanel(central);
+  aprs_panel_->hide();
+  connect(aprs_panel_, &radio::app::AprsPanel::statusMessage, this,
+          [this](const QString& m) { flashStatus(m, false); });
+
+  auto mk_big = [central](const QString& text, const QColor& c) {
+    auto* b = new QPushButton(text, central);
+    b->setMinimumHeight(64);
+    b->setMinimumWidth(130);
+    QFont f = b->font();
+    f.setPointSize(12);
+    f.setBold(true);
+    b->setFont(f);
+    b->setStyleSheet(QString("QPushButton { background: %1; color: white; }")
+                         .arg(c.name()));
+    return b;
+  };
+  aprs_big_btn_ = mk_big("APRS\n台流", QColor(0x00, 0x69, 0x7c));
+  sstv_big_btn_ = mk_big("SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
+  side->addWidget(aprs_big_btn_);
+  side->addWidget(sstv_big_btn_);
+  connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
+    SstvDialog dlg(this);
+    dlg.exec();
+  });
+
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  if (hamlog_.available()) {
+    qso_call_edit_ = new QLineEdit(central);
+    qso_call_edit_->setPlaceholderText("对方呼号");
+    side->addWidget(qso_call_edit_);
+    auto* log_btn = mk_big("记 QSO", QColor(0x2e, 0x7d, 0x32));
+    log_btn->setMinimumHeight(48);
+    side->addWidget(log_btn);
+    connect(log_btn, &QPushButton::clicked, this, &MainWindow::onLogQso);
+    auto* adif_btn = mk_big("ADIF 导出", QColor(0x37, 0x47, 0x4f));
+    adif_btn->setMinimumHeight(40);
+    side->addWidget(adif_btn);
+    connect(adif_btn, &QPushButton::clicked, this, &MainWindow::onExportAdif);
+    aprs_panel_->setLoginCall(hamlog_.myCallsign());
+  }
+#endif
+
+  // APRS 面板挂右列（大按键切换显隐）
+  aprs_big_btn_->setCheckable(true);
+  connect(aprs_big_btn_, &QPushButton::toggled, this, [this](bool on) {
+    aprs_panel_->setVisible(on);
+    if (on && !aprs_panel_->isConnected()) aprs_panel_->toggleConnect();
+  });
+  side->addWidget(aprs_panel_);
+  side->addStretch(1);
+  body->addLayout(side);
+  root->addLayout(body, 1);
+
+  status_label_ = new QLabel("transport: mock · radio: IC-705 sim", central);
+  root->addWidget(status_label_);
+
+  setCentralWidget(central);
+  setWindowTitle("radio-suite — M0 spike");
+}
+
+QHBoxLayout* MainWindow::buildTuneRow(QWidget* central) {
+  // 频段快捷 / 步进档（互斥按钮组）/ 升降 / 手动输频 / 接收波段
   auto* tune = new QHBoxLayout();
   for (const auto& b : kBands) {
     auto* btn = new QPushButton(b.name, central);
@@ -128,14 +223,12 @@ void MainWindow::buildUi() {
     tune->addWidget(btn);
   }
   tune->addStretch(1);
-
   tune->addWidget(new QLabel("步进", central));
   for (int i = 0; i < 4; ++i) {
     auto* btn = new QPushButton(kStepNames[i], central);
     btn->setCheckable(true);
     btn->setChecked(i == kDefaultStep);
     btn->setProperty("step_hz", static_cast<qlonglong>(kSteps[i]));
-    // 互斥：点了谁谁亮
     const int idx = i;
     connect(btn, &QPushButton::clicked, this, [this, idx] {
       for (int j = 0; j < static_cast<int>(step_btns_.size()); ++j)
@@ -144,54 +237,52 @@ void MainWindow::buildUi() {
     step_btns_.push_back(btn);
     tune->addWidget(btn);
   }
-
   auto* down = new QPushButton("▼", central);
   auto* up = new QPushButton("▲", central);
-  down->setMinimumWidth(48);
-  up->setMinimumWidth(48);
+  down->setMinimumWidth(44);
+  up->setMinimumWidth(44);
   connect(down, &QPushButton::clicked, this, [this] { onTuneStep(-1); });
   connect(up, &QPushButton::clicked, this, [this] { onTuneStep(+1); });
   tune->addWidget(down);
   tune->addWidget(up);
 
-  // 手动输频（MHz）+ 接收波段（区间中点，非点频；发射仍锁业余段）
   freq_edit_ = new QLineEdit(central);
   freq_edit_->setPlaceholderText("MHz，如 127.500");
-  freq_edit_->setFixedWidth(120);
+  freq_edit_->setFixedWidth(110);
   freq_edit_->setAlignment(Qt::AlignRight);
   connect(freq_edit_, &QLineEdit::returnPressed, this, &MainWindow::onManualFreq);
   tune->addWidget(freq_edit_);
   auto* go = new QPushButton("GO", central);
-  go->setMinimumWidth(44);
+  go->setMinimumWidth(40);
   connect(go, &QPushButton::clicked, this, &MainWindow::onManualFreq);
   tune->addWidget(go);
-  // 接收波段：进区间中点 + 合适模式；▲▼ 步进在波段内连续可调
-  auto* air = new QPushButton("AIR 118-137", central);
-  air->setToolTip("民航话音波段（AM），进入波段中点 127.500，可听不可发");
+  auto* air = new QPushButton("AIR", central);
+  air->setToolTip("民航话音 118-137（AM，中点 127.5，可听不可发）");
   connect(air, &QPushButton::clicked, this, [this] {
     session_.setMode(radio::core::civ::Mode::AM);
     session_.tuneTo(127'500'000);
   });
   tune->addWidget(air);
-  auto* bc = new QPushButton("BC-FM 87.5-108", central);
-  bc->setToolTip("调频广播波段（WFM），进入波段中点 97.750，可听不可发");
+  auto* bc = new QPushButton("BC-FM", central);
+  bc->setToolTip("调频广播 87.5-108（WFM，中点 97.75，可听不可发）");
   connect(bc, &QPushButton::clicked, this, [this] {
     session_.setMode(radio::core::civ::Mode::WFM);
     session_.tuneTo(97'750'000);
   });
   tune->addWidget(bc);
   auto* bcsw = new QPushButton("BC-SW", central);
-  bcsw->setToolTip("短波广播（AM），进入 31m 段 9.500，可听不可发");
+  bcsw->setToolTip("短波广播 31m（AM，9.5，可听不可发）");
   connect(bcsw, &QPushButton::clicked, this, [this] {
     session_.setMode(radio::core::civ::Mode::AM);
     session_.tuneTo(9'500'000);
   });
   tune->addWidget(bcsw);
-  root->addLayout(tune);
+  return tune;
+}
 
-  // ---- 模式 + 功能行：模式组（回读驱动） / ATT / NB / NR / MONI ----
+QHBoxLayout* MainWindow::buildFuncRow(QWidget* central) {
+  // 模式组（回读驱动）+ ATT/NB/NR/MONI/NOTCH/VOX/PAMP/AGC/DUP（紧凑次级行）
   auto* funcs = new QHBoxLayout();
-  funcs->addWidget(new QLabel("模式", central));
   const std::pair<const char*, radio::core::civ::Mode> kModes[] = {
       {"LSB", radio::core::civ::Mode::LSB}, {"USB", radio::core::civ::Mode::USB},
       {"AM", radio::core::civ::Mode::AM},   {"CW", radio::core::civ::Mode::CW},
@@ -216,7 +307,7 @@ void MainWindow::buildUi() {
     funcs->addWidget(btn);
     return btn;
   };
-  att_btn_ = mk_toggle("ATT 20dB", [this](bool on) { session_.setAtt(on); });
+  att_btn_ = mk_toggle("ATT", [this](bool on) { session_.setAtt(on); });
   nb_btn_ = mk_toggle("NB", [this](bool on) {
     session_.setSw16(radio::core::civ::kSub16Nb, on ? 1 : 0);
   });
@@ -232,7 +323,6 @@ void MainWindow::buildUi() {
   vox_btn_ = mk_toggle("VOX", [this](bool on) {
     session_.setSw16(radio::core::civ::kSub16Vox, on ? 1 : 0);
   });
-  // 循环档按钮：点击按当前回读值切下一档（回读纠偏）
   pamp_btn_ = new QPushButton("PAMP", central);
   connect(pamp_btn_, &QPushButton::clicked, this, [this] {
     const int cur = session_.store().snapshot().pamp;
@@ -249,74 +339,12 @@ void MainWindow::buildUi() {
   funcs->addWidget(agc_btn_);
   dup_btn_ = new QPushButton("DUP", central);
   connect(dup_btn_, &QPushButton::clicked, this, [this] {
-    // 读回值 0x00=simplex(归一)/0x11/0x12；写入用 0x10/0x11/0x12
     const int cur = session_.store().snapshot().duplex_raw;
     const uint8_t next = cur == 0x00 || cur == 0x10 ? 0x11 : (cur == 0x11 ? 0x12 : 0x10);
     session_.setDuplex(next);
   });
   funcs->addWidget(dup_btn_);
-  root->addLayout(funcs);
-
-  // ---- 瀑布 ----
-  waterfall_ = new WaterfallWidget(central);
-  waterfall_->setDbRange(-110.0f, -10.0f);
-  root->addWidget(waterfall_, 1);
-
-  // ---- APRS-IS 台流（APRSLocus 融合第一片，可折叠）----
-  aprs_panel_ = new radio::app::AprsPanel(central);
-  aprs_panel_->hide();
-  connect(aprs_panel_, &radio::app::AprsPanel::statusMessage, this,
-          [this](const QString& m) { flashStatus(m, false); });
-  root->addWidget(aprs_panel_);
-
-  // ---- hamlog 融合行：记 QSO（写 HamLog 库）+ ADIF 导出 + APRS 开关 ----
-  auto* logrow = new QHBoxLayout();
-#ifdef RADIO_SUITE_HAVE_LOGBOOK
-  const bool hamlog_ok = hamlog_.available();
-  logrow->addWidget(new QLabel(
-      hamlog_ok ? QString("HamLog：已连接（%1 条可见）").arg(hamlog_.recent(1).size())
-                : "HamLog：库未找到（先运行一次 HamLog）",
-      central));
-  qso_call_edit_ = new QLineEdit(central);
-  qso_call_edit_->setPlaceholderText("对方呼号，如 BG5ABC");
-  qso_call_edit_->setFixedWidth(140);
-  logrow->addWidget(qso_call_edit_);
-  auto* log_btn = new QPushButton("记 QSO", central);
-  log_btn->setEnabled(hamlog_ok);
-  connect(log_btn, &QPushButton::clicked, this, &MainWindow::onLogQso);
-  logrow->addWidget(log_btn);
-  auto* adif_btn = new QPushButton("ADIF 导出", central);
-  adif_btn->setEnabled(hamlog_ok);
-  connect(adif_btn, &QPushButton::clicked, this, &MainWindow::onExportAdif);
-  logrow->addWidget(adif_btn);
-  aprs_panel_->setLoginCall(hamlog_ok ? hamlog_.myCallsign() : QString());
-#else
-  logrow->addWidget(new QLabel("日志模块未编译（缺 Qt6::Sql）", central));
-#endif
-  logrow->addStretch(1);
-  auto* aprs_btn = new QPushButton("APRS 台流", central);
-  aprs_btn->setCheckable(true);
-  connect(aprs_btn, &QPushButton::toggled, this, [this](bool on) {
-    aprs_panel_->setVisible(on);
-    if (on && !aprs_panel_->isConnected()) aprs_panel_->toggleConnect();
-  });
-  logrow->addWidget(aprs_btn);
-  root->addLayout(logrow);
-
-#ifdef RADIO_SUITE_HAVE_LOGBOOK
-  if (hamlog_ok) {
-    qso_list_ = new QListWidget(central);
-    qso_list_->setMaximumHeight(96);
-    root->addWidget(qso_list_);
-    refreshQsoList();
-  }
-#endif
-
-  status_label_ = new QLabel("transport: mock · radio: IC-705 sim", central);
-  root->addWidget(status_label_);
-
-  setCentralWidget(central);
-  setWindowTitle("radio-suite — M0 spike");
+  return funcs;
 }
 
 void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
@@ -346,10 +374,8 @@ void MainWindow::refreshState() {
   const auto s = session_.store().snapshot();
   freq_label_->setText(formatFreq(s.freq_hz));
   mode_label_->setText(QString("%1/%2").arg(radio::core::civ::modeName(s.mode)).arg(s.filter));
-  smeter_label_->setText(
-      QString("S%1 (%2 dBm)")
-          .arg(s.smeter_raw * 9.0 / 120.0, 0, 'f', 1)
-          .arg(s.smeter_dbm, 0, 'f', 1));
+  smeter_->setDbm(s.smeter_dbm);
+  poswr_->setPoSwr(s.po_w, s.swr);
   syncTogglesFromState(s);
 }
 

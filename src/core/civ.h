@@ -102,6 +102,9 @@ std::vector<uint8_t> readPttFrame(uint8_t to = kIc705Addr,
                                   uint8_t from = kDefaultControllerAddr);
 std::vector<uint8_t> readSmeterFrame(uint8_t to = kIc705Addr,
                                      uint8_t from = kDefaultControllerAddr);
+// 复合表（0x1A 0x11）：Po/SWR/ALC，量纲待真机标定（M1）
+std::vector<uint8_t> readMeterFrame(uint8_t to = kIc705Addr,
+                                    uint8_t from = kDefaultControllerAddr);
 // ATT（IC-705 语义：0x00=OFF，0x20=20dB；电台侧仅 HF/50MHz 接受，其余 NAK）
 std::vector<uint8_t> attFrame(bool on_20db,
                               uint8_t to = kIc705Addr,
@@ -130,6 +133,12 @@ struct ModeInfo {
 };
 std::optional<ModeInfo> parseModeResponse(const CivFrame& f);   // cmd=0x04 + [mode,filter]
 std::optional<int> parseSmeterResponse(const CivFrame& f);      // cmd=0x1A + [0x03, raw]
+struct MeterInfo {
+  int po_raw = 0;    // 功率原始值（显示量纲待真机标定，暂 ×0.1W）
+  int swr_raw = 0;   // 驻波原始值（暂 ×0.1）
+  int alc = 0;
+};
+std::optional<MeterInfo> parseMeterResponse(const CivFrame& f);  // cmd=0x1A + [0x11, po2, swr2, alc]
 std::optional<bool> parsePttResponse(const CivFrame& f);        // cmd=0x14 + [0x0C, 0/1]
 std::optional<int> parseAttResponse(const CivFrame& f);         // cmd=0x11 + [val]
 std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub);  // cmd=0x16 + [sub, val]

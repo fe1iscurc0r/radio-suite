@@ -133,6 +133,11 @@ std::vector<uint8_t> readSmeterFrame(uint8_t to, uint8_t from) {
   return buildFrame(to, from, body);
 }
 
+std::vector<uint8_t> readMeterFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdReadSmeter, 0x11};
+  return buildFrame(to, from, body);
+}
+
 std::vector<uint8_t> attFrame(bool on_20db, uint8_t to, uint8_t from) {
   const uint8_t body[] = {kCmdAtt, static_cast<uint8_t>(on_20db ? 0x20 : 0x00)};
   return buildFrame(to, from, body);
@@ -179,6 +184,17 @@ std::optional<int> parseSmeterResponse(const CivFrame& f) {
   if (f.cmd != kCmdReadSmeter || f.payload.size() != 2 || f.payload[0] != 0x03)
     return std::nullopt;
   return f.payload[1];
+}
+
+std::optional<MeterInfo> parseMeterResponse(const CivFrame& f) {
+  // IC-705 CI-V 手册（ci-v-spec.md:68）：0x1A 0x11 → [0x11, po(2B), swr(2B), alc(1B)]
+  if (f.cmd != kCmdReadSmeter || f.payload.size() != 6 || f.payload[0] != 0x11)
+    return std::nullopt;
+  MeterInfo m;
+  m.po_raw = (f.payload[1] << 8) | f.payload[2];
+  m.swr_raw = (f.payload[3] << 8) | f.payload[4];
+  m.alc = f.payload[5];
+  return m;
 }
 
 std::optional<bool> parsePttResponse(const CivFrame& f) {
