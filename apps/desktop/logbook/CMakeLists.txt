@@ -3,7 +3,7 @@
 find_package(Qt6 QUIET COMPONENTS Sql)
 if(Qt6Sql_FOUND)
   find_package(Qt6 QUIET COMPONENTS Widgets)
-  add_library(radio_logbook STATIC logbook.cpp hamlog_workbench.cpp)
+  add_library(radio_logbook STATIC logbook.cpp hamlog_workbench.cpp qso_edit_dialog.cpp)
   add_library(radio::logbook ALIAS radio_logbook)
   set_target_properties(radio_logbook PROPERTIES AUTOMOC ON)  # HamLogWorkbench 带 Q_OBJECT
   target_compile_features(radio_logbook PUBLIC cxx_std_20)

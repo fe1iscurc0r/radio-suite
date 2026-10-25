@@ -41,15 +41,22 @@ class HamLogDb {
   const QString& lastError() const { return err_; }
   QString myCallsign() const;      // settings 表 my_callsign（无则空）
 
-  std::vector<Qso> recent(int limit = 8);
-  // 搜索：呼号前缀/波段前缀（MHz 字符串开头匹配）；空串 = 全部
-  std::vector<Qso> search(const QString& query, int limit = 500);
+  std::vector<Qso> recent(int limit = 8) const;
+  // 模糊搜索（对齐原版 HamLog AutoDeal.search：Callsign/QTH/Device/Remarks
+  // 四字段 %kw%；空串=全部，按日期时间倒序）
+  std::vector<Qso> search(const QString& keyword, int limit = 500) const;
+  std::optional<Qso> getById(int64_t id) const;
+  bool update(const Qso& q);       // 按 id 全字段更新
+  bool remove(int64_t id);
+  // settings 表直读写（my_callsign/my_name/my_qth/my_grid，与原版同 key）
+  QString getSetting(const QString& key) const;
+  bool setSetting(const QString& key, const QString& value);
   bool insert(const Qso& q);       // 写入 HamLog 库（radio-suite 与 HamLog 立即可见）
 
  private:
-  bool open();
+  bool open() const;  // 连接池式打开（QSqlDatabase 全局命名连接），路径只读
   QString path_;
-  mutable QString err_;  // const 探测方法（available）也要能记错误
+  mutable QString err_;  // const 探测/查询方法也要能记错误
 };
 
 // ADIF 3.x 导出（子集）。设计移植自 scratchpad tools/adif.py（AGPL-3.0，
