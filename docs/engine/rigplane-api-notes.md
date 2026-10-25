@@ -1,7 +1,7 @@
 # rigplane API 落图（WO-274 · A 节）
 
 - 依据：逐份实读 `rigplane-core/docs/api/{web,scope,audio,public-api-surface,rigctld}.md`
-  + `command-catalog.md` + `src/rigplane/web/protocol.py`（wire 格式源码），非 README 转述
+  + `docs/api/command-catalog.md` + `src/rigplane/web/protocol.py`（wire 格式源码），非 README 转述
 - 版本背景：v3.0.0b20（2026-10-25 实查），MIT
 - 本仓 v3.0.0b20 克隆快照：`D:/tmp/rigplane`（spike 用 `pip install rigplane`，见硬边界）
 
@@ -32,20 +32,20 @@
 
 | # | 接口 | 用途（radio-suite） | 稳定性 | 出处 |
 |---|---|---|---|---|
-| 1 | `GET /healthz`、`GET /readyz` | sidecar 存活/就绪探测（重连状态机依据） | 稳定 | web.md:264-304 |
-| 2 | `GET /api/v1/state` | 状态单源快照（freqHz/mode/filter/PTT/radioHealth，ETag+revision） | 稳定 | web.md:1148-1204 |
-| 3 | `WS /api/v1/ws` | ① 命令通道（cmd envelope）② 状态更新流 ③ command_lifecycle | 稳定 | web.md:1289-1400 |
-| 4 | `WS cmd set_freq {freq,receiver}` | 调谐 | 稳定 | command-catalog.md:82 |
-| 5 | `WS cmd set_mode {mode}` | 模式（"USB"/"FM"/"CW"…profile modes[]） | 稳定 | command-catalog.md:85 |
-| 6 | `WS cmd ptt {state}` | PTT（含 ptt_on/ptt_off；只读模式 403） | 稳定 | command-catalog.md:118-120 |
-| 7 | `WS cmd set_att/set_nb/set_nr/set_nb_level/...` | 功能开关（对应本仓 0x11/0x16 族） | 稳定 | command-catalog.md:132-144 |
-| 8 | `WS /api/v1/scope`（二进制） | 硬件频谱帧流（0x27 组帧后） | 稳定 | web.md:176, protocol.py:56-79 |
-| 9 | `WS /api/v1/audio`（二进制+JSON 控制） | RX 播放 / TX 采集（8B 头 + Opus/PCM16） | 稳定 | web.md:1300-1310; audio.md |
-| 10 | `WS /api/v1/audio-scope` | 音频 FFT 频谱（无硬件 scope 的替代） | 稳定 | web.md:176,1284 |
-| 11 | `POST /api/v1/commands`（HTTP） | 非订阅场景的单命令（回答即执行完） | 稳定 | web.md:362-423 |
-| 12 | `POST /api/v1/civ/transaction` | 原始 CI-V 逃生门（自研协议层的过渡桥） | 稳定 | web.md:424 |
-| 13 | rigplane 自带 rigctld（4532） | WSJT-X/fldigi **直连引擎**（radio-suite 自研 rigctld 的替代位） | 稳定 | rigctld.md（`rigplane serve`） |
-| 14 | `POST /api/v1/transport/webrtc/offer|ice-candidate` | 音频低延迟可选项（D 节裁决 D2） | 实验（gated） | web.md:207-236,153 |
+| 1 | `GET /healthz`、`GET /readyz` | sidecar 存活/就绪探测（重连状态机依据） | 稳定 | docs/api/web.md:264-304 |
+| 2 | `GET /api/v1/state` | 状态单源快照（freqHz/mode/filter/PTT/radioHealth，ETag+revision） | 稳定 | docs/api/web.md:1148-1204 |
+| 3 | `WS /api/v1/ws` | ① 命令通道（cmd envelope）② 状态更新流 ③ command_lifecycle | 稳定 | docs/api/web.md:1289-1400 |
+| 4 | `WS cmd set_freq {freq,receiver}` | 调谐 | 稳定 | docs/api/command-catalog.md:82 |
+| 5 | `WS cmd set_mode {mode}` | 模式（"USB"/"FM"/"CW"…profile modes[]） | 稳定 | docs/api/command-catalog.md:85 |
+| 6 | `WS cmd ptt {state}` | PTT（含 ptt_on/ptt_off；只读模式 403） | 稳定 | docs/api/command-catalog.md:118-120 |
+| 7 | `WS cmd set_att/set_nb/set_nr/set_nb_level/...` | 功能开关（对应本仓 0x11/0x16 族） | 稳定 | docs/api/command-catalog.md:132-144 |
+| 8 | `WS /api/v1/scope`（二进制） | 硬件频谱帧流（0x27 组帧后） | 稳定 | docs/api/web.md:176, protocol.py:56-79 |
+| 9 | `WS /api/v1/audio`（二进制+JSON 控制） | RX 播放 / TX 采集（8B 头 + Opus/PCM16） | 稳定 | docs/api/web.md:1300-1310; audio.md |
+| 10 | `WS /api/v1/audio-scope` | 音频 FFT 频谱（无硬件 scope 的替代） | 稳定 | docs/api/web.md:176,1284 |
+| 11 | `POST /api/v1/commands`（HTTP） | 非订阅场景的单命令（回答即执行完） | 稳定 | docs/api/web.md:362-423 |
+| 12 | `POST /api/v1/civ/transaction` | 原始 CI-V 逃生门（自研协议层的过渡桥） | 稳定 | docs/api/web.md:424 |
+| 13 | rigplane 自带 rigctld（4532） | WSJT-X/fldigi **直连引擎**（radio-suite 自研 rigctld 的替代位） | 稳定 | docs/api/rigctld.md（`rigplane serve`） |
+| 14 | `POST /api/v1/transport/webrtc/offer|ice-candidate` | 音频低延迟可选项（D 节裁决 D2） | 实验（gated） | docs/api/web.md:207-236,153 |
 
 **未文档化**（源码级，spike 不依赖）：`web/_delta_encoder.py`（频谱增量编码——
 工单点名注意；协议层面 scope 帧是"16B 头+pixels"整帧，delta 编码若用于 WS 需要
