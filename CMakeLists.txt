@@ -30,6 +30,7 @@ include(cmake/dependencies.cmake)
 add_subdirectory(src/core)
 add_subdirectory(src/dsp)
 add_subdirectory(src/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断）
+add_subdirectory(src/audio)    # RtAudio (MIT, vendor/)：SSTV/DV 播放
 if(BUILD_GUI)
   add_subdirectory(src/app)
 endif()

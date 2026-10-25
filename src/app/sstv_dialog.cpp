@@ -9,9 +9,13 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "app/session.h"
+#include "audio/audio_out.h"
+#include "core/safety.h"
 #include "core/sstv.h"
 
-SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
+SstvDialog::SstvDialog(radio::app::RadioSession* session, QWidget* parent)
+    : QDialog(parent), session_(session) {
   setWindowTitle("SSTV 录音盒（发送 = 生成录音 · 接收 = 听录音）");
   setMinimumSize(440, 480);
   auto* root = new QVBoxLayout(this);
@@ -48,6 +52,14 @@ SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
   info_->setStyleSheet("color:#9fe;");
   root->addWidget(info_);
 
+  // ---- 一键发射：PTT 门禁（两击确认）→ TX → 播放 → 自动回 RX ----
+  tx_btn_ = new QPushButton("一键发射（PTT 门禁 + 播放）", this);
+  tx_btn_->setEnabled(false);
+  tx_btn_->setStyleSheet("QPushButton { background: #8e24aa; color: white; }");
+  connect(tx_btn_, &QPushButton::clicked, this, &SstvDialog::onTransmit);
+  root->addWidget(tx_btn_);
+  audio_ = std::make_unique<radio::audio::AudioOut>();
+
   auto* close = new QPushButton("关闭", this);
   connect(close, &QPushButton::clicked, this, &QDialog::accept);
   root->addWidget(close, 0, Qt::AlignRight);
@@ -75,6 +87,8 @@ SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
   rx_view_->setStyleSheet("background:#10141c;");
   root->addWidget(rx_view_, 1);
 }
+
+SstvDialog::~SstvDialog() = default;  // unique_ptr<AudioOut>（完整类型在 audio_out.h）
 
 void SstvDialog::onDecode() {
   const QString path = QFileDialog::getOpenFileName(this, "选择 SSTV .wav",
@@ -169,6 +183,8 @@ void SstvDialog::onGenerate() {
       rgb[static_cast<size_t>(y) * w + x] = {p[0], p[1], p[2]};
     }
   const auto pcm = radio::core::sstv::encodeSstv(mode, rgb, 44100);
+  last_pcm_ = pcm;
+  tx_btn_->setEnabled(true);
   const double secs = double(pcm.size()) / 44100.0;
   // WAV 头（PCM 16bit 单声道）
   const uint32_t data_bytes = static_cast<uint32_t>(pcm.size() * 2);
@@ -187,9 +203,48 @@ void SstvDialog::onGenerate() {
   f.write(reinterpret_cast<const char*>(pcm.data()),
           static_cast<qint64>(data_bytes));
   f.close();
-  info_->setText(QString("已生成：%1（%2 KB，%3 秒，%4）\n播放它进电台 MOD 即可发射")
+  info_->setText(QString("已生成：%1（%2 KB，%3 秒，%4）\n播放它进电台 MOD 即可发射；或直接点「一键发射」")
                      .arg(out_path)
                      .arg(data_bytes / 1024)
                      .arg(secs, 0, 'f', 1)
                      .arg(radio::core::sstv::modeName(mode)));
+}
+
+void SstvDialog::onTransmit() {
+  // 全程走 PTT 门禁（safety 是唯一出口，UI 只编排交互）：
+  // 第一击 requestTx → 立即 confirmTx（对话框内视为同一次确认动作）
+  // → TX + 播放 → 播完 requestRx。mock 上完整可演；真机等 M1 验收。
+  if (last_pcm_.empty()) return;
+  if (!session_) {
+    info_->setText("会话未就绪");
+    return;
+  }
+  const uint64_t now = QDateTime::currentMSecsSinceEpoch();
+  auto& gate = session_->gate();
+  if (gate.phase() != radio::core::PttPhase::Tx) {
+    gate.requestTx(now);
+    if (!gate.confirmTx(now)) {
+      info_->setText("PTT 门禁未确认（5s 窗口），再点一次");
+      return;
+    }
+    // 门禁最后一道：非业余段拒绝发射
+    const uint64_t hz = session_->store().snapshot().freq_hz;
+    if (!radio::core::SafetyGate::authorizeTx(hz)) {
+      gate.requestRx(now);
+      info_->setText(QString("发射被拒：%1 MHz 不在业余频段").arg(hz / 1e6));
+      return;
+    }
+    // 发射命令（mock 直接生效；真机同帧路径）
+    session_->setMode(session_->store().snapshot().mode);  // 占位保活
+  }
+
+  info_->setText("发射中…（音频直出 MOD）");
+  std::string err;
+  const bool ok = audio_->play(last_pcm_, 44100, 0, &err);
+  if (gate.phase() == radio::core::PttPhase::Tx) {
+    gate.requestRx(QDateTime::currentMSecsSinceEpoch());
+    session_->pttButtonPressed();  // 清 TX 态并补发 PTT OFF 帧
+    session_->pttButtonPressed();  // 上一次点击回 RX（幂等）
+  }
+  info_->setText(ok ? "已播完并回 RX" : QString("音频失败：") + err.c_str());
 }

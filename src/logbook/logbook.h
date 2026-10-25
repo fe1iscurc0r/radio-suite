@@ -42,6 +42,8 @@ class HamLogDb {
   QString myCallsign() const;      // settings 表 my_callsign（无则空）
 
   std::vector<Qso> recent(int limit = 8);
+  // 搜索：呼号前缀/波段前缀（MHz 字符串开头匹配）；空串 = 全部
+  std::vector<Qso> search(const QString& query, int limit = 500);
   bool insert(const Qso& q);       // 写入 HamLog 库（radio-suite 与 HamLog 立即可见）
 
  private:

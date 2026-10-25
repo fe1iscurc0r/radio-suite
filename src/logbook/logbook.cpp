@@ -92,6 +92,51 @@ std::vector<Qso> HamLogDb::recent(int limit) {
   return out;
 }
 
+std::vector<Qso> HamLogDb::search(const QString& query, int limit) {
+  std::vector<Qso> out;
+  if (!open()) return out;
+  QSqlQuery q(QSqlDatabase::database("radio_logbook"));
+  if (query.trimmed().isEmpty()) {
+    q.prepare("SELECT id,Callsign,Freq,Year,Month,Day,Time,Mode,Rst_self,"
+              "Rst_side,QTH,Device,QSL_RX,QSL_SEND,Remarks,CreateTime "
+              "FROM log ORDER BY id DESC LIMIT ?");
+    q.addBindValue(limit);
+  } else {
+    q.prepare("SELECT id,Callsign,Freq,Year,Month,Day,Time,Mode,Rst_self,"
+              "Rst_side,QTH,Device,QSL_RX,QSL_SEND,Remarks,CreateTime "
+              "FROM log WHERE Callsign LIKE ? OR CAST(Freq AS TEXT) LIKE ? "
+              "ORDER BY id DESC LIMIT ?");
+    q.addBindValue(query.trimmed() + "%");
+    q.addBindValue(query.trimmed() + "%");
+    q.addBindValue(limit);
+  }
+  if (!q.exec()) {
+    err_ = "搜索失败: " + q.lastError().text();
+    return out;
+  }
+  while (q.next()) {
+    Qso r;
+    r.id = q.value(0).toLongLong();
+    r.callsign = q.value(1).toString();
+    r.freq_mhz = q.value(2).toDouble();
+    r.year = q.value(3).toInt();
+    r.month = q.value(4).toInt();
+    r.day = q.value(5).toInt();
+    r.time_hhmm = q.value(6).toString();
+    r.mode = q.value(7).toString();
+    r.rst_sent = q.value(8).toString();
+    r.rst_rcvd = q.value(9).toString();
+    r.qth = q.value(10).toString();
+    r.device = q.value(11).toString();
+    r.qsl_rx = q.value(12).toString();
+    r.qsl_send = q.value(13).toString();
+    r.remarks = q.value(14).toString();
+    r.create_time = q.value(15).toString();
+    out.push_back(std::move(r));
+  }
+  return out;
+}
+
 bool HamLogDb::insert(const Qso& q) {
   if (!open()) return false;
   QSqlQuery ins(QSqlDatabase::database("radio_logbook"));

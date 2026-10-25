@@ -30,7 +30,8 @@ target_link_libraries(radio-suite PRIVATE
   Qt6::Widgets
   Qt6::OpenGLWidgets
   radio::core
-  radio::dsp)
+  radio::dsp
+  radio::audio)
 if(Qt6HttpServer_FOUND)
   target_link_libraries(radio-suite PRIVATE Qt6::HttpServer)
   target_compile_definitions(radio-suite PRIVATE RADIO_SUITE_HAVE_BUS=1)
@@ -39,6 +40,7 @@ endif()
 if(TARGET radio::logbook)
   target_link_libraries(radio-suite PRIVATE radio::logbook)
   target_compile_definitions(radio-suite PRIVATE RADIO_SUITE_HAVE_LOGBOOK=1)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets)
 endif()
 
 # Windows: 便于 cmd/PowerShell 观察日志，M0 先保留控制台子系统；打包期(M5)再切 WIN32

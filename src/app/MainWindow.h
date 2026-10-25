@@ -31,7 +31,7 @@ class PoSwrWidget;
 class DialWidget;
 class QComboBox;
 
-class MainWindow : public QMainWindow {
+class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainWindow> {
   Q_OBJECT
  public:
   explicit MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
@@ -61,6 +61,7 @@ class MainWindow : public QMainWindow {
   void syncTogglesFromState(const radio::core::RadioState& s);
 
   radio::app::RadioSession session_;
+  radio::app::RadioSession* session_alias_ = nullptr;  // 指向 session_（对话框用，无所有权）
 
   WaterfallWidget* waterfall_ = nullptr;
   QLabel* freq_label_ = nullptr;

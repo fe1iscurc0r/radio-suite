@@ -23,6 +23,10 @@
 #include <QListWidget>
 #include <QSettings>
 
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+#include "logbook/hamlog_workbench.h"
+#endif
+
 namespace {
 
 struct BandButton {
@@ -204,6 +208,16 @@ void MainWindow::buildUi() {
     qso_list_->setMaximumHeight(96);
     main_col->addWidget(qso_list_);
     refreshQsoList();
+
+    auto* wb_btn = new QPushButton("HamLog 工作台…", central);
+    wb_btn->setToolTip("C++ 重构的全表浏览/搜索/统计/ADIF 窗口（同一 Log.db）");
+    connect(wb_btn, &QPushButton::clicked, this, [this] {
+      auto* wb = new radio::logbook::HamLogWorkbench(this);
+      wb->setAttribute(Qt::WA_DeleteOnClose);
+      wb->resize(860, 520);
+      wb->show();
+    });
+    main_col->addWidget(wb_btn);
   }
 #endif
   body->addLayout(main_col, 1);
@@ -239,7 +253,8 @@ void MainWindow::buildUi() {
   side->addWidget(sstv_big_btn_);
   side->addWidget(dtmf_big_btn_);
   connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
-    SstvDialog dlg(this);
+    // 与主会话共享（真机时同一条链）；SstvDialog 改持裸指针+父窗口生命周期
+    SstvDialog dlg(&session_, this);
     dlg.exec();
   });
   connect(dtmf_big_btn_, &QPushButton::clicked, this, [this] {
