@@ -16,12 +16,16 @@
 #include <string>
 #include <vector>
 
+#include "core/audio_stream.h"
 #include "core/rsba1_proto.h"
 #include "core/transport.h"
 
 class QUdpSocket;
 
 namespace radio::core {
+
+// 音频回调（RX PCM 到达时触发；传输层不含播放器——RtAudio 在 app 层）
+using AudioCallback = std::function<void(std::span<const int16_t>)>;
 
 class Rsba1UdpTransport final : public ICivTransport {
  public:
@@ -56,6 +60,18 @@ class Rsba1UdpTransport final : public ICivTransport {
   std::vector<uint8_t> waitPacket(QUdpSocket& sock, int timeout_ms,
                                   bool (*pred)(const std::vector<uint8_t>&),
                                   const char* what);
+  // 音频双通路（50003；kappanhang 语义，MIT 移植件 audio_stream.*）：
+  //   RX：电台下行包喂 AudioRxBuffer → 16bit PCM 经 audio_callback 上抛
+  //   TX：sendAudioFrame(1920B PCM) 打包经 aud_ 发出（PTT 中才有效由调用方编排）
+  void setAudioCallback(AudioCallback cb) { audio_cb_ = std::move(cb); }
+  bool sendAudioFrame(std::span<const uint8_t> pcm20ms);
+
+ private:
+  AudioCallback audio_cb_;
+  rsba1::AudioRxBuffer audio_rx_;
+  rsba1::AudioTxPacker audio_tx_;
+
+ public:  // 原有接口区（保持可读）
   void dispatchCtrl(std::vector<uint8_t> data);
   void dispatchSerial(std::vector<uint8_t> data);
   void log(const std::string& line);

@@ -21,7 +21,7 @@ set(APP_SRC
   aprs_panel.cpp)
 
 if(Qt6HttpServer_FOUND)
-  list(APPEND APP_SRC ../bus/bus_server.cpp)
+  list(APPEND APP_SRC ../bus/bus_server.cpp ../bus/rigctld_server.cpp)
 endif()
 
 add_executable(radio-suite ${APP_SRC})

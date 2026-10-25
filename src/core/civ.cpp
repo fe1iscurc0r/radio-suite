@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "core/civ.h"
 
+#include <QMap>
+
 #include <cctype>
 #include <cmath>
 
@@ -22,6 +24,16 @@ const char* modeName(Mode m) {
 std::optional<Mode> modeFromCode(uint8_t code) {
   if (code > static_cast<uint8_t>(Mode::WFM)) return std::nullopt;
   return static_cast<Mode>(code);
+}
+
+std::optional<Mode> modeFromName(const QString& name) {
+  const QString n = name.trimmed().toUpper();
+  static const QMap<QString, Mode> kMap = {
+      {"LSB", Mode::LSB}, {"USB", Mode::USB}, {"AM", Mode::AM},
+      {"CW", Mode::CW},   {"RTTY", Mode::RTTY}, {"FM", Mode::FM},
+      {"WFM", Mode::WFM}};
+  const auto it = kMap.constFind(n);
+  return it == kMap.constEnd() ? std::nullopt : std::optional<Mode>(it.value());
 }
 
 float smeterToDbm(int raw) {

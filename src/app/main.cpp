@@ -10,6 +10,7 @@
 #include "core/transport_mock.h"
 #ifdef RADIO_SUITE_HAVE_BUS
 #include "bus/bus_server.h"
+#include "bus/rigctld_server.h"
 #endif
 #ifdef RADIO_SUITE_HAVE_UDP
 #include "core/transport_pybridge.h"
@@ -70,6 +71,13 @@ int main(int argc, char* argv[]) {
       qCritical() << err;
       return 1;
     }
+    // rigctld（rigplane 语义移植）：WSJT-X/fldigi 即插
+#ifdef RADIO_SUITE_HAVE_BUS
+    radio::bus::RigctldServer rigctld(session);
+    radio::bus::RigctldServer::Config rcfg;
+    QString rerr;
+    if (!rigctld.start(rcfg, &rerr)) qWarning() << rerr;
+#endif
     qInfo() << "headless 总线模式运行中，Ctrl+C 退出";
     return app.exec();
 #else

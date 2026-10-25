@@ -203,14 +203,15 @@ bool Rsba1UdpTransport::open(std::string* error) {
   serial_opened_ = true;
   log("serial: open magic=0x05");
 
-  // ---- Audio 信道（申请并拆除，防电台 MOD 输入挂死；音频流本体 M2）----
+  // ---- Audio 信道（50003 双通路：接 kappanhang 语义音频，不再只是空握手）----
   aud_ = new QUdpSocket();
   aud_->connectToHost(QString::fromStdString(cfg_.host), cfg_.aud_port);
   if (aud_->waitForConnected(3000) &&
       handshake(*aud_, aud_local_, aud_remote_, "audio", nullptr)) {
-    log("audio: 信道已申请（流本体 M2）");
+    audio_tx_.setSids(aud_local_, aud_remote_);
+    log("audio: 双通路就绪（RX 重排 + TX 打包，48kHz s16le/20ms）");
   } else {
-    log("audio: 握手未完成（继续，音频流 M2 再做）");
+    log("audio: 握手未完成（音频不可用，PTT 语音将无声）");
   }
 
   state_ = State::Connected;
@@ -232,6 +233,15 @@ bool Rsba1UdpTransport::send(std::span<const uint8_t> frame) {
   return n == static_cast<qint64>(pkt.size());
 }
 
+bool Rsba1UdpTransport::sendAudioFrame(std::span<const uint8_t> pcm20ms) {
+  if (state_ != State::Connected || !aud_) return false;
+  audio_tx_.setSids(aud_local_, aud_remote_);
+  for (const auto& pkt : audio_tx_.packFrame(pcm20ms))
+    aud_->write(reinterpret_cast<const char*>(pkt.data()),
+                static_cast<qint64>(pkt.size()));
+  return true;
+}
+
 size_t Rsba1UdpTransport::poll() {
   if (state_ != State::Connected) return 0;
   std::vector<uint8_t> buf(0x1000);
@@ -244,6 +254,16 @@ size_t Rsba1UdpTransport::poll() {
       std::vector<uint8_t> data(buf.begin(), buf.begin() + n);
       if (sock == ser_) dispatchSerial(std::move(data));
       else if (sock == ctrl_) dispatchCtrl(std::move(data));
+      else {
+        // 50003：音频下行（kappanhang 语义：识别→seq 重排→PCM 上抛）
+        auto ev = audio_rx_.feed(data);
+        if (ev.delivered && audio_cb_ && ev.pcm.size() % 2 == 0) {
+          std::span<const int16_t> pcm(
+              reinterpret_cast<const int16_t*>(ev.pcm.data()),
+              ev.pcm.size() / 2);
+          audio_cb_(pcm);
+        }
+      }
     }
   }
   // 控制信道周期再鉴权（阈值 90s，取 60s 周期）

@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include <QString>
+
 namespace radio::core::civ {
 
 // ---- 帧定界与地址 ----
@@ -58,6 +60,8 @@ enum class Mode : uint8_t {
 };
 const char* modeName(Mode m);
 std::optional<Mode> modeFromCode(uint8_t code);
+// 模式名（USB/LSB/AM/CW/FM/WFM，不区分大小写）→ 枚举；rigctld 等外部协议用
+std::optional<Mode> modeFromName(const QString& name);
 
 // S-meter 标度（radio_link.py:683）：原始值 0000=S0，0120=S9，0241=S9+60dB。
 // 上界按线性外推；>255 未定义。
