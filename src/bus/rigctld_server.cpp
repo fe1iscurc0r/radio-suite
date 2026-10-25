@@ -82,12 +82,24 @@ QString RigctldServer::modeNameFromHamlib(const QString& name) {
 QByteArray RigctldServer::handleLine(const QString& line, bool& close_conn) {
   // 行解析（rigplane protocol.parse_line）：长短命令同表，\ 前缀剥除
   const QString token = line.section(' ', 0, 0);
-  const QString args = line.mid(token.length()).trimmed();
+  QString args = line.mid(token.length()).trimmed();
   const QString key = token.startsWith('\\') ? token.mid(1) : token;
 
   const auto s = session_.store().snapshot();
   const auto ok = [] { return QByteArray("RPRT 0\n"); };
   const auto err = [] { return QByteArray("RPRT -1\n"); };
+
+  // VFO 前缀剥离（rigplane contract：accepts_vfo_arg 命令首参可为 VFOA/VFOB；
+  // 本仓单接收机——B/未选 VFO 回主值，满足 rigplane unselected 状态采集）
+  static const QStringList kVfoLabels = {"VFOA", "VFOB", "Main", "Sub"};
+  QString vfo_arg;
+  if (key == "f" || key == "m" || key == "F" || key == "M") {
+    const QString first = args.section(' ', 0, 0);
+    if (kVfoLabels.contains(first)) {
+      vfo_arg = first;
+      args = args.mid(first.length()).trimmed();
+    }
+  }
 
   if (key == "q" || key == "quit") {
     close_conn = true;
@@ -124,6 +136,37 @@ QByteArray RigctldServer::handleLine(const QString& line, bool& close_conn) {
   if (key == "s" || key == "get_split_vfo") return QByteArray("0\nVFOA\n");
   if (key == "t" || key == "get_ptt")
     return QByteArray::number(s.ptt_on ? 1 : 0) + '\n';
+  // split 长命令（rigplane initial state 采集：global.tx_state.split）
+  if (key == "get_split_freq") return QByteArray("0\n");
+  if (key == "get_split_mode") return QByteArray("0\n");
+  if (key == "get_powerstat") return QByteArray("1\n");
+
+  // Func 族（rigplane observation poll：u <FUNC>；本仓映射 0x16 族状态）
+  if (key == "u" || key == "get_func") {
+    const QString f = args.section(' ', 0, 0).toUpper();
+    if (f == "NB") return QByteArray::number(s.nb ? 1 : 0) + '\n';
+    if (f == "NR") return QByteArray::number(s.nr ? 1 : 0) + '\n';
+    if (f == "FAGC" || f == "ANF") return QByteArray::number(s.notch_auto ? 1 : 0) + '\n';
+    if (f == "MON") return QByteArray::number(s.moni ? 1 : 0) + '\n';
+    if (f == "VOX") return QByteArray::number(s.vox ? 1 : 0) + '\n';
+    return QByteArray("0\n");  // 未支持的 func 一律 0（关）
+  }
+  if (key == "U" || key == "set_func") return ok();  // mock 接受
+
+  // Level 族（rigplane observation poll 依赖；hamlib `l <LEVEL>` / `L <LEVEL> <val>`）
+  // RF/AF 0.0–1.0；STRENGTH dB；ATT/PREAMP dB 整数。值取自本仓状态或合理常量。
+  if (key == "l" || key == "get_level") {
+    const QString lvl = args.section(' ', 0, 0).toUpper();
+    if (lvl == "RF") return QByteArray("0.500000\n");
+    if (lvl == "AF") return QByteArray("0.500000\n");
+    if (lvl == "STRENGTH") return QByteArray::number(s.smeter_dbm, 'f', 1) + '\n';
+    if (lvl == "ATT") return QByteArray::number(s.att_20db ? 20 : 0) + '\n';
+    if (lvl == "PREAMP") return QByteArray("0\n");
+    if (lvl == "SWR") return QByteArray::number(s.swr, 'f', 2) + '\n';
+    if (lvl == "ALC" || lvl == "COMP") return QByteArray("0.000000\n");
+    return err();
+  }
+  if (key == "L" || key == "set_level") return ok();  // 接受并忽略（mock）
 
   // 长命令：\chk_vfo / \dump_state（WSJT-X 建连探测）
   if (key == "chk_vfo") return QByteArray("0\n");

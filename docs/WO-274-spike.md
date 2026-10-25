@@ -1,6 +1,8 @@
 # WO-274 · B 节 spike 报告（阻塞状态：待 IC-705 开机）
 
 - 日期：2026-10-25 · 状态：**受物理条件阻塞，非代码阻塞**
+- 追加（同日 v2）：师傅指示"真机做不了，别管真机"→ 做 **self-hosted 全链实测**，
+  得出第二条硬结论（§2）。四指标在无真机前提下判定为不可达（§4）。
 - 工单规矩：任一指标不过 → 停下来写分析。本报告即"停下来"的产物。
 
 ## 1. 实测过程（真实命令与输出）
@@ -62,6 +64,52 @@ session_lifecycle 的 discovery 重试（3 次 × ~40s）后退出。
   客户端 KEEPALIVE/HEARTBEAT 语义）+ 指标测量（帧时间戳/延迟/lifecycle）。
 - 单测（不依赖 sidecar）：合成 scope 帧逐字段解码断言、命令 envelope 编码、
   重连状态机迁移（`tests/test_engine_spike.cpp`）。
+
+## 2B. self-hosted 全链实测（v2 追加：无真机替代路径）
+
+师傅指示不管真机后，尝试用本仓自产件当"电台"搭全链：
+
+```
+engine-spike → rigplane(WS 8490) → rigplane rigctld-client(4532)
+             → radio-suite rigctld server(mock 电台) → state
+```
+
+**实测一：我们的 rigctld 服务器通过了 rigplane 全部轮询命令**
+（直连 socket 验证，10 条全对）：
+
+```text
+f → 14270000 · m → USB\n2400 · s → 0\nVFOA · t → 0
+l RF → 0.500000 · u NB → 0（按 state.nb）· f VFOB / m VFOB → 主值
+\get_split_freq → 0 · \get_powerstat → 1
+```
+
+为此给 rigctld_server 补了 level 族（l RF/AF/STRENGTH/ATT/SWR…）、func 族
+（u NB/NR/ANF/MON/VOX）、split 长命令、VFO 前缀剥离——rigplane 兼容度大幅提升。
+
+**实测二（硬结论）：sidecar 在 rigctld 后端下依然不开放 listener**：
+
+```text
+$ python -m rigplane --backend rigctld --host 127.0.0.1 --control-port 4532 \
+    --model IC-705 web --listen 127.0.0.1 --port 8490
+→ "initial state acquisition still waiting on
+   global.tx_state.split, receiver.main.unselected.freq_mode.*"
+→ 45s 内 /healthz 全程 000（每 5s 轮询），端口无 LISTEN
+```
+
+根因（源码定位）：`backends/rigctld_client/radio.py:856 get_freq 只支持 MAIN
+（_require_main_receiver）`，而 `rigs/ic705.toml:127` 声明
+`receiver.main.unselected.freq_mode.*` 属于 polling_only——**rigplane 的
+rigctld 后端无法满足 IC-705 profile 的 unselected 观测** → initial state
+acquisition 永不完成 → listener 永不开放（web_startup 的 gate 语义）。
+
+**这是 rigplane 的空缺，不是我们的缺陷**：IC-705 是单接收机，unselected 字段
+在 rigctld 协议下本来就没有可靠的 hamlib 命令映射。处置：提 issue/PR 给上游
+（工单硬边界：不改其仓）。
+
+**四指标最终判定（无真机）**：1/2/3 需 radio ready（两后端均不可达，见 §1+§2B）；
+4 需 sidecar 先起来。**全部不可达，spike 端到端测量正式搁置**——除非：
+① 上游接受 issue 修 rigctld 后端 unselected 轮询（或提供跳过策略）；或
+② IC-705 开机（lan 后端一切就绪）。
 
 ## 3. 真机开机后的实测清单（30 分钟内可完成）
 
