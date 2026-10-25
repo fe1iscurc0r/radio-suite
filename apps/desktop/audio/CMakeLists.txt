@@ -8,7 +8,7 @@ add_library(radio::audio ALIAS radio_audio)
 
 target_compile_features(radio_audio PUBLIC cxx_std_20)
 target_include_directories(radio_audio PUBLIC
-  "${CMAKE_SOURCE_DIR}/src"
+  "${CMAKE_SOURCE_DIR}/apps/desktop"
   "${CMAKE_SOURCE_DIR}/vendor/rtaudio")
 
 # WASAPI（Windows 默认）；CI Linux 无 ASIO/JACK 依赖

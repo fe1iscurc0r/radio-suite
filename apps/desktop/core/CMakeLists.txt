@@ -31,7 +31,9 @@ add_library(radio_core STATIC ${RADIO_CORE_SRC})
 add_library(radio::core ALIAS radio_core)
 
 target_compile_features(radio_core PUBLIC cxx_std_20)
-target_include_directories(radio_core PUBLIC "${CMAKE_SOURCE_DIR}/src")
+target_include_directories(radio_core PUBLIC
+  "${CMAKE_SOURCE_DIR}/apps/desktop"
+  "${CMAKE_SOURCE_DIR}/libs")
 if(RADIO_CORE_DEFINES)
   target_compile_definitions(radio_core PUBLIC ${RADIO_CORE_DEFINES})
 endif()

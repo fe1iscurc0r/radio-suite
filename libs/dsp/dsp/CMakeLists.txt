@@ -9,6 +9,7 @@ add_library(radio::dsp ALIAS radio_dsp)
 
 target_compile_features(radio_dsp PUBLIC cxx_std_20)
 target_include_directories(radio_dsp PUBLIC
-  "${CMAKE_SOURCE_DIR}/src")
+  "${CMAKE_SOURCE_DIR}/apps/desktop"
+  "${CMAKE_SOURCE_DIR}/libs/dsp")
 target_include_directories(radio_dsp SYSTEM PUBLIC
   "${pocketfft_SOURCE_DIR}")

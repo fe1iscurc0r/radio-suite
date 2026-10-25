@@ -25,7 +25,7 @@ pocketfft 与 Catch2 由 FetchContent 拉取（**首次 configure 需要网络**
 cmake -S . -B build -DCMAKE_PREFIX_PATH=D:/Qt/6.8.3/msvc2022_64
 cmake --build build --config Release
 ctest --test-dir build --build-config Release --output-on-failure
-./build/src/app/Release/radio-suite --mock
+./build/apps/desktop/app/radio-suite --mock
 
 # Linux（headless，GUI=OFF 时零 Qt 依赖，适合云服/CI）
 sudo apt install -y cmake ninja-build g++   # CI 还需 qt6-base-dev（GUI=ON 时）
@@ -41,16 +41,16 @@ ctest --test-dir build --output-on-failure
 
 | 目录 | target | 里程碑 | 内容 |
 |---|---|---|---|
-| `src/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
-| `src/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
-| `src/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布 |
-| `src/audio` | — | M2 | RtAudio 输入 |
-| `src/logbook` | — | M4 | QtSql/ADIF/DXCC |
-| `src/bus` | — | M5 | `--headless --bus` HTTP/WS |
+| `apps/desktop/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
+| `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
+| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布 |
+| `apps/desktop/audio` | — | M2 | RtAudio 输入 |
+| `apps/desktop/logbook` | — | M4 | QtSql/ADIF/DXCC |
+| `apps/desktop/bus` | — | M5 | `--headless --bus` HTTP/WS |
 
 ## 协议事实基准
 
-CI-V 行为以 [`vendor/rsba1-core`](vendor/rsba1-core)（MIT，纯 Python 参考实现）与
+CI-V 行为以 [`libs/protocol/rsba1-core`](libs/protocol/rsba1-core)（MIT，纯 Python 参考实现）与
 [docs/真机验证报告.md](docs/真机验证报告.md)（IC-705 端到端实测 2026-08-18）为准；
 `tests/fixtures/` 由 `tests/fixtures/gen_from_reference.py` 从参考实现生成，
 C++ 用例与之逐字节对照。参考实现只作行为基准与 fixtures 来源，**不参与构建、不进

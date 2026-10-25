@@ -16,8 +16,9 @@ target_link_libraries(engine-spike PRIVATE
   radio::dsp)  # WaterfallWidget 复用（app 目标外的控件依赖 dsp+gui）
 # WaterfallWidget 在 src/app 内——spike 直接编入该源文件
 target_sources(engine-spike PRIVATE
-  "${CMAKE_SOURCE_DIR}/src/app/WaterfallWidget.cpp")
+  "${CMAKE_SOURCE_DIR}/apps/desktop/app/WaterfallWidget.cpp")
 target_include_directories(engine-spike PRIVATE
   "${CMAKE_SOURCE_DIR}"
-  "${CMAKE_SOURCE_DIR}/src"
-  "${CMAKE_SOURCE_DIR}/src/app")
+  "${CMAKE_SOURCE_DIR}/apps/desktop"
+  "${CMAKE_SOURCE_DIR}/apps/desktop/app"
+  "${CMAKE_SOURCE_DIR}/libs")

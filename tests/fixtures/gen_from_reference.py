@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""gen_from_reference.py — 从 vendor/rsba1-core（MIT）生成 CI-V fixtures。
+"""gen_from_reference.py — 从 libs/protocol/rsba1-core（MIT）生成 CI-V fixtures。
 
 用途：保证 C++ 实现与 Python 参考实现（IC-705 真机验证 2026-08-18）字节级一致。
 运行：python tests/fixtures/gen_from_reference.py   （在仓库根执行亦可）
@@ -13,7 +13,7 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-sys.path.insert(0, str(ROOT / "vendor" / "rsba1-core" / "src"))
+sys.path.insert(0, str(ROOT / "libs" / "protocol" / "rsba1-core" / "src"))
 
 from rsba1.ctypes_wrappers import civ_commands as civcmd  # noqa: E402
 from rsba1.serial import command_client as cc  # noqa: E402
@@ -21,6 +21,11 @@ from rsba1.serial.serial_codec import build_serial_frame  # noqa: E402
 
 CTRL = 0xE0   # 经典控制器地址（工单帧示例）
 RADIO = 0xA4  # IC-705
+
+HEADER = (
+    "# 由 gen_from_reference.py 生成，勿手改\n"
+    "# 源: libs/protocol/rsba1-core (MIT) · IC-705 真机验证 2026-08-18\n"
+)
 
 
 def resp(cmd: int, payload: bytes, to: int = 0x00, frm: int = RADIO) -> bytes:
@@ -101,25 +106,16 @@ def main() -> int:
     }
     frames.update(udp)
 
-    header = (
-        "# 由 gen_from_reference.py 生成，勿手改\n"
-        "# 源: vendor/rsba1-core (MIT) · IC-705 真机验证 2026-08-18\n"
-    )
-
     # passcode 互锁样例
     (HERE / "udp_passcode_linnan.hex").write_text(
-        header + cc.passcode("linnan").hex() + "\n", encoding="utf-8")
+        HEADER + cc.passcode("linnan").hex() + "\n", encoding="utf-8")
     (HERE / "udp_passcode_a.hex").write_text(
-        header + cc.passcode("a").hex() + "\n", encoding="utf-8")
+        HEADER + cc.passcode("a").hex() + "\n", encoding="utf-8")
 
-    header = (
-        "# 由 gen_from_reference.py 生成，勿手改\n"
-        "# 源: vendor/rsba1-core (MIT) · IC-705 真机验证 2026-08-18\n"
-    )
     for name, frame in frames.items():
-        (HERE / name).write_text(header + frame.hex() + "\n", encoding="utf-8")
+        (HERE / name).write_text(HEADER + frame.hex() + "\n", encoding="utf-8")
         print(f"{name}: {frame.hex()}")
-    print("OK — 8 fixtures")
+    print(f"OK — {len(frames) + 2} fixtures")
     return 0
 
 

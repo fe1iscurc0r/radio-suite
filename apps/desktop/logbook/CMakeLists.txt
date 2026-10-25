@@ -7,7 +7,7 @@ if(Qt6Sql_FOUND)
   add_library(radio::logbook ALIAS radio_logbook)
   set_target_properties(radio_logbook PROPERTIES AUTOMOC ON)  # HamLogWorkbench 带 Q_OBJECT
   target_compile_features(radio_logbook PUBLIC cxx_std_20)
-  target_include_directories(radio_logbook PUBLIC "${CMAKE_SOURCE_DIR}/src")
+  target_include_directories(radio_logbook PUBLIC "${CMAKE_SOURCE_DIR}/apps/desktop")
   target_link_libraries(radio_logbook PUBLIC Qt6::Sql Qt6::Widgets)
   message(STATUS "radio_logbook: HamLog 融合模块启用 (Qt6::Sql + Widgets)")
 else()

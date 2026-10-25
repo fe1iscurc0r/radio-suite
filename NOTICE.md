@@ -8,9 +8,9 @@
 | pocketfft | commit `4d865cba`（cpp 分支） | BSD-3-Clause | FetchContent，header-only | FFT；原文 [LICENSES/BSD-3-Clause-pocketfft.txt](LICENSES/BSD-3-Clause-pocketfft.txt) |
 | Catch2 | v3.7.1 | BSL-1.0 | FetchContent，仅测试 | 原文 [LICENSES/BSL-1.0.txt](LICENSES/BSL-1.0.txt) |
 | RtAudio | commit `06f97b63` | MIT | vendor/（git 元数据已剥离） | 音频输出（WASAPI）；见 [vendor/rtaudio/LICENSE](vendor/rtaudio/LICENSE) |
-| kappanhang | master（引入 2026-10-25） | MIT（GitHub NOASSERTION 系识别失败，LICENSE 实查） | **逐文件移植**：src/core/audio_stream.* | RS-BA1 音频通路（TX 打包/RX 重排）；头带 Ported-from 标注；© 2020 HA2NON/ES1AKOS |
+| kappanhang | master（引入 2026-10-25） | MIT（GitHub NOASSERTION 系识别失败，LICENSE 实查） | **逐文件移植**：apps/desktop/core/audio_stream.* | RS-BA1 音频通路（TX 打包/RX 重排）；头带 Ported-from 标注；© 2020 HA2NON/ES1AKOS |
 | SSTVEncoder2 | master（引入 2026-10-25） | Apache-2.0 | 制式参数移植（sstv.cpp）+ NOTICE 摘录 | [docs/sstvencoder2-notice.txt](docs/sstvencoder2-notice.txt)；规格出处 JL Barber "Dayton Paper" |
-| rsba1-core（vendor） | 快照随仓 | MIT | **仅作行为参考与 fixtures 来源，不参与构建** | Python 参考实现，见 `vendor/rsba1-core/LICENSE`；协议对齐基准 |
+| rsba1-core（vendor） | 快照随仓 | MIT | **仅作行为参考与 fixtures 来源，不参与构建** | Python 参考实现，见 `libs/protocol/rsba1-core/LICENSE`；协议对齐基准 |
 | GLM | （M2 引入） | MIT | — | 仅矩阵/向量数学，不作框架 |
 
 第三方许可原文目录：[LICENSES/](LICENSES/)（含 [LGPL-3.0-only.txt](LICENSES/LGPL-3.0-only.txt)）。
@@ -27,5 +27,5 @@
 ## fixtures 来源声明
 
 `tests/fixtures/*.hex` 由 `tests/fixtures/gen_from_reference.py` 生成，
-数据出自 `vendor/rsba1-core`（MIT）与其 IC-705 真机验证（2026-08-18，
+数据出自 `libs/protocol/rsba1-core`（MIT）与其 IC-705 真机验证（2026-08-18，
 见 [docs/真机验证报告.md](docs/真机验证报告.md)）。
