@@ -57,6 +57,8 @@ void RadioSession::pollRadio() {
   transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Pamp, radio_addr_));
   transport_->send(core::civ::sw16ReadFrame(core::civ::kSub16Agc, radio_addr_));
   transport_->send(core::civ::readDuplexFrame(radio_addr_));
+  transport_->send(core::civ::readRitFrame(false, radio_addr_));
+  transport_->send(core::civ::readRitFrame(true, radio_addr_));
   transport_->poll();  // mock：同步回调 onFrame
 }
 
@@ -126,6 +128,12 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
     changed = true;
   } else if (auto dup = core::civ::parseDuplexResponse(*f)) {
     s.duplex_raw = *dup;
+    changed = true;
+  } else if (auto rit = core::civ::parseRitResponse(*f, false)) {
+    s.rit = *rit;
+    changed = true;
+  } else if (auto dtx = core::civ::parseRitResponse(*f, true)) {
+    s.dtx = *dtx;
     changed = true;
   } else if (core::civ::isNak(*f)) {
     qWarning() << "radio NAK — 命令被拒（频段限制或参数）";  // M3：进原始帧抽屉
@@ -206,6 +214,16 @@ void RadioSession::setSw16(uint8_t sub, uint8_t value) {
 
 void RadioSession::setDuplex(uint8_t val) {
   transport_->send(core::civ::duplexFrame(val, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setSplit(bool on) {
+  transport_->send(core::civ::splitFrame(on, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setRit(bool on, bool dtx) {
+  transport_->send(core::civ::ritFrame(on, dtx, radio_addr_));
   transport_->poll();
 }
 

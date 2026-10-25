@@ -13,8 +13,13 @@
 #include <cmath>
 
 #include "app/aprs_panel.h"
+#include "app/connect_dialog.h"
+#include "app/dial_widget.h"
 #include "app/meter_widgets.h"
 #include "app/sstv_dialog.h"
+
+#include <QComboBox>
+#include <QSettings>
 
 namespace {
 
@@ -118,6 +123,14 @@ void MainWindow::buildUi() {
   connect(ptt_btn_, &QPushButton::clicked, this,
           [this] { session_.pttButtonPressed(); });
   top->addWidget(ptt_btn_);
+
+  // 连接设置（原厂 Connect Setting 件；表单生成命令行，重启生效）
+  auto* conn_btn = new QPushButton("连接…", central);
+  connect(conn_btn, &QPushButton::clicked, this, [this] {
+    ConnectDialog dlg(this);
+    dlg.exec();
+  });
+  top->addWidget(conn_btn);
   root->addLayout(top, 0);
 
   // ---- 主体：左主列（仪表/调谐/功能/瀑布/日志） + 右竖大按键列 ----
@@ -130,6 +143,17 @@ void MainWindow::buildUi() {
   poswr_ = new PoSwrWidget(central);
   meters->addWidget(smeter_, 3);
   meters->addWidget(poswr_, 2);
+
+  // 主调谐旋钮（原厂 M-Tune 件；拖拽/滚轮按当前步进档步进）
+  dial_ = new DialWidget(central);
+  connect(dial_, &DialWidget::steps, this, [this](int n) {
+    qint64 step = 1'000;
+    for (size_t i = 0; i < step_btns_.size(); ++i)
+      if (step_btns_[i]->isChecked())
+        step = step_btns_[i]->property("step_hz").toLongLong();
+    session_.tuneBy(static_cast<int64_t>(step) * n);
+  });
+  meters->addWidget(dial_);
   main_col->addLayout(meters);
   main_col->addLayout(buildTuneRow(central));
   main_col->addLayout(buildFuncRow(central));
@@ -344,6 +368,34 @@ QHBoxLayout* MainWindow::buildFuncRow(QWidget* central) {
     session_.setDuplex(next);
   });
   funcs->addWidget(dup_btn_);
+
+  // RIT / ΔTX / Split（原厂件，0x21 族 / 0x0F split 值域）
+  auto mk_rit_toggle = [&](const QString& name, auto setter) {
+    auto* btn = new QPushButton(name, central);
+    btn->setCheckable(true);
+    connect(btn, &QPushButton::clicked, this, [btn, setter] { setter(btn->isChecked()); });
+    funcs->addWidget(btn);
+    return btn;
+  };
+  rit_btn_ = mk_rit_toggle("RIT", [this](bool on) { session_.setRit(on, false); });
+  dtx_btn_ = mk_rit_toggle("ΔTX", [this](bool on) { session_.setRit(on, true); });
+  split_btn_ = mk_rit_toggle("SPLIT", [this](bool on) {
+    flashStatus(on ? "Split 已开：发射频率=另一 VFO，注意合规" : "Split 关", !on);
+    session_.setSplit(on);
+  });
+
+  // 本地记忆（电台内存信道 M3 接；本地槽即刻可用）
+  mem_slot_ = new QComboBox(central);
+  for (int i = 1; i <= 8; ++i) mem_slot_->addItem(QString("M%1").arg(i));
+  funcs->addWidget(mem_slot_);
+  auto* mem_save = new QPushButton("存", central);
+  mem_save->setToolTip("当前频率/模式存入所选槽（本地）");
+  connect(mem_save, &QPushButton::clicked, this, &MainWindow::onMemSave);
+  funcs->addWidget(mem_save);
+  auto* mem_recall = new QPushButton("取", central);
+  mem_recall->setToolTip("取出所选槽的频率/模式");
+  connect(mem_recall, &QPushButton::clicked, this, &MainWindow::onMemRecall);
+  funcs->addWidget(mem_recall);
   return funcs;
 }
 
@@ -368,6 +420,10 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
   const char* agc_txt[] = {"AGC", "AGC F", "AGC M", "AGC S"};
   agc_btn_->setText(agc_txt[s.agc >= 1 && s.agc <= 3 ? s.agc : 2]);
   dup_btn_->setText(s.duplex_raw == 0x11 ? "DUP-" : (s.duplex_raw == 0x12 ? "DUP+" : "SPLX"));
+  const auto rb = [&s](QPushButton* b, bool on) { QSignalBlocker g(b); b->setChecked(on); };
+  rb(rit_btn_, s.rit);
+  rb(dtx_btn_, s.dtx);
+  rb(split_btn_, s.split);
 }
 
 void MainWindow::refreshState() {
@@ -456,6 +512,32 @@ void MainWindow::onTuneStep(int direction) {
     if (step_btns_[i]->isChecked())
       step = step_btns_[i]->property("step_hz").toLongLong();
   session_.tuneBy(direction * step);
+}
+
+void MainWindow::onMemSave() {
+  const auto s = session_.store().snapshot();
+  const QString key = QString("mem/%1").arg(mem_slot_->currentText());
+  QSettings st;
+  st.setValue(key + "/freq", qulonglong(s.freq_hz));
+  st.setValue(key + "/mode", int(s.mode));
+  flashStatus(QString("%1 已存 %2 MHz %3")
+                  .arg(mem_slot_->currentText())
+                  .arg(s.freq_hz / 1e6, 0, 'f', 4)
+                  .arg(radio::core::civ::modeName(s.mode)),
+              false);
+}
+
+void MainWindow::onMemRecall() {
+  const QString key = QString("mem/%1").arg(mem_slot_->currentText());
+  QSettings st;
+  const auto freq = st.value(key + "/freq").toULongLong();
+  const int mode = st.value(key + "/mode").toInt();
+  if (freq == 0) {
+    flashStatus(QString("%1 槽为空").arg(mem_slot_->currentText()), true);
+    return;
+  }
+  session_.setMode(static_cast<radio::core::civ::Mode>(mode));
+  session_.tuneTo(freq);
 }
 
 void MainWindow::onBenchTick() {

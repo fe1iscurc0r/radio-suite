@@ -37,6 +37,8 @@ class RadioSession : public QObject {
   void setAtt(bool on_20db);        // 0x11（电台侧仅 HF/50MHz 生效，NAK 由状态栏呈现）
   void setSw16(uint8_t sub, uint8_t value);  // 0x16 族（NB/NR/MONI/PAMP/AGC/...）
   void setDuplex(uint8_t val);      // 0x0F：0x10 simplex/0x11 dup-/0x12 dup+（⚠️ M1 需叠加频偏后的 TX 段校验）
+  void setSplit(bool on);           // 0x0F 0x00/0x01（⚠️ 发射频=另一 VFO，合规自查）
+  void setRit(bool on, bool dtx);   // 0x21 0x01/0x02
 
  signals:
   void stateChanged();  // RadioState 有更新

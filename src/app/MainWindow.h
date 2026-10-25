@@ -28,6 +28,8 @@ class QLineEdit;
 class QPushButton;
 class SMeterWidget;
 class PoSwrWidget;
+class DialWidget;
+class QComboBox;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -44,6 +46,8 @@ class MainWindow : public QMainWindow {
   void onTxBlocked(quint64 hz);     // 非业余段拒绝发射
   void onManualFreq();              // 手动输频 GO
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
+  void onMemSave();       // 本地记忆：当前频/模存入所选槽
+  void onMemRecall();     // 本地记忆：取出槽内频/模
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   void onLogQso();        // 记一条 QSO（自动填频率/模式/UTC，写 HamLog 库）
   void onExportAdif();    // 导出 ADIF（radio-suite 与 hamlog 的交换契约）
@@ -67,6 +71,11 @@ class MainWindow : public QMainWindow {
   QPushButton* ptt_btn_ = nullptr;
   QPushButton* aprs_big_btn_ = nullptr; // 右侧大按键（显眼件）
   QPushButton* sstv_big_btn_ = nullptr;
+  QPushButton* rit_btn_ = nullptr;      // RIT / ΔTX / Split（原厂件，回读驱动）
+  QPushButton* dtx_btn_ = nullptr;
+  QPushButton* split_btn_ = nullptr;
+  DialWidget* dial_ = nullptr;          // 主调谐旋钮（原厂 M-Tune 件）
+  QComboBox* mem_slot_ = nullptr;       // 本地记忆槽（电台内存信道 M3 接）
   std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
   std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，回读驱动）
   QPushButton* att_btn_ = nullptr;       // ATT 20dB（回读驱动）

@@ -14,6 +14,8 @@ set(APP_SRC
   MainWindow.cpp
   WaterfallWidget.cpp
   meter_widgets.cpp
+  dial_widget.cpp
+  connect_dialog.cpp
   sstv_dialog.cpp
   aprs_panel.cpp)
 

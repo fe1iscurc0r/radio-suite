@@ -48,6 +48,8 @@ inline constexpr uint8_t kSub16Moni = 0x45;      // MONI 监听 0/1
 inline constexpr uint8_t kSub16Vox = 0x46;       // VOX 声控 0/1
 inline constexpr uint8_t kSub16NotchMan = 0x48;  // Manual Notch 0/1
 inline constexpr uint8_t kCmdDuplex = 0x0F;     // 频差方向：写 0x10/0x11/0x12，读回 simplex 归一为 0x00（真机 2026-08-24 实测不归一）
+inline constexpr uint8_t kCmdSplit = 0x0F;      // Split 同字节另一值域：写 0x00=OFF/0x01=ON（radio_link.py:873）
+inline constexpr uint8_t kCmdRit = 0x21;        // RIT/ΔTX 族：子命令 0x01=RIT、0x02=ΔTX
 
 // ---- 模式表（radio_link.py:545）----
 enum class Mode : uint8_t {
@@ -124,6 +126,17 @@ std::vector<uint8_t> duplexFrame(uint8_t val,
                                  uint8_t from = kDefaultControllerAddr);
 std::vector<uint8_t> readDuplexFrame(uint8_t to = kIc705Addr,
                                      uint8_t from = kDefaultControllerAddr);
+// Split（0x0F 0x00/0x01，与 Duplex 同字节另一值域）
+std::vector<uint8_t> splitFrame(bool on,
+                                uint8_t to = kIc705Addr,
+                                uint8_t from = kDefaultControllerAddr);
+// RIT / ΔTX（0x21 sub 0x01/0x02）
+std::vector<uint8_t> ritFrame(bool on, bool dtx = false,
+                              uint8_t to = kIc705Addr,
+                              uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readRitFrame(bool dtx = false,
+                                  uint8_t to = kIc705Addr,
+                                  uint8_t from = kDefaultControllerAddr);
 
 // ---- 应答解析（输入 parseFrame 的产物；cmd/子命令/长度不符返回 nullopt）----
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f);   // cmd=0x03 + 5B BCD
@@ -143,6 +156,8 @@ std::optional<bool> parsePttResponse(const CivFrame& f);        // cmd=0x14 + [0
 std::optional<int> parseAttResponse(const CivFrame& f);         // cmd=0x11 + [val]
 std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub);  // cmd=0x16 + [sub, val]
 std::optional<int> parseDuplexResponse(const CivFrame& f);      // cmd=0x0F + [val]（simplex 读回 0x00）
+// 0x21 族应答：payload=[sub, on/off]
+std::optional<bool> parseRitResponse(const CivFrame& f, bool dtx);
 inline bool isAck(const CivFrame& f) { return f.cmd == kAck; }
 inline bool isNak(const CivFrame& f) { return f.cmd == kNak; }
 

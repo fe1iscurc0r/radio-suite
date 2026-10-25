@@ -31,6 +31,9 @@ class MockTransport final : public ICivTransport {
     int pamp = 0;            // 0x16 0x02：0/1/2
     int agc = 2;             // 0x16 0x12：1=fast/2=mid/3=slow
     int duplex = 0x10;       // 0x0F：0x10 simplex/0x11 dup-/0x12 dup+（读回 simplex 归一 0x00）
+    bool split = false;      // 0x0F 另一值域：0x00/0x01
+    bool rit = false;        // 0x21 0x01
+    bool dtx = false;        // 0x21 0x02（ΔTX）
   };
 
   explicit MockTransport(SimConfig cfg = {});

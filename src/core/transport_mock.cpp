@@ -107,6 +107,12 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       return true;
     }
     case civ::kCmdDuplex: {
+      // 0x0F 双值域：0x00/0x01 = Split OFF/ON；0x10/0x11/0x12 = simplex/DUP-/DUP+
+      if (parsed->payload.size() == 1 && parsed->payload[0] <= 0x01) {
+        sim_.split = parsed->payload[0] == 0x01;
+        pushResponse(civ::kAck, {});
+        return true;
+      }
       if (parsed->payload.empty()) {  // 裸查询：真机语义 simplex 归一为 0x00
         const uint8_t p[] = {static_cast<uint8_t>(sim_.duplex == 0x10 ? 0x00 : sim_.duplex)};
         pushResponse(civ::kCmdDuplex, p);
@@ -119,6 +125,23 @@ bool MockTransport::send(std::span<const uint8_t> data) {
         sim_.duplex = parsed->payload[0];
         pushResponse(civ::kAck, {});
       }
+      return true;
+    }
+    case civ::kCmdRit: {
+      if (parsed->payload.empty()) return true;
+      const uint8_t sub = parsed->payload[0];
+      if (parsed->payload.size() == 1) {  // 读
+        bool on = sub == 0x02 ? sim_.dtx : sim_.rit;
+        const uint8_t p[] = {sub, static_cast<uint8_t>(on ? 1 : 0)};
+        pushResponse(civ::kCmdRit, p);
+        return true;
+      }
+      const bool ok = parsed->payload.size() == 2 && parsed->payload[1] <= 1;
+      if (ok) {
+        if (sub == 0x02) sim_.dtx = parsed->payload[1] != 0;
+        else if (sub == 0x01) sim_.rit = parsed->payload[1] != 0;
+      }
+      pushResponse(ok ? civ::kAck : civ::kNak, {});
       return true;
     }
     case civ::kCmdSw16: {

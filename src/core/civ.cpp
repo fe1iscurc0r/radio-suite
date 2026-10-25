@@ -168,6 +168,22 @@ std::vector<uint8_t> readDuplexFrame(uint8_t to, uint8_t from) {
   return buildFrame(to, from, body);
 }
 
+std::vector<uint8_t> splitFrame(bool on, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdSplit, static_cast<uint8_t>(on ? 0x01 : 0x00)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> ritFrame(bool on, bool dtx, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdRit, static_cast<uint8_t>(dtx ? 0x02 : 0x01),
+                          static_cast<uint8_t>(on ? 0x01 : 0x00)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readRitFrame(bool dtx, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdRit, static_cast<uint8_t>(dtx ? 0x02 : 0x01)};
+  return buildFrame(to, from, body);
+}
+
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f) {
   if (f.cmd != kCmdReadFreq || f.payload.size() != 5) return std::nullopt;
   return bcdToFreq(f.payload);
@@ -217,6 +233,13 @@ std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub) {
 std::optional<int> parseDuplexResponse(const CivFrame& f) {
   if (f.cmd != kCmdDuplex || f.payload.size() != 1) return std::nullopt;
   return f.payload[0];
+}
+
+std::optional<bool> parseRitResponse(const CivFrame& f, bool dtx) {
+  const uint8_t sub = dtx ? 0x02 : 0x01;
+  if (f.cmd != kCmdRit || f.payload.size() != 2 || f.payload[0] != sub)
+    return std::nullopt;
+  return f.payload[1] != 0x00;
 }
 
 }  // namespace radio::core::civ

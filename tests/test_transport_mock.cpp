@@ -124,6 +124,45 @@ TEST_CASE("mock: duplex write/read with simplex normalization", "[mock]") {
   CHECK(civ::isNak(frames[0]));
 }
 
+TEST_CASE("mock: RIT/dTX and split via 0x21/0x0F value domains", "[mock]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  SECTION("RIT on + readback") {
+    CHECK(mt.send(civ::ritFrame(true, false)));
+    mt.poll();
+    CHECK(civ::isAck(frames[0]));
+    frames.clear();
+    CHECK(mt.send(civ::readRitFrame(false)));
+    mt.poll();
+    auto on = civ::parseRitResponse(frames[0], false);
+    REQUIRE(on.has_value());
+    CHECK(*on == true);
+    CHECK(mt.sim().rit);
+  }
+  SECTION("dTX on") {
+    CHECK(mt.send(civ::ritFrame(true, true)));
+    mt.poll();
+    frames.clear();
+    CHECK(mt.send(civ::readRitFrame(true)));
+    mt.poll();
+    auto on = civ::parseRitResponse(frames[0], true);
+    REQUIRE(on.has_value());
+    CHECK(*on == true);
+    CHECK(mt.sim().dtx);
+  }
+  SECTION("split via 0x0F low domain") {
+    CHECK(mt.send(civ::splitFrame(true)));
+    mt.poll();
+    CHECK(civ::isAck(frames[0]));
+    CHECK(mt.sim().split);
+  }
+}
+
 TEST_CASE("mock: sw16 NB set and readback", "[mock]") {
   MockTransport mt;
   mt.open(nullptr);
