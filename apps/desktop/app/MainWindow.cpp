@@ -18,6 +18,7 @@
 #include "app/dtmf_dialog.h"
 #include "app/meter_widgets.h"
 #include "app/sstv_dialog.h"
+#include "app/voice_memory.h"
 
 #include <QComboBox>
 #include <QListWidget>
@@ -249,9 +250,12 @@ void MainWindow::buildUi() {
   sstv_big_btn_->setToolTip("慢扫描电视：图片→Robot36 音频（发送/接收解码）");
   dtmf_big_btn_ = mk_big("DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
   dtmf_big_btn_->setToolTip("双音多频小键盘（ITU Q.23，生成 .wav）");
+  auto* voice_big_btn_ = mk_big("VOICE\n录音", QColor(0x4a, 0x14, 0x8c));
+  voice_big_btn_->setToolTip("Voice Memory：录音/列表/播放/门禁编排发射（原厂件）");
   side->addWidget(aprs_big_btn_);
   side->addWidget(sstv_big_btn_);
   side->addWidget(dtmf_big_btn_);
+  side->addWidget(voice_big_btn_);
   connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
     // 与主会话共享（真机时同一条链）；SstvDialog 改持裸指针+父窗口生命周期
     SstvDialog dlg(&session_, this);
@@ -259,6 +263,10 @@ void MainWindow::buildUi() {
   });
   connect(dtmf_big_btn_, &QPushButton::clicked, this, [this] {
     DtmfDialog dlg(this);
+    dlg.exec();
+  });
+  connect(voice_big_btn_, &QPushButton::clicked, this, [this] {
+    VoiceMemoryDialog dlg(&session_, this);
     dlg.exec();
   });
 
