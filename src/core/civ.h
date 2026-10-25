@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace radio::core::civ {
@@ -160,5 +161,9 @@ std::optional<int> parseDuplexResponse(const CivFrame& f);      // cmd=0x0F + [v
 std::optional<bool> parseRitResponse(const CivFrame& f, bool dtx);
 inline bool isAck(const CivFrame& f) { return f.cmd == kAck; }
 inline bool isNak(const CivFrame& f) { return f.cmd == kNak; }
+
+// APRS-IS 通行码（公开算法：0x73e2 种子，字符交错移位异或；SSID 剥离）。
+// 供上行（信标/消息）认证；仅对本人呼号计算使用。
+uint16_t aprsPasscode(const std::string& callsign);
 
 }  // namespace radio::core::civ

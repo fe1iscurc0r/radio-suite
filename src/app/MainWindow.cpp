@@ -19,6 +19,7 @@
 #include "app/sstv_dialog.h"
 
 #include <QComboBox>
+#include <QListWidget>
 #include <QSettings>
 
 namespace {

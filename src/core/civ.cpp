@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "core/civ.h"
 
+#include <cctype>
 #include <cmath>
 
 namespace radio::core::civ {
@@ -240,6 +241,19 @@ std::optional<bool> parseRitResponse(const CivFrame& f, bool dtx) {
   if (f.cmd != kCmdRit || f.payload.size() != 2 || f.payload[0] != sub)
     return std::nullopt;
   return f.payload[1] != 0x00;
+}
+
+uint16_t aprsPasscode(const std::string& callsign) {
+  // 公开 APRS-IS 算法：剥 SSID、大写；h=0x73e2；偶位字符直接异或、奇位左移 8
+  std::string call;
+  for (char c : callsign) {
+    if (c == '-' || c == '\0') break;
+    call.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+  }
+  uint32_t h = 0x73e2;
+  for (size_t i = 0; i < call.size(); ++i)
+    h ^= static_cast<uint32_t>(static_cast<uint8_t>(call[i])) << ((i & 1) ? 8 : 0);
+  return static_cast<uint16_t>(h & 0x7fff);
 }
 
 }  // namespace radio::core::civ
