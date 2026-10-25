@@ -50,7 +50,7 @@ ctest --test-dir build --output-on-failure
 
 ## 协议事实基准
 
-CI-V 行为以 [`libs/protocol/rsba1-core`](libs/protocol/rsba1-core)（MIT，纯 Python 参考实现）与
+CI-V 行为以 [`libs/protocol/rsba1-core`](libs/protocol/rsba1-core)（MIT **活子项目**，合作工作流见 [docs/rsba1-core-collab.md](docs/rsba1-core-collab.md)）与
 [docs/真机验证报告.md](docs/真机验证报告.md)（IC-705 端到端实测 2026-08-18）为准；
 `tests/fixtures/` 由 `tests/fixtures/gen_from_reference.py` 从参考实现生成，
 C++ 用例与之逐字节对照。参考实现只作行为基准与 fixtures 来源，**不参与构建、不进

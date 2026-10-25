@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "vendor" / "rsba1-core" / "src"))
+# rsba1-core（MIT）在本仓为活子项目：libs/protocol/rsba1-core（subtree 同步自
+# fe1iscurc0r/rsba1-core 上游，合作开发在上游 MIT 仓进行）
+sys.path.insert(0, str(ROOT / "libs" / "protocol" / "rsba1-core" / "src"))
 
 from rsba1.radio_link import RadioLink, RadioLinkError  # noqa: E402
 

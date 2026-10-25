@@ -10,7 +10,7 @@
 | RtAudio | commit `06f97b63` | MIT | vendor/（git 元数据已剥离） | 音频输出（WASAPI）；见 [vendor/rtaudio/LICENSE](vendor/rtaudio/LICENSE) |
 | kappanhang | master（引入 2026-10-25） | MIT（GitHub NOASSERTION 系识别失败，LICENSE 实查） | **逐文件移植**：apps/desktop/core/audio_stream.* | RS-BA1 音频通路（TX 打包/RX 重排）；头带 Ported-from 标注；© 2020 HA2NON/ES1AKOS |
 | SSTVEncoder2 | master（引入 2026-10-25） | Apache-2.0 | 制式参数移植（sstv.cpp）+ NOTICE 摘录 | [docs/sstvencoder2-notice.txt](docs/sstvencoder2-notice.txt)；规格出处 JL Barber "Dayton Paper" |
-| rsba1-core（vendor） | 快照随仓 | MIT | **仅作行为参考与 fixtures 来源，不参与构建** | Python 参考实现，见 `libs/protocol/rsba1-core/LICENSE`；协议对齐基准 |
+| rsba1-core | 上游 main（subtree 同步，见 `docs/rsba1-core-collab.md`） | MIT | **活子项目**：`libs/protocol/rsba1-core/` | Python 协议源（MCP/桥可直接运行，`tools/rsba1_bridge.py` 从此处 import）；C++ 实现与其 fixtures 字节级互锁；合作开发于上游 [fe1iscurc0r/rsba1-core](https://github.com/fe1iscurc0r/rsba1-core)（MIT），本仓 subtree 跟随 |
 | GLM | （M2 引入） | MIT | — | 仅矩阵/向量数学，不作框架 |
 
 第三方许可原文目录：[LICENSES/](LICENSES/)（含 [LGPL-3.0-only.txt](LICENSES/LGPL-3.0-only.txt)）。
