@@ -6,7 +6,11 @@
 #include <memory>
 
 #include "app/MainWindow.h"
+#include "app/session.h"
 #include "core/transport_mock.h"
+#ifdef RADIO_SUITE_HAVE_BUS
+#include "bus/bus_server.h"
+#endif
 #ifdef RADIO_SUITE_HAVE_UDP
 #include "core/transport_pybridge.h"
 #include "core/transport_udp.h"
@@ -40,8 +44,39 @@ int main(int argc, char* argv[]) {
   cli.addHelpOption();
   cli.process(app);
 
-  if (cli.isSet(headless_opt) || cli.isSet(bus_opt))
-    qWarning() << "--headless/--bus 将在 M5 落地，M0 忽略并进入 GUI";
+  if (cli.isSet(headless_opt) || cli.isSet(bus_opt)) {
+    // ---- headless 总线模式（scratchpad/lumo 集成，M5 第一片）----
+#ifdef RADIO_SUITE_HAVE_BUS
+    uint16_t port = static_cast<uint16_t>(cli.value(bus_opt).toInt());
+    if (port == 0) port = 8765;
+    std::shared_ptr<radio::core::ICivTransport> transport =
+        std::make_shared<radio::core::MockTransport>();
+#ifdef RADIO_SUITE_HAVE_UDP
+    if (cli.isSet(radio_opt)) {
+      radio::core::Rsba1UdpTransport::Config cfg;
+      cfg.host = cli.value(radio_opt).toStdString();
+      cfg.username = cli.value(user_opt).toStdString();
+      cfg.password = cli.value(pass_opt).toStdString();
+      transport = std::make_shared<radio::core::Rsba1UdpTransport>(std::move(cfg));
+    }
+#endif
+    radio::app::RadioSession session(transport);
+    session.start();
+    radio::bus::BusServer bus(session);
+    radio::bus::BusServer::Config bcfg;
+    bcfg.port = port;
+    QString err;
+    if (!bus.start(bcfg, &err)) {
+      qCritical() << err;
+      return 1;
+    }
+    qInfo() << "headless 总线模式运行中，Ctrl+C 退出";
+    return app.exec();
+#else
+    qCritical() << "本构建未含 HTTP 总线（缺 Qt6::HttpServer）";
+    return 1;
+#endif
+  }
 
   std::shared_ptr<radio::core::ICivTransport> transport;
 #ifdef RADIO_SUITE_HAVE_UDP

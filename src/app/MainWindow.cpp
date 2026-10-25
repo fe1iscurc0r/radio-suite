@@ -303,6 +303,15 @@ void MainWindow::buildUi() {
   logrow->addWidget(aprs_btn);
   root->addLayout(logrow);
 
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  if (hamlog_ok) {
+    qso_list_ = new QListWidget(central);
+    qso_list_->setMaximumHeight(96);
+    root->addWidget(qso_list_);
+    refreshQsoList();
+  }
+#endif
+
   status_label_ = new QLabel("transport: mock · radio: IC-705 sim", central);
   root->addWidget(status_label_);
 
@@ -438,6 +447,23 @@ void MainWindow::onBenchTick() {
 }
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
+void MainWindow::refreshQsoList() {
+  if (!qso_list_) return;
+  const auto qsos = hamlog_.recent(8);
+  qso_list_->clear();
+  for (const auto& q : qsos) {
+    QListWidgetItem* it = new QListWidgetItem(QString("%1  %2 MHz  %3  %4-%5-%6 %7")
+        .arg(q.callsign, -10)
+        .arg(q.freq_mhz, 8, 'f', 4)
+        .arg(q.mode, -4)
+        .arg(q.year).arg(q.month, 2, 10, QChar('0')).arg(q.day, 2, 10, QChar('0'))
+        .arg(q.time_hhmm));
+    // QSL 卡债标色（hamlog_adapter 同语义：空=未发/未收）
+    if (q.qsl_send.isEmpty()) it->setForeground(QColor(255, 160, 120));
+    qso_list_->addItem(it);
+  }
+}
+
 void MainWindow::onLogQso() {
   const QString call = qso_call_edit_->text().trimmed().toUpper();
   if (call.isEmpty()) {
@@ -461,6 +487,7 @@ void MainWindow::onLogQso() {
                     .arg(q.mode, q.time_hhmm),
                 false);
     qso_call_edit_->clear();
+    refreshQsoList();
   } else {
     flashStatus("HamLog 写入失败：" + hamlog_.lastError(), true);
   }

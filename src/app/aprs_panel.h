@@ -38,6 +38,8 @@ class AprsPanel : public QWidget {
   QListWidget* view_ = nullptr;
   QString login_call_ = "N0CALL";  // pass -1 只收不发
   QString rx_buf_;
+  int try_server_ = 0;      // kServers 下标（国内优先回落国际）
+  int station_count_ = 0;   // 累计收到台站数
   static constexpr int kMaxRows = 60;
 };
 

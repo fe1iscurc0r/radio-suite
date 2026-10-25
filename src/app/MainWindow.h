@@ -19,6 +19,7 @@
 #include "dsp/synth.h"
 #include "dsp/waterfall_frame.h"
 
+class QListWidget;
 namespace radio::app {
 class AprsPanel;
 }
@@ -73,8 +74,10 @@ class MainWindow : public QMainWindow {
   // hamlog / APRS 融合区
   radio::app::AprsPanel* aprs_panel_ = nullptr;
   QLineEdit* qso_call_edit_ = nullptr;   // QSO 对方呼号
+  QListWidget* qso_list_ = nullptr;      // 最近 QSO（HamLog 库实时视图）
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   radio::logbook::HamLogDb hamlog_;
+  void refreshQsoList();
 #endif
   QTimer status_timer_;                  // 状态栏红字自动恢复
 

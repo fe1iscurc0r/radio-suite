@@ -9,9 +9,12 @@
 namespace radio::app {
 
 namespace {
-// APRS-IS 轮询入口（国际）；国内网可用 china.aprs2.net:10152 等替换
-constexpr const char* kDefaultHost = "rotate.aprs2.net";
-constexpr quint16 kDefaultPort = 14580;
+// 国内优先，国际回落（连通性因网络环境而异，两跳都试）
+struct AprsIsEntry { const char* host; quint16 port; };
+constexpr AprsIsEntry kServers[] = {
+    {"china.aprs2.net", 10152},
+    {"rotate.aprs2.net", 14580},
+};
 }  // namespace
 
 AprsPanel::AprsPanel(QWidget* parent) : QWidget(parent) {
@@ -33,7 +36,15 @@ AprsPanel::AprsPanel(QWidget* parent) : QWidget(parent) {
   connect(sock_, &QTcpSocket::connected, this, &AprsPanel::onConnected);
   connect(sock_, &QTcpSocket::readyRead, this, &AprsPanel::onReadyRead);
   connect(sock_, &QTcpSocket::disconnected, this, [this] {
-    emit statusMessage("APRS-IS 断开");
+    // 国内入口失败 → 回落国际轮询
+    if (!isConnected() && try_server_ + 1 < sizeof(kServers) / sizeof(kServers[0])) {
+      ++try_server_;
+      const auto& s = kServers[try_server_];
+      view_->addItem(QString("回落 %1:%2 …").arg(s.host).arg(s.port));
+      sock_->connectToHost(s.host, s.port);
+      return;
+    }
+    emit statusMessage(QString("APRS-IS 断开（累计台站 %1）").arg(station_count_));
   });
 }
 
@@ -48,8 +59,11 @@ void AprsPanel::toggleConnect() {
     sock_->disconnectFromHost();
     return;
   }
-  view_->addItem(QString("连接 %1:%2 …").arg(kDefaultHost).arg(kDefaultPort));
-  sock_->connectToHost(kDefaultHost, kDefaultPort);
+  // 国内入口优先；连接失败自动回落国际轮询
+  try_server_ = 0;
+  const auto& s = kServers[try_server_];
+  view_->addItem(QString("连接 %1:%2 …").arg(s.host).arg(s.port));
+  sock_->connectToHost(s.host, s.port);
 }
 
 void AprsPanel::onConnected() {
@@ -57,7 +71,9 @@ void AprsPanel::onConnected() {
   sock_->write(QString("user %1 pass -1 vers radio-suite 0.1 filter m/50\r\n")
                    .arg(login_call_)
                    .toUtf8());
-  emit statusMessage(QString("APRS-IS 已连接（%1，只收）").arg(login_call_));
+  emit statusMessage(QString("APRS-IS 已连接 %1（%2，只收）")
+                         .arg(kServers[try_server_].host)
+                         .arg(login_call_));
 }
 
 void AprsPanel::onReadyRead() {
@@ -92,6 +108,7 @@ void AprsPanel::appendLine(const QString& raw) {
                             ? QString("%1  %2").arg(call, comment.left(40))
                             : QString("%1  %2  %3").arg(call, coord, comment.left(30));
   view_->addItem(shown);
+  ++station_count_;
   while (view_->count() > kMaxRows) delete view_->item(0);
   view_->scrollToBottom();
 }
