@@ -46,13 +46,21 @@ $ grep -c "未文档化" docs/engine/rigplane-api-notes.md
 - 构建：`rs-build.bat spike-configure && spike-build` → build-spike/engine-spike.exe ✓
 - 主构建 56/56 全绿（ctest 0xc0000135 = Qt DLL PATH，rs-build.bat 已修）
 
-## §C/D/E（未开工——工单：B 过后才做）
+## §C/D/E（E 节已完成；C/D 等 B 解除）
 
-- C 适配层骨架 `libs/engine_client/`：spike 的解码器/重连状态机正式化位。
-- D 音频路径：倾向 **D1 WS 二进制 PCM**（Qt QAudioSink 直喂；Windows 零额外驱动
-  ——D3 虚拟声卡需 VB-Cable 是分发包硬伤；D2 WebRTC 引栈重）——spike 实测后定稿。
-- E 268 scope 修正 delta：`docs/engine/268-delta.md` 待写（要点已有：协议/音频/频谱
-  自研段落作废→rigplane 引擎；C++20/Qt6 保留）。
+- **E 节 ✅**（`b3dbb7e`）：`docs/engine/268-delta.md`——268 段落级修正清单
+  （M1 自研协议段作废→274 四指标；M0/M3/M4/M5 实况对照；SafetyGate 升级为
+  纵深防御二层）+ 引擎依赖声明。
+- 上游 issue 文本定稿 ✅：`docs/upstream-rigplane-issue.md`（可粘贴正文）。
+- C（engine_client 正式化）/ D（音频路径裁决）：等 B 解除（上游修 rigctld
+  后端 unselected 轮询，或 rigplane 侧接受配置跳过）后执行。
+
+## §附加（同批）：Voice Memory 原厂件（`840144a`）
+
+原厂 chm 清单的 Voice Memory 件，纯本机完整可测：AudioIn 录音（60s 上限）→
+wav 存 tools/voice/ → 列表 → AudioOut 播放 → 门禁编排发射（同 SSTV）。
+右侧大按键列 VOICE（紫）。麦克风采集本机实测（61 帧/2s、电平非零；WASAPI
+帧率 30fps vs 50 为协商偏差已知项）。UIA 验证 VOICE 按钮在位。
 
 ## §4 依赖声明
 
