@@ -24,7 +24,7 @@ SstvDialog::SstvDialog(radio::app::RadioSession* session, QWidget* parent)
   auto* mode_row = new QHBoxLayout();
   mode_row->addWidget(new QLabel("制式", this));
   mode_box_ = new QComboBox(this);
-  for (int m = 0; m <= 3; ++m)
+  for (int m = 0; m <= static_cast<int>(radio::core::sstv::Mode::PD120); ++m)
     mode_box_->addItem(radio::core::sstv::modeName(
         static_cast<radio::core::sstv::Mode>(m)));
   mode_box_->setCurrentIndex(0);

@@ -64,37 +64,83 @@ TEST_CASE("sstv: luma/chroma transform anchors", "[sstv]") {
 }
 
 TEST_CASE("sstv: Robot36 total duration identity", "[sstv]") {
-  // 恒等式（独立于编码器代码推导）：
-  //   VIS: 300+30+7×30+300 = 840ms
-  //   120 偶行×(9+3+88) = 12000ms；120 奇行×(9+3+88+9+3+88) = 24000ms
-  //   合计 36840ms ± 取整误差
+  // 恒等式（VoX 校准头，对齐上游 SSTVEncoder2）：
+  //   头：1900×300 + 1200×10 + 1900×300 + 1200×30 + 7×30 + 奇偶 30 + 1200×30
+  //      = 610 + 30 + 210 + 30 + 30 = 910ms
+  //   120 偶行×100ms = 12000ms；120 奇行×200ms = 24000ms
+  //   合计 36910ms ± 取整误差
   const auto wav = sstv::encodeRobot36(solidImage(128, 128, 128), kFs);
   const double total_ms = double(wav.size()) / kFs * 1000.0;
-  CHECK(total_ms == Approx(36840.0).margin(30.0));
+  CHECK(total_ms == Approx(36910.0).margin(30.0));
 }
 
 TEST_CASE("sstv: segment frequencies (Goertzel self-check)", "[sstv]") {
   // 黑图（1500Hz 扫描线）
   const auto black = sstv::encodeRobot36(solidImage(0, 0, 0), kFs);
 
-  // ① VIS 起始段（300ms 纯音）主频 = 1200Hz（长窗可全频扫描）
-  CHECK(dominant(black, ms(50), ms(150), kFs) == Approx(1200.0).margin(40.0));
-  // ② VIS bit0 = 1100Hz（VIS=8 → LSB bit0=0）
-  CHECK(dominant(black, ms(335), ms(25), kFs) == Approx(1100.0).margin(40.0));
+  // ① VoX 前导（300ms 纯音）主频 = 1900Hz
+  CHECK(dominant(black, ms(50), ms(150), kFs) == Approx(1900.0).margin(40.0));
+  // ② VIS 数据 bit0 = 1100Hz（VIS=8 → LSB bit0=0；头 910ms，bit0 起 640ms 处）
+  CHECK(dominant(black, ms(650), ms(25), kFs) == Approx(1100.0).margin(40.0));
 
   // 短段（sync 9ms / porch 3ms）用候选频率功率比较制（避免短窗 k 量化误判）
   auto power = [&](const std::vector<int16_t>& s, double t0, double dur_ms,
                    double hz) {
     return goertzel(s, ms(t0), ms(dur_ms), hz, kFs);
   };
-  // ③ 首行 sync [840,849)：1200 应强于 1500
-  CHECK(power(black, 840.5, 8.0, 1200.0) > power(black, 840.5, 8.0, 1500.0) * 4);
-  // ④ 首行 porch [849,852)：1500 强于 1200
-  CHECK(power(black, 849.5, 2.5, 1500.0) > power(black, 849.5, 2.5, 1200.0));
-  // ⑤ 黑像素扫描 [852,892]：1500 强于 2300
-  CHECK(power(black, 853.0, 35.0, 1500.0) > power(black, 853.0, 35.0, 2300.0) * 4);
+  // ③ 首行 sync [910,919)：1200 应强于 1500
+  CHECK(power(black, 910.5, 8.0, 1200.0) > power(black, 910.5, 8.0, 1500.0) * 4);
+  // ④ 首行 porch [919,922)：1500 强于 1200
+  CHECK(power(black, 919.5, 2.5, 1500.0) > power(black, 919.5, 2.5, 1200.0));
+  // ⑤ 黑像素扫描 [922,962]：1500 强于 2300
+  CHECK(power(black, 923.0, 35.0, 1500.0) > power(black, 923.0, 35.0, 2300.0) * 4);
 
   // 白图扫描线 = 2300Hz 强于 1500
   const auto white = sstv::encodeRobot36(solidImage(255, 255, 255), kFs);
-  CHECK(power(white, 853.0, 35.0, 2300.0) > power(white, 853.0, 35.0, 1500.0) * 4);
+  CHECK(power(white, 923.0, 35.0, 2300.0) > power(white, 923.0, 35.0, 1500.0) * 4);
+}
+
+// 多制式（上游 SSTVEncoder2 对齐）：Scottie/PD 时长恒等式 + 回环
+TEST_CASE("sstv: mode table and VIS mapping", "[sstv]") {
+  CHECK(sstv::imageWidth(sstv::Mode::Martin1) == 320);
+  CHECK(sstv::imageHeight(sstv::Mode::PD180) == 496);
+  CHECK(sstv::modeFromVis(60) == sstv::Mode::Scottie1);
+  CHECK(sstv::modeFromVis(96) == sstv::Mode::PD180);
+  CHECK_FALSE(sstv::modeFromVis(7).has_value());
+}
+
+TEST_CASE("sstv: Scottie1 duration and decode roundtrip", "[sstv][scottie]") {
+  // S1：头 910ms + 每行 (1.5+138.24+1.5+138.24+9+1.5+138.24)ms ≈ 428.22ms ×256
+  std::vector<sstv::Rgb> img(320 * 256);
+  for (size_t i = 0; i < img.size(); ++i)
+    img[i] = {128, 128, 128};
+  const auto pcm = sstv::encodeSstv(sstv::Mode::Scottie1, img, kFs);
+  const double total_ms = double(pcm.size()) / kFs * 1000.0;
+  CHECK(total_ms == Approx(910.0 + 428.22 * 256).margin(60.0));
+
+  const auto back = sstv::decodeSstv(pcm, kFs);
+  REQUIRE(back.size() == img.size());
+  long long sum = 0;
+  for (size_t i = 0; i < back.size(); i += 991) sum += back[i].g;
+  const long long n = 1 + (back.size() - 1) / 991;
+  CHECK(double(sum) / n > 112.0);
+  CHECK(double(sum) / n < 144.0);
+}
+
+TEST_CASE("sstv: PD180 duration and decode roundtrip", "[sstv][pd]") {
+  // PD180：头 910ms + 每 2 行 (20+2.08+4×183.04)ms ≈ 754.24ms × 248 组
+  std::vector<sstv::Rgb> img(640 * 496);
+  for (size_t i = 0; i < img.size(); ++i)
+    img[i] = {120, 128, 135};
+  const auto pcm = sstv::encodeSstv(sstv::Mode::PD180, img, kFs);
+  const double total_ms = double(pcm.size()) / kFs * 1000.0;
+  CHECK(total_ms == Approx(910.0 + (20.0 + 2.08 + 4 * 183.04) * 248).margin(80.0));
+
+  const auto back = sstv::decodeSstv(pcm, kFs);
+  REQUIRE(back.size() == img.size());
+  long long sum = 0;
+  for (size_t i = 0; i < back.size(); i += 1237) sum += back[i].g;
+  const long long n = 1 + (back.size() - 1) / 1237;
+  CHECK(double(sum) / n > 108.0);
+  CHECK(double(sum) / n < 148.0);
 }

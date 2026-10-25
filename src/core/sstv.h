@@ -19,12 +19,18 @@ struct Rgb {
   uint8_t r = 0, g = 0, b = 0;
 };
 
-// SSTV 制式（师傅指示：电脑编解码=制式自由，可编任意制式送 IC-705 显示）
+// SSTV 制式（录音盒模型：电脑编解码=制式自由，可编任意制式送电台 MOD）
+// 制式参数与 VoX 校准头对齐上游 SSTVEncoder2（Apache-2.0， NOTICE 署名于
+// docs/sstvencoder2-notice.txt；JL Barber "Dayton Paper" 规格书）
 enum class Mode : uint8_t {
   Robot36,   // VIS 0x08，320×240，36s
   Robot72,   // VIS 0x0C，320×240，72s（Y+R-Y+B-Y 全行传）
-  Martin1,   // VIS 0x2C，320×256，~115s（GBR 顺序）
-  Martin2,   // VIS 0x28，320×256，~58s（M1 半速）
+  Martin1,   // VIS 0x2C(44)，320×256，~115s（GBR 顺序）
+  Martin2,   // VIS 0x28(40)，320×256，~58s（M1 半速）
+  Scottie1,  // VIS 60，320×256，~110s（G/B/R + 行首 sync 后置）
+  Scottie2,  // VIS 56，320×256，~55s（S1 半速）
+  PD180,     // VIS 96，640×496，~187s（YVUY 每 2 行，YUV440P）
+  PD120,     // VIS 95，640×496，~127s（PD180 半速）
 };
 
 // 制式名（UI 下拉用）

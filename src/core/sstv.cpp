@@ -198,17 +198,33 @@ struct ModeSpec {
 constexpr ModeSpec kSpec[] = {
     {0x08, 320, 240, 200.0},  // Robot36：偶 100ms / 奇 200ms
     {0x0C, 320, 240, 300.0},  // Robot72：每行 300ms
-    {0x2C, 320, 256, 447.452},  // Martin M1
-    {0x28, 320, 256, 226.834},  // Martin M2
+    {44,  320, 256, 447.452},  // Martin M1
+    {40,  320, 256, 226.834},  // Martin M2
+    {60,  320, 256, 428.22},   // Scottie S1
+    {56,  320, 256, 216.06},   // Scottie S2
+    {96,  640, 496, 0},        // PD180（时长恒等式另算：2 行一组）
+    {95,  640, 496, 0},        // PD120
 };
 
 void visHeaderVis(std::vector<float>& out, uint8_t vis, uint32_t fs,
                   double& phase) {
-  tone(out, 1200.0, 300.0, fs, phase);
-  tone(out, 1100.0, 30.0, fs, phase);
-  for (int bit = 0; bit < 7; ++bit)
-    tone(out, (vis >> bit) & 1 ? 1300.0 : 1100.0, 30.0, fs, phase);
-  tone(out, 1200.0, 300.0, fs, phase);
+  // VoX 校准头（对齐上游 SSTVEncoder2 Mode.writeCalibrationHeader，
+  // 亦为行业互操作标准）：
+  //   1900Hz 300ms + 1200Hz 10ms + 1900Hz 300ms
+  //   + 1200Hz 30ms（起始位）+ 7 位数据（LSB first，1300=1/1100=0，
+  //   30ms/位）+ 奇偶校验位（偶校验）+ 1200Hz 30ms（停止位）
+  tone(out, 1900.0, 300.0, fs, phase);
+  tone(out, 1200.0, 10.0, fs, phase);
+  tone(out, 1900.0, 300.0, fs, phase);
+  tone(out, 1200.0, 30.0, fs, phase);
+  int parity = 0;
+  for (int pos = 0; pos < 7; ++pos) {
+    const int bit = (vis >> pos) & 1;
+    parity ^= bit;
+    tone(out, bit ? 1300.0 : 1100.0, 30.0, fs, phase);
+  }
+  tone(out, parity ? 1300.0 : 1100.0, 30.0, fs, phase);
+  tone(out, 1200.0, 30.0, fs, phase);
 }
 
 }  // namespace
@@ -219,6 +235,10 @@ const char* modeName(Mode m) {
     case Mode::Robot72: return "Robot 72";
     case Mode::Martin1: return "Martin M1";
     case Mode::Martin2: return "Martin M2";
+    case Mode::Scottie1: return "Scottie 1";
+    case Mode::Scottie2: return "Scottie 2";
+    case Mode::PD180: return "PD 180";
+    case Mode::PD120: return "PD 120";
   }
   return "?";
 }
@@ -227,8 +247,12 @@ std::optional<Mode> modeFromVis(uint8_t vis) {
   switch (vis) {
     case 0x08: return Mode::Robot36;
     case 0x0C: return Mode::Robot72;
-    case 0x2C: return Mode::Martin1;
-    case 0x28: return Mode::Martin2;
+    case 44: return Mode::Martin1;
+    case 40: return Mode::Martin2;
+    case 60: return Mode::Scottie1;
+    case 56: return Mode::Scottie2;
+    case 96: return Mode::PD180;
+    case 95: return Mode::PD120;
   }
   return std::nullopt;
 }
@@ -243,10 +267,9 @@ std::vector<int16_t> encodeSstv(Mode m, const std::vector<Rgb>& img,
   double phase = 0.0;
   visHeaderVis(pcm, sp.vis, fs, phase);
 
-  const auto emit_channel = [&](const uint8_t* vals) {
-    const size_t total = static_cast<size_t>(std::llround(
-        (m == Mode::Martin1 ? 146.432 : m == Mode::Martin2 ? 73.216 : 88.0) *
-        fs / 1000.0));
+  const auto emit_channel = [&](const uint8_t* vals, double scan_ms) {
+    const size_t total =
+        static_cast<size_t>(std::llround(scan_ms * fs / 1000.0));
     size_t written = 0;
     for (int x = 0; x < sp.width; ++x) {
       const size_t target =
@@ -261,21 +284,63 @@ std::vector<int16_t> encodeSstv(Mode m, const std::vector<Rgb>& img,
     }
   };
 
-  uint8_t row[512];
+  uint8_t row[640];
   if (m == Mode::Martin1 || m == Mode::Martin2) {
-    // Martin：sync 1200Hz 4.862ms + [G + sep 1200Hz 0.572ms] + [B + sep] + [R]
+    // Martin（对齐上游）：sync 1200Hz 4.862ms + G + sep 0.572ms + B + sep + R
+    const double scan = m == Mode::Martin1 ? 146.432 : 73.216;
     for (int line = 0; line < sp.height; ++line) {
       const Rgb* src = &img[static_cast<size_t>(line) * sp.width];
       tone(pcm, 1200.0, 4.862, fs, phase);
-      const uint8_t* chans[3] = {nullptr, nullptr, nullptr};
-      uint8_t gr[512], bl[512], rd[512];
+      uint8_t gr[640], bl[640], rd[640];
       for (int x = 0; x < sp.width; ++x) {
         gr[x] = src[x].g; bl[x] = src[x].b; rd[x] = src[x].r;
       }
-      chans[0] = gr; chans[1] = bl; chans[2] = rd;
-      for (int c = 0; c < 3; ++c) {
-        emit_channel(chans[c]);
-        if (c < 2) tone(pcm, 1200.0, 0.572, fs, phase);
+      emit_channel(gr, scan);
+      tone(pcm, 1200.0, 0.572, fs, phase);
+      emit_channel(bl, scan);
+      tone(pcm, 1200.0, 0.572, fs, phase);
+      emit_channel(rd, scan);
+    }
+  } else if (m == Mode::Scottie1 || m == Mode::Scottie2) {
+    // Scottie（对齐上游 Scottie.writeEncodedLine）：
+    //   sep + G + sep + B + sync 9ms + syncPorch 1.5ms + R（行首 sync 后置）
+    const double scan = m == Mode::Scottie1 ? 138.240 : 69.120;
+    for (int line = 0; line < sp.height; ++line) {
+      const Rgb* src = &img[static_cast<size_t>(line) * sp.width];
+      uint8_t gr[640], bl[640], rd[640];
+      for (int x = 0; x < sp.width; ++x) {
+        gr[x] = src[x].g; bl[x] = src[x].b; rd[x] = src[x].r;
+      }
+      tone(pcm, 1500.0, 1.5, fs, phase);   // separator
+      emit_channel(gr, scan);
+      tone(pcm, 1500.0, 1.5, fs, phase);   // separator
+      emit_channel(bl, scan);
+      tone(pcm, 1200.0, 9.0, fs, phase);   // sync pulse
+      tone(pcm, 1500.0, 1.5, fs, phase);   // sync porch
+      emit_channel(rd, scan);
+    }
+  } else if (m == Mode::PD180 || m == Mode::PD120) {
+    // PD（对齐上游 PD.writeEncodedLine）：每 2 行一组
+    //   sync 20ms + porch 2.08ms + Y(line) + V(line) + U(line) + Y(line+1)
+    // YUV440P：V/U 每两行一组。色彩标度：BT.601 全摆幅（V/U 128 居中）
+    const double scan = m == Mode::PD180 ? 183.04 : 121.6;
+    auto yuvAt = [&](int x, int line, int which) -> uint8_t {
+      // 偶数行组共享 V/U（line/2）
+      const Rgb& px = img[static_cast<size_t>(line) * sp.width + x];
+      if (which == 0) return toLuma(px.r, px.g, px.b);
+      const uint8_t v = toChromaR(px.r, px.g, px.b);
+      const uint8_t u = toChromaB(px.r, px.g, px.b);
+      return which == 1 ? v : u;
+    };
+    for (int line = 0; line < sp.height; line += 2) {
+      tone(pcm, 1200.0, 20.0, fs, phase);
+      tone(pcm, 1500.0, 2.08, fs, phase);
+      for (int sub = 0; sub < 4; ++sub) {
+        const int which = sub == 0 ? 0 : sub == 1 ? 1 : sub == 2 ? 2 : 0;
+        const int src_line = (sub == 3) ? line + 1 : line;
+        for (int x = 0; x < sp.width; ++x)
+          row[x] = yuvAt(x, src_line, which);
+        emit_channel(row, scan);
       }
     }
   } else if (m == Mode::Robot72) {
@@ -287,7 +352,7 @@ std::vector<int16_t> encodeSstv(Mode m, const std::vector<Rgb>& img,
           row[x] = which == 0 ? toLuma(src[x].r, src[x].g, src[x].b)
                               : (which == 1 ? toChromaR(src[x].r, src[x].g, src[x].b)
                                             : toChromaB(src[x].r, src[x].g, src[x].b));
-        emit_channel(row);
+        emit_channel(row, 88.0);
       };
       tone(pcm, 1200.0, 9.0, fs, phase);
       tone(pcm, 1500.0, 3.0, fs, phase);
@@ -309,7 +374,7 @@ std::vector<int16_t> encodeSstv(Mode m, const std::vector<Rgb>& img,
           row[x] = which == 0 ? toLuma(src[x].r, src[x].g, src[x].b)
                               : (which == 1 ? toChromaR(src[x].r, src[x].g, src[x].b)
                                             : toChromaB(src[x].r, src[x].g, src[x].b));
-        emit_channel(row);
+        emit_channel(row, 88.0);
       };
       tone(pcm, 1200.0, 9.0, fs, phase);
       tone(pcm, 1500.0, 3.0, fs, phase);
@@ -335,29 +400,38 @@ std::vector<Rgb> decodeChannels(Mode m, const std::vector<int16_t>& pcm,
                                 size_t start, uint32_t fs);
 
 std::vector<Rgb> decodeSstv(const std::vector<int16_t>& pcm, uint32_t fs) {
-  // 通用 VIS 扫描：1200 起 + 7 位 + 1200 止，读出 VIS 码
+  // 通用 VIS 扫描（VoX 校准头，与 writeCalibrationHeader 对齐）：
+  //   [1900×300][1200×10][1900×300][1200×30 起][7 数据位×30][奇偶×30][1200×30 止]
+  //   扫描锚点 = 前导第二段 1900Hz×300ms；位区从其后 310ms 开始
+  const size_t ms10 = static_cast<size_t>(10.0 * fs / 1000.0);
   const size_t ms30 = static_cast<size_t>(30.0 * fs / 1000.0);
   const size_t ms300 = static_cast<size_t>(300.0 * fs / 1000.0);
-  if (pcm.size() < ms300 * 2 + ms30 * 9) return {};
-  for (size_t off = 0; off + ms300 * 2 + ms30 * 9 <= pcm.size(); off += ms30) {
-    if (std::abs(sniffHz(pcm, off, ms300, fs) - 1200.0) > 45.0) continue;
-    const size_t bit0 = off + ms300 + ms30;
+  if (pcm.size() < ms300 * 2 + ms10 + ms30 * 9) return {};
+  for (size_t off = 0; off + ms300 * 2 + ms10 + ms30 * 9 <= pcm.size();
+       off += ms30) {
+    if (std::abs(sniffHz(pcm, off, ms300, fs) - 1900.0) > 45.0) continue;
+    // 第二段 1900（确认校准头而非普通 1200 同步）
+    const size_t after_break = off + ms300 + ms10;
+    if (std::abs(sniffHz(pcm, after_break, ms300, fs) - 1900.0) > 45.0)
+      continue;
+    const size_t start_bit = after_break + ms300 + ms30;  // 跳过起始位
     uint8_t vis = 0;
     bool ok = true;
     for (int bit = 0; bit < 7 && ok; ++bit) {
-      const double hz = sniffHz(pcm, bit0 + static_cast<size_t>(bit) * ms30, ms30, fs);
+      const double hz =
+          sniffHz(pcm, start_bit + static_cast<size_t>(bit) * ms30, ms30, fs);
       if (std::abs(hz - 1300.0) <= 45.0) vis |= 1 << bit;
       else if (std::abs(hz - 1100.0) > 45.0) ok = false;
     }
     if (!ok) continue;
-    if (std::abs(sniffHz(pcm, bit0 + 7 * ms30, ms300, fs) - 1200.0) > 45.0)
+    // 校验位 + 停止位 1200
+    if (std::abs(sniffHz(pcm, start_bit + 8 * ms30, ms30, fs) - 1200.0) > 45.0)
       continue;
     const auto mode = modeFromVis(vis);
     if (!mode) return {};
-    const size_t start = bit0 + 7 * ms30 + ms300;
+    const size_t start = start_bit + 9 * ms30;  // 数据起点
     if (*mode == Mode::Robot36)
-      return decodeRobot36At(pcm, start, fs);  // 原实现按起点
-    // Martin / Robot72 解码：按段表逐通道鉴频（首版：通道级）
+      return decodeRobot36At(pcm, start, fs);
     return decodeChannels(*mode, pcm, start, fs);
   }
   return {};
