@@ -95,23 +95,48 @@ void MainWindow::buildUi() {
   auto* central = new QWidget(this);
   auto* root = new QVBoxLayout(central);
 
-  // ---- 顶栏（主）：频率大字 + 模式 + PTT 大键 ----
+  // 全局配色：原厂 Icom 遥控视觉语言（深灰炭黑 + 琥珀强调 + 激活背光）
+  setStyleSheet(
+      "QWidget { background: #1c1f24; color: #d8dde4; font-size: 10pt; }"
+      "QLineEdit, QComboBox { background: #0d0f13; border: 1px solid #3a414c;"
+      " color: #ffb300; padding: 2px 6px; }"
+      "QPushButton { background: #2b3038; border: 1px solid #444c58;"
+      " color: #cfd6df; padding: 4px 8px; }"
+      "QPushButton:hover { background: #343b45; }"
+      "QPushButton:checked { background: #ffb300; color: #1a1a1a;"
+      " font-weight: bold; }"  // 原厂"指示灯点亮"背光态
+      "QListWidget { background: #14171c; border: 1px solid #333a44; }"
+      "QLabel { color: #aeb6c0; }"
+      "QToolTip { background: #0d0f13; color: #ffb300; }");
+
+  // ---- 顶栏（主）：LCD 风频率带（原厂琥珀屏）+ PTT + 连接 ----
   auto* top = new QHBoxLayout();
-  freq_label_ = new QLabel("__.__._ MHz", central);
+  auto* lcd = new QFrame(central);
+  lcd->setObjectName("lcdBand");
+  lcd->setStyleSheet(
+      "QFrame#lcdBand { background: #060804; border: 2px solid #2c313a;"
+      " border-radius: 4px; }");
+  auto* lcd_lay = new QHBoxLayout(lcd);
+  lcd_lay->setContentsMargins(16, 6, 16, 6);
+  freq_label_ = new QLabel("__.__._ MHz", lcd);
   QFont mono("Cascadia Mono");
   mono.setStyleHint(QFont::Monospace);
-  mono.setPointSize(34);
+  mono.setPointSize(36);
+  mono.setBold(true);
   freq_label_->setFont(mono);
-  top->addWidget(freq_label_, 1);
-
-  mode_label_ = new QLabel("--", central);
-  mode_label_->setAlignment(Qt::AlignCenter);
-  mode_label_->setMinimumWidth(90);
+  freq_label_->setStyleSheet("color: #ffb300; background: transparent;"
+                             " qproperty-alignment: AlignCenter;");
+  lcd_lay->addWidget(freq_label_, 1);
+  mode_label_ = new QLabel("--", lcd);
   QFont moded = mode_label_->font();
-  moded.setPointSize(16);
+  moded.setPointSize(15);
   moded.setBold(true);
   mode_label_->setFont(moded);
-  top->addWidget(mode_label_);
+  mode_label_->setStyleSheet("color: #7ee0a0; background: transparent;");
+  mode_label_->setAlignment(Qt::AlignCenter);
+  mode_label_->setMinimumWidth(96);
+  lcd_lay->addWidget(mode_label_);
+  top->addWidget(lcd, 1);
 
   ptt_btn_ = new QPushButton("PTT", central);
   ptt_btn_->setMinimumHeight(72);
