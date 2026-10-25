@@ -19,6 +19,7 @@ set(APP_SRC
   sstv_dialog.cpp
   dtmf_dialog.cpp
   voice_memory.cpp
+  font_proxy_settings.cpp
   aprs_panel.cpp)
 
 if(Qt6HttpServer_FOUND)

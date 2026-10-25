@@ -16,7 +16,10 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "logbook/lotw_upload_dialog.h"
 #include "logbook/qso_edit_dialog.h"
+
+#include "app/font_proxy_settings.h"
 
 namespace radio::logbook {
 
@@ -33,9 +36,30 @@ HamLogWorkbench::HamLogWorkbench(QWidget* parent) : QWidget(parent) {
   settings->setToolTip("操作员信息（my_callsign/my_name/my_qth/my_grid，直写 HamLog settings 表）");
   connect(settings, &QPushButton::clicked, this, &HamLogWorkbench::onSettings);
   head->addWidget(settings);
+  auto* font_btn = new QPushButton("字体", this);
+  font_btn->setToolTip("全局字体/字号（原版 FontManager 语义，持久保存）");
+  connect(font_btn, &QPushButton::clicked, this, [this] {
+    radio::app::FontSettingsDialog dlg(this);
+    dlg.exec();
+  });
+  head->addWidget(font_btn);
+  auto* proxy_btn = new QPushButton("代理", this);
+  proxy_btn->setToolTip("HTTP/SOCKS5 应用级代理（作用于 LoTW 上传等网络请求）");
+  connect(proxy_btn, &QPushButton::clicked, this, [this] {
+    radio::app::ProxySettingsDialog dlg(this);
+    dlg.exec();
+  });
+  head->addWidget(proxy_btn);
   auto* adif = new QPushButton("ADIF 导出", this);
   connect(adif, &QPushButton::clicked, this, &HamLogWorkbench::onExport);
   head->addWidget(adif);
+  auto* lotw = new QPushButton("LoTW 上传", this);
+  lotw->setToolTip("TQSL 签名 + HTTP 上传（原版 LoTW_Upload_Dialog 机制）");
+  connect(lotw, &QPushButton::clicked, this, [this] {
+    LotwUploadDialog dlg(db_, this);
+    dlg.exec();
+  });
+  head->addWidget(lotw);
   auto* close = new QPushButton("关闭", this);
   close->setToolTip("关闭工作台窗口");
   connect(close, &QPushButton::clicked, this, &QWidget::close);

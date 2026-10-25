@@ -16,6 +16,11 @@ class QLineEdit;
 class QPushButton;
 class QTableWidget;
 
+namespace radio::app {
+class FontSettingsDialog;
+class ProxySettingsDialog;
+}
+
 namespace radio::logbook {
 
 class HamLogWorkbench : public QWidget {
