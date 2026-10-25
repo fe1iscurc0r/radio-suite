@@ -28,12 +28,12 @@ enable_testing()
 
 include(cmake/dependencies.cmake)
 
-add_subdirectory(src/core)
-add_subdirectory(src/dsp)
-add_subdirectory(src/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断）
-add_subdirectory(src/audio)    # RtAudio (MIT, vendor/)：SSTV/DV 播放
+add_subdirectory(apps/desktop/core)
+add_subdirectory(libs/dsp/dsp)  # WO-273 单仓裁决：dsp 双端共用（web 未来也用）
+add_subdirectory(apps/desktop/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断）
+add_subdirectory(apps/desktop/audio)    # RtAudio (MIT, vendor/)：SSTV/DV 播放
 if(BUILD_GUI)
-  add_subdirectory(src/app)
+  add_subdirectory(apps/desktop/app)
 endif()
 if(BUILD_ENGINE_SPIKE)
   add_subdirectory(apps/spike)
