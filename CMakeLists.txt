@@ -15,6 +15,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_GUI "构建 Qt6 GUI 应用 (src/app)。headless/CI 关掉可零 Qt 编译 core+dsp" ON)
 option(RADIO_SUITE_BUILD_TESTS "构建 Catch2 单元测试" ON)
+option(BUILD_ENGINE_SPIKE "构建 WO-274 rigplane 引擎 spike（需 Qt6 WebSockets）" OFF)
 
 if(MSVC)
   # /utf-8: 源码含中文注释，防止 C4819 与乱码
@@ -33,6 +34,9 @@ add_subdirectory(src/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断�
 add_subdirectory(src/audio)    # RtAudio (MIT, vendor/)：SSTV/DV 播放
 if(BUILD_GUI)
   add_subdirectory(src/app)
+endif()
+if(BUILD_ENGINE_SPIKE)
+  add_subdirectory(apps/spike)
 endif()
 if(RADIO_SUITE_BUILD_TESTS)
   add_subdirectory(tests)

@@ -9,7 +9,8 @@ add_executable(radio_tests
   test_rsba1_proto.cpp
   test_sstv.cpp
   test_dtmf.cpp
-  test_audio_stream.cpp)
+  test_audio_stream.cpp
+  test_engine_spike.cpp)
 
 target_link_libraries(radio_tests PRIVATE
   radio::core
