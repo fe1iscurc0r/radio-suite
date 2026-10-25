@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QImage>
 
 class QLabel;
 class QPushButton;
@@ -16,9 +17,12 @@ class SstvDialog : public QDialog {
 
  private slots:
   void onPickImage();
+  void onGenerate();  // Robot36 编码 → .wav（44100Hz 16bit PCM）
 
  private:
   QLabel* preview_ = nullptr;
   QLabel* info_ = nullptr;
+  QPushButton* gen_btn_ = nullptr;
   QString image_path_;
+  QImage img_;  // 320×240 RGB888
 };

@@ -9,6 +9,7 @@ set(RADIO_CORE_SRC
   safety.cpp
   state.cpp
   rsba1_proto.cpp
+  sstv.cpp
   transport_mock.cpp)
 
 if(RADIO_SUITE_UDP)

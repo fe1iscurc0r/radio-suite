@@ -6,7 +6,8 @@ add_executable(radio_tests
   test_safety.cpp
   test_transport_mock.cpp
   test_dsp.cpp
-  test_rsba1_proto.cpp)
+  test_rsba1_proto.cpp
+  test_sstv.cpp)
 
 target_link_libraries(radio_tests PRIVATE
   radio::core
