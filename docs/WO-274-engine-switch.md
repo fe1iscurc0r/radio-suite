@@ -26,19 +26,25 @@ $ grep -c "未文档化" docs/engine/rigplane-api-notes.md
   2. WS set_* 50ms 合并 + 入队 ACK ≠ 电台接受 → 等 command_lifecycle
   3. managed-transmit = 引擎侧 TX 闸；本仓 SafetyGate 保留（客户端纵深防御）
 
-## §B spike（commit `ebff2c7`）—— **受阻塞，按工单规矩停下写分析**
+## §B spike（commit `ebff2c7` + v2 `0a288d6`）—— **受阻塞，按工单规矩停下写分析**
 
-- 完整分析：`docs/WO-274-spike.md`（真实输出贴齐）
-- 一句话：**sidecar 在 radio discovery 成功前不启动 HTTP listener**（4 种启动方式
-  实测一致，/healthz 全程连接拒绝）→ 四硬指标全部依赖 radio ready → IC-705 离线
-  = 物理阻塞
+- 完整分析：`docs/WO-274-spike.md`（v2：§1 lan 后端 + §2B self-hosted 全链）
+- 结论 v2（师傅指示真机搁置后做的 self-hosted 替代路径）：
+  - 我们的 rigctld 服务器补齐 rigplane 全部轮询依赖（level/func/split/VFO 族），
+    直连 socket 实测 10 条命令全对——rigplane 兼容度实证；
+  - 硬结论：rigplane **rigctld 后端不实现 unselected-VFO 轮询**
+    （`get_freq` 只支持 MAIN），而 IC-705 profile 声明 unselected 可轮询 →
+    initial state acquisition 永不完成 → **listener 永不开放**（45s 逐 5s
+    轮询 /healthz 全程 000 实证）。属 rigplane 空缺，issue/PR 上游；
+  - 四指标无真机判定不可达。解除条件二选一：上游修复，或 IC-705 开机（lan
+    后端一切就绪）。
 - spike 客户端已就绪（`apps/spike/`，BUILD_ENGINE_SPIKE 默认 OFF）：
   - QWebSocket 三通道 + scope 16B 头解码（逐字段对照 protocol.py:56-79）
   - cmd envelope + 15s ping / 30s 无帧重连（对齐 rigplane 前端语义）
   - 四指标测量点内建（FPS/帧间隔/PTT lifecycle 毫秒/音频帧计数丢包）
-- 解码正确性单测锁定：`tests/test_engine_spike.cpp`（合成帧逐字段 + 拒收语义）
+- 解码正确性单测锁定：`tests/test_engine_spike.cpp`
 - 构建：`rs-build.bat spike-configure && spike-build` → build-spike/engine-spike.exe ✓
-- 主构建 53/53 全绿（ctest 0xc0000135 = Qt DLL PATH，rs-build.bat 已修）
+- 主构建 56/56 全绿（ctest 0xc0000135 = Qt DLL PATH，rs-build.bat 已修）
 
 ## §C/D/E（未开工——工单：B 过后才做）
 
