@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace radio::core::sstv {
@@ -18,7 +19,31 @@ struct Rgb {
   uint8_t r = 0, g = 0, b = 0;
 };
 
+// SSTV 制式（师傅指示：电脑编解码=制式自由，可编任意制式送 IC-705 显示）
+enum class Mode : uint8_t {
+  Robot36,   // VIS 0x08，320×240，36s
+  Robot72,   // VIS 0x0C，320×240，72s（Y+R-Y+B-Y 全行传）
+  Martin1,   // VIS 0x2C，320×256，~115s（GBR 顺序）
+  Martin2,   // VIS 0x28，320×256，~58s（M1 半速）
+};
+
+// 制式名（UI 下拉用）
+const char* modeName(Mode m);
+// VIS → 制式（解码自动识别）
+std::optional<Mode> modeFromVis(uint8_t vis);
+int imageWidth(Mode m);
+int imageHeight(Mode m);
+
+// 编码（图像尺寸须匹配制式）→ 16bit PCM
+std::vector<int16_t> encodeSstv(Mode m, const std::vector<Rgb>& image,
+                                uint32_t sample_rate = 44100);
+
+// 解码：按 VIS 头自动识别制式；返回空 = 未识别
+std::vector<Rgb> decodeSstv(const std::vector<int16_t>& pcm,
+                            uint32_t sample_rate = 44100);
+
 // 320×240 行主序图像 → 16bit PCM 采样（幅度 ±0.8 满幅，防爆音）
+// 兼容旧接口：Robot36 特例（新代码用 encodeSstv/decodeSstv 多制式版）
 std::vector<int16_t> encodeRobot36(const std::vector<Rgb>& image320x240,
                                    uint32_t sample_rate = 44100);
 

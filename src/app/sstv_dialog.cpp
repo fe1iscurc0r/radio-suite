@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/sstv_dialog.h"
 
+#include <QComboBox>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QImage>
@@ -11,11 +12,22 @@
 #include "core/sstv.h"
 
 SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
-  setWindowTitle("SSTV 发送");
-  setMinimumSize(420, 380);
+  setWindowTitle("SSTV 录音盒（发送 = 生成录音 · 接收 = 听录音）");
+  setMinimumSize(440, 480);
   auto* root = new QVBoxLayout(this);
 
-  auto* pick = new QPushButton("选择图片（将降采样至 320×240 Robot36）", this);
+  // 录音盒模型：电脑编解码=制式自由；705 无机内编解码，业界同为外接软件
+  auto* mode_row = new QHBoxLayout();
+  mode_row->addWidget(new QLabel("制式", this));
+  mode_box_ = new QComboBox(this);
+  for (int m = 0; m <= 3; ++m)
+    mode_box_->addItem(radio::core::sstv::modeName(
+        static_cast<radio::core::sstv::Mode>(m)));
+  mode_box_->setCurrentIndex(0);
+  mode_row->addWidget(mode_box_, 1);
+  root->addLayout(mode_row);
+
+  auto* pick = new QPushButton("选择图片（按制式缩放）", this);
   connect(pick, &QPushButton::clicked, this, &SstvDialog::onPickImage);
   root->addWidget(pick);
 
@@ -25,14 +37,14 @@ SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
   preview_->setStyleSheet("background:#10141c;");
   root->addWidget(preview_, 1);
 
-  gen_btn_ = new QPushButton("生成 Robot36 .wav（36.8 秒）", this);
+  gen_btn_ = new QPushButton("生成 .wav", this);
   gen_btn_->setEnabled(false);
   connect(gen_btn_, &QPushButton::clicked, this, &SstvDialog::onGenerate);
   root->addWidget(gen_btn_);
 
   info_ = new QLabel(
-      "时序经 Goertzel 自校验（单测覆盖 VIS/sync/黑白扫描频率）。\n"
-      "发射：用任何播放器播放 .wav 进电台 MOD（M2 接音频直出+PTT 联动）", this);
+      "IC-705 无机内 SSTV 编解码——电脑当\"录音盒\"：任意制式先在电脑上编好，\n"
+      "播放 .wav 进电台 MOD 即发射（M2 接音频直出+PTT 联动）", this);
   info_->setStyleSheet("color:#9fe;");
   root->addWidget(info_);
 
@@ -40,8 +52,8 @@ SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
   connect(close, &QPushButton::clicked, this, &QDialog::accept);
   root->addWidget(close, 0, Qt::AlignRight);
 
-  // ---- 接收：从 .wav 解码（实时监听 M2 随音频链；先支持文件回环） ----
-  auto* rx_head = new QLabel("接收（Robot36 解码）", this);
+  // ---- 接收：从 .wav 自动识别制式解码（实时监听 M2 随音频链） ----
+  auto* rx_head = new QLabel("接收（VIS 自动识别制式）", this);
   root->addWidget(rx_head);
   auto* rx_row = new QHBoxLayout();
   auto* dec_btn = new QPushButton("从 .wav 解码…", this);
@@ -90,11 +102,13 @@ void SstvDialog::onDecode() {
   std::vector<int16_t> pcm(n);
   std::memcpy(pcm.data(), all.constData() + data_off + 8, data_len);
 
-  const auto img = radio::core::sstv::decodeRobot36(pcm, 44100);
+  const auto img = radio::core::sstv::decodeSstv(pcm, 44100);
   if (img.empty()) {
-    rx_view_->setText("未检出 Robot36 VIS 头（不是 SSTV 或时序不对）");
+    rx_view_->setText("未识别 SSTV VIS 头（不是 SSTV 或不支持的制式）");
     return;
   }
+  const int w = static_cast<int>(sqrt(img.size() * 3.0 / 4.0));  // 粗略（仅提示）
+  Q_UNUSED(w);
   rx_img_ = QImage(320, 240, QImage::Format_RGB888);
   for (int y = 0; y < 240; ++y)
     for (int x = 0; x < 320; ++x) {
@@ -117,31 +131,45 @@ void SstvDialog::onPickImage() {
     gen_btn_->setEnabled(false);
     return;
   }
-  img_ = img.scaled(320, 240, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+  const auto mode = static_cast<radio::core::sstv::Mode>(mode_box_->currentIndex());
+  const int w = radio::core::sstv::imageWidth(mode);
+  const int h = radio::core::sstv::imageHeight(mode);
+  img_ = img.scaled(w, h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
              .convertToFormat(QImage::Format_RGB888);
   preview_->setPixmap(QPixmap::fromImage(
-      img_.scaled(320, 240, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+      img_.scaled(w, h, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
   gen_btn_->setEnabled(true);
-  info_->setText(QString("已选：%1 → 点「生成 .wav」").arg(path.section('/', -1)));
+  info_->setText(QString("已选：%1 → %2 %3×%4 → 点「生成 .wav」")
+                     .arg(path.section('/', -1),
+                          radio::core::sstv::modeName(mode))
+                     .arg(w).arg(h));
 }
 
 void SstvDialog::onGenerate() {
   if (img_.isNull()) return;
+  const auto mode = static_cast<radio::core::sstv::Mode>(mode_box_->currentIndex());
+  const int w = radio::core::sstv::imageWidth(mode);
+  const int h = radio::core::sstv::imageHeight(mode);
+  const QString tag = QString("sstv_%1")
+                          .arg(radio::core::sstv::modeName(mode))
+                          .replace(' ', '_');
   const QString out_path =
       image_path_.section('/', 0, -2) + "/" +
-      image_path_.section('/', -1).section('.', 0, 0) + "_robot36.wav";
+      image_path_.section('/', -1).section('.', 0, 0) + "_" + tag + ".wav";
   QFile f(out_path);
   if (!f.open(QIODevice::WriteOnly)) {
     info_->setText("无法写 " + out_path);
     return;
   }
-  std::vector<radio::core::sstv::Rgb> rgb(320 * 240);
-  for (int y = 0; y < 240; ++y)
-    for (int x = 0; x < 320; ++x) {
+  std::vector<radio::core::sstv::Rgb> rgb(
+      static_cast<size_t>(w) * h);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
       const uchar* p = img_.scanLine(y) + x * 3;
-      rgb[static_cast<size_t>(y) * 320 + x] = {p[0], p[1], p[2]};
+      rgb[static_cast<size_t>(y) * w + x] = {p[0], p[1], p[2]};
     }
-  const auto pcm = radio::core::sstv::encodeRobot36(rgb, 44100);
+  const auto pcm = radio::core::sstv::encodeSstv(mode, rgb, 44100);
+  const double secs = double(pcm.size()) / 44100.0;
   // WAV 头（PCM 16bit 单声道）
   const uint32_t data_bytes = static_cast<uint32_t>(pcm.size() * 2);
   const uint32_t byte_rate = 44100 * 2;
@@ -159,7 +187,9 @@ void SstvDialog::onGenerate() {
   f.write(reinterpret_cast<const char*>(pcm.data()),
           static_cast<qint64>(data_bytes));
   f.close();
-  info_->setText(QString("已生成：%1（%2 KB）\n播放它进电台 MOD 即可发射")
+  info_->setText(QString("已生成：%1（%2 KB，%3 秒，%4）\n播放它进电台 MOD 即可发射")
                      .arg(out_path)
-                     .arg(data_bytes / 1024));
+                     .arg(data_bytes / 1024)
+                     .arg(secs, 0, 'f', 1)
+                     .arg(radio::core::sstv::modeName(mode)));
 }

@@ -7,6 +7,7 @@
 #include <QDialog>
 #include <QImage>
 
+class QComboBox;
 class QLabel;
 class QPushButton;
 
@@ -17,15 +18,16 @@ class SstvDialog : public QDialog {
 
  private slots:
   void onPickImage();
-  void onGenerate();  // Robot36 编码 → .wav（44100Hz 16bit PCM）
-  void onDecode();    // 接收：从 .wav 解码 Robot36 → 显示/保存
+  void onGenerate();  // 按所选制式编码 → .wav
+  void onDecode();    // 接收：从 .wav 自动识别制式解码 → 显示/保存
 
  private:
   QLabel* preview_ = nullptr;
   QLabel* info_ = nullptr;
   QPushButton* gen_btn_ = nullptr;
-  QLabel* rx_view_ = nullptr;   // 接收显示
+  QComboBox* mode_box_ = nullptr;  // Robot36/72/Martin M1/M2（录音盒：制式自由）
+  QLabel* rx_view_ = nullptr;      // 接收显示
   QString image_path_;
-  QImage img_;      // 320×240 RGB888（发送）
+  QImage img_;      // 发送图（按制式缩放）
   QImage rx_img_;   // 接收解码结果
 };

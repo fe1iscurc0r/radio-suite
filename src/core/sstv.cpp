@@ -63,6 +63,11 @@ uint8_t toChromaB(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 std::vector<int16_t> encodeRobot36(const std::vector<Rgb>& img, uint32_t fs) {
+  return encodeSstv(Mode::Robot36, img, fs);
+}
+
+#if 0  // 旧实现由 encodeSstv(Robot36) 替代
+std::vector<int16_t> encodeRobot36_old(const std::vector<Rgb>& img, uint32_t fs) {
   std::vector<float> pcm;
   pcm.reserve(static_cast<size_t>(37.0 * fs));
   double phase = 0.0;
@@ -94,6 +99,7 @@ std::vector<int16_t> encodeRobot36(const std::vector<Rgb>& img, uint32_t fs) {
     out[i] = static_cast<int16_t>(std::lround(pcm[i] * 32767.0));
   return out;
 }
+#endif  // 旧实现
 
 // ---------------- 解码 ----------------
 namespace {
@@ -177,9 +183,190 @@ size_t findVis(const std::vector<int16_t>& s, uint32_t fs) {
 }  // namespace
 
 std::vector<Rgb> decodeRobot36(const std::vector<int16_t>& pcm, uint32_t fs) {
+  return decodeSstv(pcm, fs);
+}
+
+// ---------------- 多制式（师傅指示：电脑编解码 = 制式自由） ----------------
+namespace {
+
+struct ModeSpec {
+  uint8_t vis;
+  int width, height;
+  double line_ms;    // 名义行时长（时长恒等式用）
+};
+
+constexpr ModeSpec kSpec[] = {
+    {0x08, 320, 240, 200.0},  // Robot36：偶 100ms / 奇 200ms
+    {0x0C, 320, 240, 300.0},  // Robot72：每行 300ms
+    {0x2C, 320, 256, 447.452},  // Martin M1
+    {0x28, 320, 256, 226.834},  // Martin M2
+};
+
+void visHeaderVis(std::vector<float>& out, uint8_t vis, uint32_t fs,
+                  double& phase) {
+  tone(out, 1200.0, 300.0, fs, phase);
+  tone(out, 1100.0, 30.0, fs, phase);
+  for (int bit = 0; bit < 7; ++bit)
+    tone(out, (vis >> bit) & 1 ? 1300.0 : 1100.0, 30.0, fs, phase);
+  tone(out, 1200.0, 300.0, fs, phase);
+}
+
+}  // namespace
+
+const char* modeName(Mode m) {
+  switch (m) {
+    case Mode::Robot36: return "Robot 36";
+    case Mode::Robot72: return "Robot 72";
+    case Mode::Martin1: return "Martin M1";
+    case Mode::Martin2: return "Martin M2";
+  }
+  return "?";
+}
+
+std::optional<Mode> modeFromVis(uint8_t vis) {
+  switch (vis) {
+    case 0x08: return Mode::Robot36;
+    case 0x0C: return Mode::Robot72;
+    case 0x2C: return Mode::Martin1;
+    case 0x28: return Mode::Martin2;
+  }
+  return std::nullopt;
+}
+
+int imageWidth(Mode m) { return kSpec[static_cast<int>(m)].width; }
+int imageHeight(Mode m) { return kSpec[static_cast<int>(m)].height; }
+
+std::vector<int16_t> encodeSstv(Mode m, const std::vector<Rgb>& img,
+                                uint32_t fs) {
+  const ModeSpec& sp = kSpec[static_cast<int>(m)];
+  std::vector<float> pcm;
+  double phase = 0.0;
+  visHeaderVis(pcm, sp.vis, fs, phase);
+
+  const auto emit_channel = [&](const uint8_t* vals) {
+    const size_t total = static_cast<size_t>(std::llround(
+        (m == Mode::Martin1 ? 146.432 : m == Mode::Martin2 ? 73.216 : 88.0) *
+        fs / 1000.0));
+    size_t written = 0;
+    for (int x = 0; x < sp.width; ++x) {
+      const size_t target =
+          static_cast<size_t>(std::llround(double(total) * (x + 1) / sp.width));
+      const double hz = 1500.0 + 800.0 * vals[x] / 255.0;
+      const double w = 2.0 * 3.14159265358979323846 * hz / fs;
+      while (written < target) {
+        pcm.push_back(static_cast<float>(0.8 * std::sin(phase)));
+        phase = std::fmod(phase + w, 2.0 * 3.14159265358979323846);
+        ++written;
+      }
+    }
+  };
+
+  uint8_t row[512];
+  if (m == Mode::Martin1 || m == Mode::Martin2) {
+    // Martin：sync 1200Hz 4.862ms + [G + sep 1200Hz 0.572ms] + [B + sep] + [R]
+    for (int line = 0; line < sp.height; ++line) {
+      const Rgb* src = &img[static_cast<size_t>(line) * sp.width];
+      tone(pcm, 1200.0, 4.862, fs, phase);
+      const uint8_t* chans[3] = {nullptr, nullptr, nullptr};
+      uint8_t gr[512], bl[512], rd[512];
+      for (int x = 0; x < sp.width; ++x) {
+        gr[x] = src[x].g; bl[x] = src[x].b; rd[x] = src[x].r;
+      }
+      chans[0] = gr; chans[1] = bl; chans[2] = rd;
+      for (int c = 0; c < 3; ++c) {
+        emit_channel(chans[c]);
+        if (c < 2) tone(pcm, 1200.0, 0.572, fs, phase);
+      }
+    }
+  } else if (m == Mode::Robot72) {
+    // Robot72：每行 sync9+porch3 + Y + sync9+porch3 + R-Y + sync9+porch3 + B-Y
+    for (int line = 0; line < sp.height; ++line) {
+      const Rgb* src = &img[static_cast<size_t>(line) * sp.width];
+      const auto emit_rgb_channel = [&](int which) {
+        for (int x = 0; x < sp.width; ++x)
+          row[x] = which == 0 ? toLuma(src[x].r, src[x].g, src[x].b)
+                              : (which == 1 ? toChromaR(src[x].r, src[x].g, src[x].b)
+                                            : toChromaB(src[x].r, src[x].g, src[x].b));
+        emit_channel(row);
+      };
+      tone(pcm, 1200.0, 9.0, fs, phase);
+      tone(pcm, 1500.0, 3.0, fs, phase);
+      emit_rgb_channel(0);
+      tone(pcm, 1200.0, 9.0, fs, phase);
+      tone(pcm, 1500.0, 3.0, fs, phase);
+      emit_rgb_channel(1);
+      tone(pcm, 1200.0, 9.0, fs, phase);
+      tone(pcm, 1500.0, 3.0, fs, phase);
+      emit_rgb_channel(2);
+    }
+  } else {
+    // Robot36：偶行 sync9+porch3+Y；奇行 + sync9+porch3+色差（R-Y/B-Y 交替）
+    bool chroma_is_r = true;
+    for (int line = 0; line < sp.height; ++line) {
+      const Rgb* src = &img[static_cast<size_t>(line) * sp.width];
+      const auto emit_ycc = [&](int which) {
+        for (int x = 0; x < sp.width; ++x)
+          row[x] = which == 0 ? toLuma(src[x].r, src[x].g, src[x].b)
+                              : (which == 1 ? toChromaR(src[x].r, src[x].g, src[x].b)
+                                            : toChromaB(src[x].r, src[x].g, src[x].b));
+        emit_channel(row);
+      };
+      tone(pcm, 1200.0, 9.0, fs, phase);
+      tone(pcm, 1500.0, 3.0, fs, phase);
+      emit_ycc(0);
+      if (line % 2 == 1) {
+        tone(pcm, 1200.0, 9.0, fs, phase);
+        tone(pcm, 1500.0, 3.0, fs, phase);
+        emit_ycc(chroma_is_r ? 1 : 2);
+        chroma_is_r = !chroma_is_r;
+      }
+    }
+  }
+
+  std::vector<int16_t> out(pcm.size());
+  for (size_t i = 0; i < pcm.size(); ++i)
+    out[i] = static_cast<int16_t>(std::lround(pcm[i] * 32767.0));
+  return out;
+}
+
+std::vector<Rgb> decodeRobot36At(const std::vector<int16_t>& pcm, size_t start,
+                                 uint32_t fs);
+std::vector<Rgb> decodeChannels(Mode m, const std::vector<int16_t>& pcm,
+                                size_t start, uint32_t fs);
+
+std::vector<Rgb> decodeSstv(const std::vector<int16_t>& pcm, uint32_t fs) {
+  // 通用 VIS 扫描：1200 起 + 7 位 + 1200 止，读出 VIS 码
+  const size_t ms30 = static_cast<size_t>(30.0 * fs / 1000.0);
+  const size_t ms300 = static_cast<size_t>(300.0 * fs / 1000.0);
+  if (pcm.size() < ms300 * 2 + ms30 * 9) return {};
+  for (size_t off = 0; off + ms300 * 2 + ms30 * 9 <= pcm.size(); off += ms30) {
+    if (std::abs(sniffHz(pcm, off, ms300, fs) - 1200.0) > 45.0) continue;
+    const size_t bit0 = off + ms300 + ms30;
+    uint8_t vis = 0;
+    bool ok = true;
+    for (int bit = 0; bit < 7 && ok; ++bit) {
+      const double hz = sniffHz(pcm, bit0 + static_cast<size_t>(bit) * ms30, ms30, fs);
+      if (std::abs(hz - 1300.0) <= 45.0) vis |= 1 << bit;
+      else if (std::abs(hz - 1100.0) > 45.0) ok = false;
+    }
+    if (!ok) continue;
+    if (std::abs(sniffHz(pcm, bit0 + 7 * ms30, ms300, fs) - 1200.0) > 45.0)
+      continue;
+    const auto mode = modeFromVis(vis);
+    if (!mode) return {};
+    const size_t start = bit0 + 7 * ms30 + ms300;
+    if (*mode == Mode::Robot36)
+      return decodeRobot36At(pcm, start, fs);  // 原实现按起点
+    // Martin / Robot72 解码：按段表逐通道鉴频（首版：通道级）
+    return decodeChannels(*mode, pcm, start, fs);
+  }
+  return {};
+}
+
+// Robot36 帧体解码（起点 = VIS 后第一字节；由 decodeSstv 定位）
+std::vector<Rgb> decodeRobot36At(const std::vector<int16_t>& pcm, size_t start,
+                                 uint32_t fs) {
   std::vector<Rgb> img;
-  const size_t start = findVis(pcm, fs);
-  if (start == 0 || start >= pcm.size()) return img;
 
   const size_t sync_n = static_cast<size_t>(std::llround(9.0 * fs / 1000.0));
   const size_t porch_n = static_cast<size_t>(std::llround(3.0 * fs / 1000.0));
@@ -244,5 +431,64 @@ std::vector<Rgb> decodeRobot36(const std::vector<int16_t>& pcm, uint32_t fs) {
   }
   return img;
 }
+
+// ---------------- Martin / Robot72 通道级解码 ----------------
+std::vector<Rgb> decodeChannels(Mode m, const std::vector<int16_t>& pcm,
+                                size_t start, uint32_t fs) {
+  const ModeSpec& sp = kSpec[static_cast<int>(m)];
+  const double scan_ms = m == Mode::Martin1   ? 146.432
+                         : m == Mode::Martin2 ? 73.216
+                                              : 88.0;
+  const size_t scan_n = static_cast<size_t>(std::llround(scan_ms * fs / 1000.0));
+  const size_t sync_n = static_cast<size_t>(
+      std::llround((m == Mode::Martin1 || m == Mode::Martin2 ? 4.862 : 9.0) * fs / 1000.0));
+  const size_t gap_n = static_cast<size_t>(std::llround(
+      (m == Mode::Martin1 || m == Mode::Martin2 ? 0.572 : 3.0) * fs / 1000.0));
+
+  std::vector<Rgb> img(static_cast<size_t>(sp.width) * sp.height);
+  std::vector<uint8_t> ch[3] = {
+      std::vector<uint8_t>(sp.width), std::vector<uint8_t>(sp.width),
+      std::vector<uint8_t>(sp.width)};
+
+  size_t pos = start;
+  for (int line = 0; line < sp.height; ++line) {
+    for (int c = 0; c < 3; ++c) {
+      pos += (c == 0) ? sync_n : gap_n;  // 行首 sync；通道间 sep/porch
+      if (m == Mode::Martin1 || m == Mode::Martin2) {
+        pos += (c == 0) ? 0 : gap_n;     // Martin：sep 后直接通道
+      } else {
+        pos += (c == 0) ? gap_n : sync_n + gap_n;  // Robot72：sync+porch
+      }
+      if (pos + scan_n > pcm.size()) return img;
+      const auto inst = demodulate(pcm, pos, scan_n, fs);
+      for (int x = 0; x < sp.width; ++x) {
+        const size_t c0 = static_cast<size_t>(x) * scan_n / sp.width;
+        const size_t c1 = static_cast<size_t>(x + 1) * scan_n / sp.width;
+        double f = 0; size_t cnt = 0;
+        for (size_t i = c0; i < c1 && i < inst.size(); ++i, ++cnt) f += inst[i];
+        ch[c][static_cast<size_t>(x)] = hzToLevel(cnt ? f / cnt : 1500.0);
+      }
+      pos += scan_n;
+    }
+    // 落图：Martin 通道序 G,B,R；Robot72 为 Y,R-Y,B-Y
+    for (int x = 0; x < sp.width; ++x) {
+      const size_t i = static_cast<size_t>(line) * sp.width + x;
+      if (m == Mode::Martin1 || m == Mode::Martin2) {
+        img[i] = {ch[2][static_cast<size_t>(x)], ch[0][static_cast<size_t>(x)],
+                  ch[1][static_cast<size_t>(x)]};
+      } else {
+        const int y = ch[0][static_cast<size_t>(x)];
+        const int r = y + (ch[1][static_cast<size_t>(x)] - 128) * 1.402;
+        const int b = y + (ch[2][static_cast<size_t>(x)] - 128) * 1.772;
+        const int g = (y - 0.299 * r - 0.114 * b) / 0.587;
+        img[i] = {static_cast<uint8_t>(std::clamp(r, 0, 255)),
+                  static_cast<uint8_t>(std::clamp(g, 0, 255)),
+                  static_cast<uint8_t>(std::clamp(b, 0, 255))};
+      }
+    }
+  }
+  return img;
+}
+
 
 }  // namespace radio::core::sstv
