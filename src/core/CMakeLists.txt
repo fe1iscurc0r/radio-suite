@@ -10,6 +10,7 @@ set(RADIO_CORE_SRC
   state.cpp
   rsba1_proto.cpp
   sstv.cpp
+  dtmf.cpp
   transport_mock.cpp)
 
 if(RADIO_SUITE_UDP)

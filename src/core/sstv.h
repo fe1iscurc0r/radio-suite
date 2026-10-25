@@ -22,6 +22,11 @@ struct Rgb {
 std::vector<int16_t> encodeRobot36(const std::vector<Rgb>& image320x240,
                                    uint32_t sample_rate = 44100);
 
+// Robot36 解码：PCM → 图像。返回空 = 未找到 VIS=8 帧头。
+// 与编码器构成回环（tests/test_sstv.cpp：encode→decode 像素级比对）
+std::vector<Rgb> decodeRobot36(const std::vector<int16_t>& pcm,
+                               uint32_t sample_rate = 44100);
+
 // 色度变换（供测试独立校验）
 uint8_t toLuma(uint8_t r, uint8_t g, uint8_t b);         // Y  (BT.470)
 uint8_t toChromaR(uint8_t r, uint8_t g, uint8_t b);      // R-Y (+128 截断)

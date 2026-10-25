@@ -185,6 +185,23 @@ std::vector<uint8_t> readRitFrame(bool dtx, uint8_t to, uint8_t from) {
   return buildFrame(to, from, body);
 }
 
+std::vector<uint8_t> readOffsetFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {0x0C};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> offsetFrame(uint32_t offset_hz, uint8_t to, uint8_t from) {
+  // 3B BCD（100Hz 分辨率，真机 2026-08-22 验证格式：600kHz → 00 60 00）
+  offset_hz /= 100;
+  const uint8_t b0 = static_cast<uint8_t>(((offset_hz / 10) % 10) << 4 |
+                                          (offset_hz % 10));
+  const uint8_t b1 = static_cast<uint8_t>(((offset_hz / 1000) % 10) << 4 |
+                                          ((offset_hz / 100) % 10));
+  const uint8_t b2 = static_cast<uint8_t>((offset_hz / 10000) % 10);
+  const uint8_t body[] = {0x0D, b0, b1, b2};
+  return buildFrame(to, from, body);
+}
+
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f) {
   if (f.cmd != kCmdReadFreq || f.payload.size() != 5) return std::nullopt;
   return bcdToFreq(f.payload);
@@ -241,6 +258,17 @@ std::optional<bool> parseRitResponse(const CivFrame& f, bool dtx) {
   if (f.cmd != kCmdRit || f.payload.size() != 2 || f.payload[0] != sub)
     return std::nullopt;
   return f.payload[1] != 0x00;
+}
+
+std::optional<uint32_t> parseOffsetResponse(const CivFrame& f) {
+  if (f.cmd != 0x0C || f.payload.size() != 3) return std::nullopt;
+  const auto nib = [](uint8_t b, int which) {
+    return which ? (b >> 4) : (b & 0x0F);
+  };
+  // b0=[1kHz|100Hz] b1=[100kHz|10kHz] b2=[0固定|1MHz]
+  return nib(f.payload[0], 1) * 1000ULL + nib(f.payload[0], 0) * 100ULL +
+         nib(f.payload[1], 1) * 100000ULL + nib(f.payload[1], 0) * 10000ULL +
+         nib(f.payload[2], 0) * 1000000ULL;
 }
 
 uint16_t aprsPasscode(const std::string& callsign) {

@@ -127,6 +127,24 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       }
       return true;
     }
+    case 0x0C: {  // 读中继频差（3B BCD）
+      const uint32_t hz100 = sim_.offset_hz / 100;
+      const uint8_t p[] = {static_cast<uint8_t>(((hz100 / 10) % 10) << 4 |
+                                                (hz100 % 10)),
+                           static_cast<uint8_t>(((hz100 / 1000) % 10) << 4 |
+                                                ((hz100 / 100) % 10)),
+                           static_cast<uint8_t>((hz100 / 10000) % 10)};
+      pushResponse(0x0C, p);
+      return true;
+    }
+    case 0x0D: {  // 写中继频差
+      if (parsed->payload.size() != 3) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      pushResponse(civ::kAck, {});
+      return true;
+    }
     case civ::kCmdRit: {
       if (parsed->payload.empty()) return true;
       const uint8_t sub = parsed->payload[0];

@@ -18,11 +18,14 @@ class SstvDialog : public QDialog {
  private slots:
   void onPickImage();
   void onGenerate();  // Robot36 编码 → .wav（44100Hz 16bit PCM）
+  void onDecode();    // 接收：从 .wav 解码 Robot36 → 显示/保存
 
  private:
   QLabel* preview_ = nullptr;
   QLabel* info_ = nullptr;
   QPushButton* gen_btn_ = nullptr;
+  QLabel* rx_view_ = nullptr;   // 接收显示
   QString image_path_;
-  QImage img_;  // 320×240 RGB888
+  QImage img_;      // 320×240 RGB888（发送）
+  QImage rx_img_;   // 接收解码结果
 };

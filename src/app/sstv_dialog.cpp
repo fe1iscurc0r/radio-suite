@@ -39,6 +39,71 @@ SstvDialog::SstvDialog(QWidget* parent) : QDialog(parent) {
   auto* close = new QPushButton("关闭", this);
   connect(close, &QPushButton::clicked, this, &QDialog::accept);
   root->addWidget(close, 0, Qt::AlignRight);
+
+  // ---- 接收：从 .wav 解码（实时监听 M2 随音频链；先支持文件回环） ----
+  auto* rx_head = new QLabel("接收（Robot36 解码）", this);
+  root->addWidget(rx_head);
+  auto* rx_row = new QHBoxLayout();
+  auto* dec_btn = new QPushButton("从 .wav 解码…", this);
+  connect(dec_btn, &QPushButton::clicked, this, &SstvDialog::onDecode);
+  rx_row->addWidget(dec_btn);
+  auto* save_btn = new QPushButton("保存图片…", this);
+  connect(save_btn, &QPushButton::clicked, this, [this] {
+    if (rx_img_.isNull()) return;
+    const QString p = QFileDialog::getSaveFileName(this, "保存", "sstv_rx.png",
+                                                   "PNG (*.png)");
+    if (!p.isEmpty()) rx_img_.save(p);
+  });
+  rx_row->addWidget(save_btn);
+  rx_row->addStretch(1);
+  root->addLayout(rx_row);
+  rx_view_ = new QLabel("（解码结果显示处）", this);
+  rx_view_->setAlignment(Qt::AlignCenter);
+  rx_view_->setMinimumHeight(160);
+  rx_view_->setStyleSheet("background:#10141c;");
+  root->addWidget(rx_view_, 1);
+}
+
+void SstvDialog::onDecode() {
+  const QString path = QFileDialog::getOpenFileName(this, "选择 SSTV .wav",
+                                                    {}, "WAV (*.wav)");
+  if (path.isEmpty()) return;
+  QFile f(path);
+  if (!f.open(QIODevice::ReadOnly)) {
+    rx_view_->setText("无法打开文件");
+    return;
+  }
+  const QByteArray all = f.readAll();
+  f.close();
+  // 简化 WAV 解析：44100/16bit/单声道，找 "data" 块
+  int data_off = all.indexOf("data");
+  if (data_off < 0) {
+    rx_view_->setText("非 WAV 文件（无 data 块）");
+    return;
+  }
+  const int32_t data_len =
+      (static_cast<uint8_t>(all[data_off + 4])) |
+      (static_cast<uint8_t>(all[data_off + 5]) << 8) |
+      (static_cast<uint8_t>(all[data_off + 6]) << 16) |
+      (static_cast<uint32_t>(static_cast<uint8_t>(all[data_off + 7])) << 24);
+  const int n = data_len / 2;
+  std::vector<int16_t> pcm(n);
+  std::memcpy(pcm.data(), all.constData() + data_off + 8, data_len);
+
+  const auto img = radio::core::sstv::decodeRobot36(pcm, 44100);
+  if (img.empty()) {
+    rx_view_->setText("未检出 Robot36 VIS 头（不是 SSTV 或时序不对）");
+    return;
+  }
+  rx_img_ = QImage(320, 240, QImage::Format_RGB888);
+  for (int y = 0; y < 240; ++y)
+    for (int x = 0; x < 320; ++x) {
+      const auto& p = img[static_cast<size_t>(y) * 320 + x];
+      rx_img_.setPixel(x, y, qRgb(p.r, p.g, p.b));
+    }
+  rx_view_->setPixmap(QPixmap::fromImage(
+      rx_img_.scaled(320, 240, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+  info_->setText(QString("解码完成：%1").arg(path.section('/', -1)));
 }
 
 void SstvDialog::onPickImage() {

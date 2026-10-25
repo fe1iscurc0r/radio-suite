@@ -35,6 +35,7 @@ struct RadioState {
   bool split = false;  // 0x0F 0x00/0x01（Split）
   bool rit = false;    // 0x21 0x01
   bool dtx = false;    // 0x21 0x02（ΔTX）
+  uint32_t offset_hz = 0;  // 中继频差（0x0C 读回；DUP± 时 TX=RX∓/±offset）
   uint64_t last_update_ms = 0;  // 最后一次字段变更的单调时钟
 
   bool operator==(const RadioState&) const = default;

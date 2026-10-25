@@ -138,6 +138,12 @@ std::vector<uint8_t> ritFrame(bool on, bool dtx = false,
 std::vector<uint8_t> readRitFrame(bool dtx = false,
                                   uint8_t to = kIc705Addr,
                                   uint8_t from = kDefaultControllerAddr);
+// 中继频差（0x0C 读 / 0x0D 写，3B BCD，100Hz 分辨率；DUP± 时 TX=RX∓/±offset）
+std::vector<uint8_t> readOffsetFrame(uint8_t to = kIc705Addr,
+                                     uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> offsetFrame(uint32_t offset_hz,
+                                 uint8_t to = kIc705Addr,
+                                 uint8_t from = kDefaultControllerAddr);
 
 // ---- 应答解析（输入 parseFrame 的产物；cmd/子命令/长度不符返回 nullopt）----
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f);   // cmd=0x03 + 5B BCD
@@ -159,6 +165,8 @@ std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub);  // cmd=0x
 std::optional<int> parseDuplexResponse(const CivFrame& f);      // cmd=0x0F + [val]（simplex 读回 0x00）
 // 0x21 族应答：payload=[sub, on/off]
 std::optional<bool> parseRitResponse(const CivFrame& f, bool dtx);
+// 0x0C 应答：payload=3B BCD（b0=[1kHz|100Hz] b1=[100kHz|10kHz] b2=[0|1MHz]）
+std::optional<uint32_t> parseOffsetResponse(const CivFrame& f);
 inline bool isAck(const CivFrame& f) { return f.cmd == kAck; }
 inline bool isNak(const CivFrame& f) { return f.cmd == kNak; }
 

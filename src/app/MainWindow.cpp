@@ -15,6 +15,7 @@
 #include "app/aprs_panel.h"
 #include "app/connect_dialog.h"
 #include "app/dial_widget.h"
+#include "app/dtmf_dialog.h"
 #include "app/meter_widgets.h"
 #include "app/sstv_dialog.h"
 
@@ -137,6 +138,15 @@ void MainWindow::buildUi() {
   mode_label_->setAlignment(Qt::AlignCenter);
   mode_label_->setMinimumWidth(96);
   lcd_lay->addWidget(mode_label_);
+  // 中继双频副显示：DUP± 时显示真实 TX 频率（offset 0x0C 读回，不猜惯例值）
+  tx_label_ = new QLabel("", lcd);
+  QFont txf = tx_label_->font();
+  txf.setPointSize(10);
+  tx_label_->setFont(txf);
+  tx_label_->setStyleSheet("color:#ff8a65; background: transparent;");
+  tx_label_->setAlignment(Qt::AlignCenter);
+  tx_label_->setMinimumWidth(150);
+  lcd_lay->addWidget(tx_label_);
   top->addWidget(lcd, 1);
 
   ptt_btn_ = new QPushButton("PTT", central);
@@ -220,11 +230,20 @@ void MainWindow::buildUi() {
     return b;
   };
   aprs_big_btn_ = mk_big("APRS\n台流", QColor(0x00, 0x69, 0x7c));
+  aprs_big_btn_->setToolTip("APRS-IS 客户端：台站聚合表 + 信标/消息上行");
   sstv_big_btn_ = mk_big("SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
+  sstv_big_btn_->setToolTip("慢扫描电视：图片→Robot36 音频（发送/接收解码）");
+  dtmf_big_btn_ = mk_big("DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
+  dtmf_big_btn_->setToolTip("双音多频小键盘（ITU Q.23，生成 .wav）");
   side->addWidget(aprs_big_btn_);
   side->addWidget(sstv_big_btn_);
+  side->addWidget(dtmf_big_btn_);
   connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
     SstvDialog dlg(this);
+    dlg.exec();
+  });
+  connect(dtmf_big_btn_, &QPushButton::clicked, this, [this] {
+    DtmfDialog dlg(this);
     dlg.exec();
   });
 
@@ -458,6 +477,24 @@ void MainWindow::refreshState() {
   mode_label_->setText(QString("%1/%2").arg(radio::core::civ::modeName(s.mode)).arg(s.filter));
   smeter_->setDbm(s.smeter_dbm);
   poswr_->setPoSwr(s.po_w, s.swr);
+  // 中继双频：DUP−→TX=RX−offset，DUP+→TX=RX+offset（offset 电台回读）
+  if (s.duplex_raw == 0x11 || s.duplex_raw == 0x12) {
+    const int64_t off = static_cast<int64_t>(s.offset_hz);
+    const int64_t tx = s.duplex_raw == 0x11
+                           ? static_cast<int64_t>(s.freq_hz) - off
+                           : static_cast<int64_t>(s.freq_hz) + off;
+    tx_label_->setText(QString("TX %1 %2 MHz")
+                           .arg(s.duplex_raw == 0x11 ? "▼" : "▲")
+                           .arg(tx / 1e6, 0, 'f', 6));
+    tx_label_->setToolTip(QString("中继双频：接收 %1 MHz（显示），发射 %2 MHz（DUP%3，频差 %4 kHz）")
+                              .arg(s.freq_hz / 1e6, 0, 'f', 6)
+                              .arg(tx / 1e6, 0, 'f', 6)
+                              .arg(s.duplex_raw == 0x11 ? "−" : "+")
+                              .arg(s.offset_hz / 1000.0, 0, 'f', 1));
+  } else {
+    tx_label_->setText("");
+    tx_label_->setToolTip("同频（simplex）：收发同频");
+  }
   syncTogglesFromState(s);
 }
 
@@ -614,6 +651,17 @@ void MainWindow::onLogQso() {
   q.day = utc.date().day();
   q.time_hhmm = utc.time().toString("hhmm");
   q.mode = radio::core::civ::modeName(s.mode);
+  // 中继通联：备注写入上下行双频（HamLog 表 Freq 按惯例记下行/接收频率）
+  const int64_t off = static_cast<int64_t>(s.offset_hz);
+  if (s.duplex_raw == 0x11 || s.duplex_raw == 0x12) {
+    const int64_t tx = s.duplex_raw == 0x11
+                           ? static_cast<int64_t>(s.freq_hz) - off
+                           : static_cast<int64_t>(s.freq_hz) + off;
+    q.remarks = QString("中继 DUP%1：下行 %2 / 上行 TX %3 MHz")
+                    .arg(s.duplex_raw == 0x11 ? "−" : "+")
+                    .arg(s.freq_hz / 1e6, 0, 'f', 6)
+                    .arg(tx / 1e6, 0, 'f', 6);
+  }
   if (hamlog_.insert(q)) {
     flashStatus(QString("已写入 HamLog：%1 @ %2 MHz %3 %4Z")
                     .arg(call)

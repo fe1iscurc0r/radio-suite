@@ -34,6 +34,7 @@ class MockTransport final : public ICivTransport {
     bool split = false;      // 0x0F 另一值域：0x00/0x01
     bool rit = false;        // 0x21 0x01
     bool dtx = false;        // 0x21 0x02（ΔTX）
+    uint32_t offset_hz = 600'000;  // 中继频差（0x0C/0x0D；默认 2m 惯例 600k）
   };
 
   explicit MockTransport(SimConfig cfg = {});

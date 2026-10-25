@@ -76,6 +76,8 @@ class MainWindow : public QMainWindow {
   QPushButton* split_btn_ = nullptr;
   DialWidget* dial_ = nullptr;          // 主调谐旋钮（原厂 M-Tune 件）
   QComboBox* mem_slot_ = nullptr;       // 本地记忆槽（电台内存信道 M3 接）
+  QLabel* tx_label_ = nullptr;          // 中继双频副显示（DUP± 时 TX=RX∓/±offset）
+  QPushButton* dtmf_big_btn_ = nullptr;
   std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
   std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，回读驱动）
   QPushButton* att_btn_ = nullptr;       // ATT 20dB（回读驱动）

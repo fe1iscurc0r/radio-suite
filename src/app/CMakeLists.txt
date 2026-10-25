@@ -17,6 +17,7 @@ set(APP_SRC
   dial_widget.cpp
   connect_dialog.cpp
   sstv_dialog.cpp
+  dtmf_dialog.cpp
   aprs_panel.cpp)
 
 if(Qt6HttpServer_FOUND)
