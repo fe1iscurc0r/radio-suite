@@ -28,7 +28,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev libgl1-mesa-dev  # Qt6::Network 供 UDP 真机链路编译
+          # qt6-base-dev: Core/Gui/Widgets/Network/Sql；libgl1-mesa-dev: OpenGL
+          # libasound2-dev: RtAudio(ALSA)；qt6-websockets-dev: HttpServer 依赖
+          sudo apt-get install -y qt6-base-dev qt6-websockets-dev libgl1-mesa-dev \
+            libasound2-dev
 
       - name: Install Qt (Windows)
         if: matrix.os == 'windows-latest'

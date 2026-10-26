@@ -37,7 +37,10 @@ class MockTransport final : public ICivTransport {
     uint32_t offset_hz = 600'000;  // 中继频差（0x0C/0x0D；默认 2m 惯例 600k）
   };
 
-  explicit MockTransport(SimConfig cfg = {});
+  // 注：默认实参 `SimConfig cfg = {}` 在 GCC/Clang 下不合法
+  // （类内默认成员初始化器在类外使用），故用重载而非默认实参。
+  MockTransport();
+  explicit MockTransport(SimConfig cfg);
 
   bool open(std::string* error) override;
   void close() override;

@@ -12,10 +12,15 @@ target_include_directories(radio_audio PUBLIC
   "${CMAKE_SOURCE_DIR}/apps/desktop"
   "${CMAKE_SOURCE_DIR}/vendor/rtaudio")
 
-# WASAPI（Windows 默认）；CI Linux 无 ASIO/JACK 依赖
+# 平台后端：Windows=WASAPI / Linux=ALSA / macOS=CoreAudio
+# （此前非 Windows 一律编 ALSA，macOS 因缺 asoundlib.h 构建失败——CI 实证）
 if(WIN32)
   target_compile_definitions(radio_audio PRIVATE __WINDOWS_WASAPI__)
   target_link_libraries(radio_audio PUBLIC ole32)
+elseif(APPLE)
+  target_compile_definitions(radio_audio PRIVATE __MACOSX__)
+  target_link_libraries(radio_audio PUBLIC
+    "-framework CoreAudio" "-framework AudioToolbox" "-framework AudioUnit")
 else()
   target_compile_definitions(radio_audio PRIVATE __LINUX_ALSA__)
   target_link_libraries(radio_audio PUBLIC asound pthread)

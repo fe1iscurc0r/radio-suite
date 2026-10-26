@@ -15,6 +15,8 @@ std::vector<uint8_t> ICivTransport::frame(uint8_t to, uint8_t from, uint8_t cmd,
   return civ::buildFrame(to, from, body);
 }
 
+MockTransport::MockTransport() : MockTransport(SimConfig{}) {}
+
 MockTransport::MockTransport(SimConfig cfg) : sim_(cfg) {}
 
 bool MockTransport::open(std::string*) {
