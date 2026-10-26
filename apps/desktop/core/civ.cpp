@@ -132,7 +132,7 @@ std::vector<uint8_t> setModeFrame(Mode mode, int filter, uint8_t to, uint8_t fro
 }
 
 std::vector<uint8_t> pttFrame(bool tx, uint8_t to, uint8_t from) {
-  const uint8_t body[] = {kCmdPtt, 0x00, tx ? 0x01 : 0x00};
+  const uint8_t body[] = {kCmdPtt, 0x00, static_cast<uint8_t>(tx ? 0x01 : 0x00)};
   return buildFrame(to, from, body);
 }
 
