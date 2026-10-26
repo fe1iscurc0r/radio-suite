@@ -98,6 +98,11 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   （`gh api` 或仓外脚本：create blob → create tree(base_tree) → create commit
   → PATCH refs/heads/<branch>）。**token 只经环境变量**（`GH_TOKEN` /
   `GITHUB_TOKEN`），不写进仓库、不写进 git config。
+- ⚠️ **本地与远端末条 commit 的 sha 不同**（内容等价）：因 github.com:443 不通，
+  最后几次是用 REST API 推的，API 会重建 commit 对象（作者/时间戳不同）。
+  接手人若在本地 `git push`，会 non-fast-forward。**先同步再推**：
+  `git fetch origin && git reset --hard origin/main`（网络通时），
+  或直接 clone 远端新目录。
 - 跨平台可移植性（CI 实证的坑）：① audio 平台后端必须三分支
   （WIN32=WASAPI / APPLE=`__MACOSX__`+CoreAudio 框架 / else=ALSA），
   非 Windows 一律编 ALSA 会让 macOS 缺 asoundlib.h；② `uint8_t arr[] = {cond ? a : b}`
