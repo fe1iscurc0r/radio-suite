@@ -51,7 +51,8 @@ $ grep -c "未文档化" docs/engine/rigplane-api-notes.md
 - **E 节 ✅**（`b3dbb7e`）：`docs/engine/268-delta.md`——268 段落级修正清单
   （M1 自研协议段作废→274 四指标；M0/M3/M4/M5 实况对照；SafetyGate 升级为
   纵深防御二层）+ 引擎依赖声明。
-- 上游 issue 文本定稿 ✅：`docs/upstream-rigplane-issue.md`（可粘贴正文）。
+- 上游 issue 已提交 ✅：**#4352**（2026-10-26，b20 与 main 双版本复现；
+  正文与复核证据存档 `docs/upstream-rigplane-issue.md`）。
 - C（engine_client 正式化）/ D（音频路径裁决）：等 B 解除（上游修 rigctld
   后端 unselected 轮询，或 rigplane 侧接受配置跳过）后执行。
 

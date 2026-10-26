@@ -102,8 +102,10 @@ rigctld 后端无法满足 IC-705 profile 的 unselected 观测** → initial st
 acquisition 永不完成 → listener 永不开放（web_startup 的 gate 语义）。
 
 **这是 rigplane 的空缺，不是我们的缺陷**：IC-705 是单接收机，unselected 字段
-在 rigctld 协议下本来就没有可靠的 hamlib 命令映射。处置：提 issue/PR 给上游
-（工单硬边界：不改其仓）。
+在 rigctld 协议下本来就没有可靠的 hamlib 命令映射。已提 issue **#4352**
+（2026-10-26；b20 与 main @ `134f8446` 双版本复现，10s 降级释放 62/65 条后只剩
+split + unselected 三条被判 critical 而 gate 永不放行；证据见
+`docs/upstream-rigplane-issue.md`）。
 
 **四指标最终判定（无真机）**：1/2/3 需 radio ready（两后端均不可达，见 §1+§2B）；
 4 需 sidecar 先起来。**全部不可达，spike 端到端测量正式搁置**——除非：

@@ -58,9 +58,13 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 
 ## 5. 未完成 / 待办（按优先级）
 
-1. **rigplane 上游 issue**（材料已定稿：`docs/upstream-rigplane-issue.md`）——
-   rigctld 后端 `get_freq` 只支持 MAIN，而 IC-705 profile 声明 unselected 可轮询
-   → initial state acquisition 永不完成 → **listener 永不开放**（45s 实证）。
+1. **rigplane 上游 issue** → **已提交 #4352**（2026-10-26，
+   https://github.com/rigplane/rigplane-core/issues/4352）。提交前在 3.0.0b20
+   与 main @ `134f8446` 双版本实测复现：65 条待观测字段里 10s 降级释放 62 条，
+   只剩 `global.tx_state.split` + `receiver.main.unselected.freq_mode.*` 被判
+   safety-critical；根因是 `startup_critical_path` 只按字段名判 critical（不区分
+   slot），而 rigctld 适配器从不读这三条 → gate 永不放行（45s `/healthz` 全程
+   refused）。正文与复核证据：`docs/upstream-rigplane-issue.md`。
    上游修好后 → WO-274 的 C（engine_client 正式化）/ D（音频路径裁决）可开工。
 2. **WO-274 阶段二 PWA**（apps/web，消费本仓总线；主路 E1′，退路 E3 Kotlin）——**待师傅点头**。
 3. **WASAPI 采集丢样**（44–57% 样本预算）——诊断与三条处置见
