@@ -67,8 +67,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
    `docs/notes/audio-capture-wasp-diagnosis.md`；最省事：录音上限改按样本计数。
 4. **原厂件剩余**：CW Keyer / Set Mode 深设置树 / 双 VFO(SUB 带) / Memory Channel 完整版。
 5. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
-6. **GitHub 推送**：本仓**尚未推到 GitHub**（需 GH_TOKEN）。目标仓
-   `fe1iscurc0r/radio-suite`（工单 268 指定）。`gh` 未登录、环境无 GH_TOKEN。
+6. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，
+   public/AGPL-3.0，CI 三平台全绿；详见 §6「GitHub 与 CI 现状」）。
 
 ## 6. 构建与验证（本机环境）
 
@@ -86,6 +86,24 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
+
+### GitHub 与 CI 现状（2026-10-26 收工）
+
+- 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
+  **AGPL-3.0**），分支 `main`（默认）+ `feat/wo273-radio-competitive`。
+- **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
+  macOS Qt —— run `40249155889` success。
+- 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
+  两条路：① git push 成功时直接用；② 不通时用 REST API 推
+  （`gh api` 或仓外脚本：create blob → create tree(base_tree) → create commit
+  → PATCH refs/heads/<branch>）。**token 只经环境变量**（`GH_TOKEN` /
+  `GITHUB_TOKEN`），不写进仓库、不写进 git config。
+- 跨平台可移植性（CI 实证的坑）：① audio 平台后端必须三分支
+  （WIN32=WASAPI / APPLE=`__MACOSX__`+CoreAudio 框架 / else=ALSA），
+  非 Windows 一律编 ALSA 会让 macOS 缺 asoundlib.h；② `uint8_t arr[] = {cond ? a : b}`
+  在 Clang 报 narrowing，须 `static_cast<uint8_t>`；③ 类内默认成员初始化器
+  （`SimConfig`）不可作类外默认实参，须重载。
+
 
 ## 7. 已知坑（省接手人时间）
 
