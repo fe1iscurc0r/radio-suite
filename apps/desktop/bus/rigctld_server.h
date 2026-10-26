@@ -27,6 +27,7 @@ class RigctldServer : public QObject {
   RigctldServer(radio::app::RadioSession& session, QObject* parent = nullptr);
 
   bool start(const Config& cfg, QString* error);
+  uint16_t port() const { return server_ ? server_->serverPort() : 0; }
 
  private slots:
   void onNewConnection();

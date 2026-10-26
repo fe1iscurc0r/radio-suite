@@ -10,6 +10,8 @@
 #include <QWidget>
 #include <cstdint>
 
+#include "apps/spike/scope_wire.h"
+
 class QLabel;
 class QPushButton;
 class QVBoxLayout;
@@ -21,24 +23,10 @@ class RadioSession;  // 仅瀑布控件复用；spike 不走自研协议
 
 namespace radio::spike {
 
-// rigplane scope wire（web/protocol.py:56-79，docs/engine/rigplane-api-notes.md §2.1）
-struct ScopeWireFrame {
-  uint8_t receiver = 0;
-  uint8_t mode = 0;
-  uint32_t start_freq_hz = 0;
-  uint32_t end_freq_hz = 0;
-  uint16_t sequence = 0;
-  bool out_of_range = false;
-  std::vector<uint8_t> pixels;
-};
-
 class EngineSpike : public QWidget {
   Q_OBJECT
  public:
   explicit EngineSpike(const QString& sidecar_host, QWidget* parent = nullptr);
-
-  // 16B 头解码（合成帧单测也用）
-  static bool decodeScopeFrame(const QByteArray& binary, ScopeWireFrame* out);
 
  private slots:
   void onScopeConnected();

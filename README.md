@@ -12,7 +12,7 @@ QSO 日志。**独立 AGPL-3.0 项目，可被 [scratchpad](https://github.com/f
 | 形态 | 用法 | 说明 |
 |---|---|---|
 | 独立应用 | `radio-suite`（Qt Widgets 原生窗口） | 调谐 / 频谱 / PTT / 日志 |
-| 可嵌入 | `radio-suite --headless --bus 8765`（**M5**） | 本机 HTTP/WS 总线，宿主只作消费者 |
+| 可嵌入 | `radio-suite --headless --bus 8765`（**M5 第一片**） | 本机只读 HTTP 总线，宿主只作消费者；无 WebSocket |
 
 ## 构建
 
@@ -27,8 +27,8 @@ cmake --build build --config Release
 ctest --test-dir build --build-config Release --output-on-failure
 ./build/apps/desktop/app/radio-suite --mock
 
-# Linux（headless，GUI=OFF 时零 Qt 依赖，适合云服/CI）
-sudo apt install -y cmake ninja-build g++   # CI 还需 qt6-base-dev（GUI=ON 时）
+# Linux（headless：不编 Qt Widgets，但 UDP/CI-V/测试仍需 Qt6，音频需 ALSA）
+sudo apt install -y cmake ninja-build g++ qt6-base-dev libasound2-dev
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF
 cmake --build build -j
 ctest --test-dir build --output-on-failure
@@ -45,8 +45,8 @@ ctest --test-dir build --output-on-failure
 | `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
 | `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布 |
 | `apps/desktop/audio` | — | M2 | RtAudio 输入 |
-| `apps/desktop/logbook` | — | M4 | QtSql/ADIF/DXCC |
-| `apps/desktop/bus` | — | M5 | `--headless --bus` HTTP/WS |
+| `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
+| `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |
 
 ## 协议事实基准
 

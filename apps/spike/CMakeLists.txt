@@ -6,7 +6,8 @@ set(CMAKE_AUTOMOC ON)
 
 add_executable(engine-spike
   main_spike.cpp
-  engine_spike.cpp)
+  engine_spike.cpp
+  scope_wire.cpp)
 
 target_link_libraries(engine-spike PRIVATE
   Qt6::Widgets

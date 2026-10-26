@@ -1,15 +1,15 @@
-# radio-suite 交接说明（2026-10-25 收工时状态）
+# radio-suite 交接说明（2026-10-26 更新）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐 + 两条生态融合（hamlog / APRS）+ 引擎化准备（WO-274），
-> 56/56 测试全绿；真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
+> 69/69 测试全绿；真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
 > 接手人先读本文件 + `docs/WO-274-engine-switch.md` + `docs/WO-273-radio-competitive.md`。
 
 ## 1. 仓库与位置
 
 | 项 | 值 |
 |---|---|
-| 工作区 | `D:/my git/radio-suite`（**新仓**，AGPL-3.0，31 个提交，工作树干净） |
+| 工作区 | `D:/my git/radio-suite`（**独立仓**，AGPL-3.0-or-later） |
 | 兄弟仓 | `D:/my git/_rsba1-core_sync` = 本仓 `libs/protocol/rsba1-core` 的来源（MIT，**旧仓，准备与 rigplane 合并**） |
 | 上游素材 | `D:/my git/RS-BA1`（原厂定义文件+手册）、`D:/my git/rs-ba1-reverse`（逆向文档/CHM 提取） |
 | 原版 HamLog 源码 | `C:/Users/ASUS/Desktop/HamLog/programs/R1.0.0/`（功能对照基准） |
@@ -23,7 +23,7 @@ radio-suite/
 ├── apps/spike/                                   # WO-274 rigplane 引擎 spike（默认不编）
 ├── libs/dsp/dsp/                                 # FFT/瀑布（双端共用）
 ├── libs/protocol/rsba1-core/                     # MIT 跟随副本（subtree 同步）
-├── tests/ (Catch2, 56 用例)  docs/  packaging/  tools/
+├── tests/ (Catch2, 69 用例)  docs/  packaging/  tools/
 ```
 
 include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀不变）。
@@ -42,18 +42,18 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | 域 | 状态 | 证据 |
 |---|---|---|
 | CI-V 协议 | ✅ 与 Python 参考**逐字节互锁** | tests `[civ]`+fixtures（22 个由参考实现生成） |
-| RS-BA1 V2 UDP | ✅ 协议层+传输层（登录/鉴权/0xA8/ConnectTrans/重传重排） | tests `[rsba1]`；真机未验（搁置） |
-| rigctld 服务器 | ✅ 过 rigplane **全部轮询命令**（实测 10 条全对） | `src/bus/rigctld_server.cpp` |
-| HTTP 总线 | ✅ curl 验收 `/api/state` `/api/spectrum` + 演示页 | `src/bus/bus_server.cpp` |
-| 安全门禁 | ✅ PTT 二次确认 + 10min 自动回 RX + **非业余段拒绝发射**（TX 中调谐也拦） | tests `[safety]` + UIA 实测 |
-| 频谱/瀑布 | ✅ OpenGL 纹理滚屏 + 谱线（**上谱下瀑分区**）+ 半圆指针 S 表 + Po/SWR 表 | 截图 `docs/screenshots/` |
+| RS-BA1 V2 UDP | ✅ 控制协议+传输层（登录/鉴权/0xA8/ConnectTrans/重传重排）；50003 音频有包级实现但未接 app | tests `[rsba1]`/`[audio]`；真机未验（搁置） |
+| rigctld 服务器 | ✅ 过 rigplane **全部轮询命令** | 真实 loopback TCP 测试 `[rigctld]` |
+| HTTP 总线 | ✅ `/api/state` `/api/spectrum` + 演示页；只有 HTTP，无 WS/控制 POST | 真实 HTTP 测试 `[bus]`（含 token/绑定门禁） |
+| 安全门禁 | ✅ PTT 二次确认 + 10min 自动回 RX + **非业余段拒绝发射**（TX 中调谐也拦） | tests `[safety]` + `[session][ptt]` 帧序列 |
+| 频谱/瀑布 | ✅ OpenGL 纹理滚屏 + 谱线（**上谱下瀑分区**）+ 半圆指针 S 表 + Po/SWR 表；**当前谱源为 SignalSynth 合成信号，不是 RF/音频/50003** | 截图 `docs/screenshots/` + `SignalSynth` 调用点 |
 | 频率/模式/开关 | ✅ 频率/模式/滤波/RIT/ΔTX/Split/ATT/NB/NR/NOTCH/VOX/PAMP/AGC/DUP | 对照原厂 `IC-705.ini` 全清单 |
 | 原厂件 | ✅ 调谐旋钮、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory | 原厂 CHM 清单逐项对照 |
 | SSTV | ✅ 8 制式编解码（Robot36/72 + Martin M1/M2）+ VoX 校准头 + **编解码回环自校验** | tests `[sstv]`(31 断言) |
 | DTMF | ✅ 16 键编解码 + 回环 | tests `[dtmf]` |
 | APRS-IS | ✅ 台站聚合表 + 信标/消息上行 + 通行码 | 实测连 china.aprs2.net（308 台/7805 包） |
-| HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 本机真实 Log.db 读写 |
-| 音频 | ✅ 输出（AudioOut，SSTV 一键发射）+ 输入（AudioIn，麦克风） | 冒烟实测；WASAPI 丢样问题见 §7 |
+| HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
+| 音频 | ✅ 本机输出（AudioOut，SSTV/Voice Memory）+ 输入（AudioIn，麦克风）；≠ 已接 UDP 50003 | 本机冒烟；WASAPI 丢样问题见 §7 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 ## 5. 未完成 / 待办（按优先级）
@@ -76,7 +76,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 56/56
+cmd //c "D:\tmp\rs-build.bat test"        # 69/69
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -85,6 +85,10 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
+- 69 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+  logbook 临时 SQLite，以及直接调用生产 `scope_wire.*` 的 spike 测试。
+  SSTV/Voice Memory 已统一走 `beginScriptedTx/endScriptedTx`；旧“双击收尾”经
+  受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
 
 ### GitHub 与 CI 现状（2026-10-26 收工）
@@ -92,17 +96,20 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
   **AGPL-3.0**），分支 `main`（默认）+ `feat/wo273-radio-competitive`。
 - **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
-  macOS Qt —— run `40249155889` success。
+  macOS Qt —— 2026-10-26 复核 main run `40250706139` success。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
   两条路：① git push 成功时直接用；② 不通时用 REST API 推
   （`gh api` 或仓外脚本：create blob → create tree(base_tree) → create commit
-  → PATCH refs/heads/<branch>）。**token 只经环境变量**（`GH_TOKEN` /
-  `GITHUB_TOKEN`），不写进仓库、不写进 git config。
-- ⚠️ **本地与远端末条 commit 的 sha 不同**（内容等价）：因 github.com:443 不通，
-  最后几次是用 REST API 推的，API 会重建 commit 对象（作者/时间戳不同）。
-  接手人若在本地 `git push`，会 non-fast-forward。**先同步再推**：
-  `git fetch origin && git reset --hard origin/main`（网络通时），
-  或直接 clone 远端新目录。
+  → PATCH refs/heads/<branch>）。**REST 内容必须从 `git cat-file blob <sha>`
+  取原始字节并显式 `encoding=base64`，不可读 CRLF 工作树冒充 blob**。
+  **token 只经环境变量**（`GH_TOKEN` / `GITHUB_TOKEN`），不写仓库或 git config。
+  远端 main 的 `apps/desktop/audio/CMakeLists.txt` 与
+  `apps/desktop/core/transport_mock.h` 两个 blob 曾是 CRLF；交付分支统一用本地
+  LF blob 建树，PR 合并后自然清偿。
+- ⚠️ **本地与远端末条 commit 的 sha 不同**（忽略行尾后内容等价）：因
+  github.com:443 不通，最后几次用 REST API 重建了 commit 对象。接手人若直接
+  `git push` 会 non-fast-forward。先逐 blob 核对基线，再从确认后的基线开新分支
+  交付；不要为对齐 sha 丢弃未提交工作，也不要直推/强推 main。
 - 跨平台可移植性（CI 实证的坑）：① audio 平台后端必须三分支
   （WIN32=WASAPI / APPLE=`__MACOSX__`+CoreAudio 框架 / else=ALSA），
   非 Windows 一律编 ALSA 会让 macOS 缺 asoundlib.h；② `uint8_t arr[] = {cond ? a : b}`

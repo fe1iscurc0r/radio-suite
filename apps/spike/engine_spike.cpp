@@ -12,24 +12,6 @@
 
 namespace radio::spike {
 
-bool EngineSpike::decodeScopeFrame(const QByteArray& binary, ScopeWireFrame* out) {
-  if (binary.size() < 16) return false;
-  const auto* d = reinterpret_cast<const uint8_t*>(binary.constData());
-  if (d[0] != 0x01) return false;  // MSG_TYPE_SCOPE
-  out->receiver = d[1];
-  out->mode = d[2];
-  out->start_freq_hz = uint32_t(d[3]) | (uint32_t(d[4]) << 8) |
-                       (uint32_t(d[5]) << 16) | (uint32_t(d[6]) << 24);
-  out->end_freq_hz = uint32_t(d[7]) | (uint32_t(d[8]) << 8) |
-                     (uint32_t(d[9]) << 16) | (uint32_t(d[10]) << 24);
-  out->sequence = uint16_t(d[11]) | (uint16_t(d[12]) << 8);
-  out->out_of_range = (d[13] & 0x01) != 0;
-  const int pixels = int(d[14]) | (int(d[15]) << 8);
-  if (binary.size() < 16 + pixels) return false;
-  out->pixels.assign(d + 16, d + 16 + pixels);
-  return true;
-}
-
 EngineSpike::EngineSpike(const QString& sidecar_host, QWidget* parent)
     : QWidget(parent), host_(sidecar_host) {
   auto* root = new QVBoxLayout(this);
@@ -142,9 +124,8 @@ void EngineSpike::onScopeBinary(const QByteArray& msg) {
 
 void EngineSpike::onWsConnected() {
   // 订阅状态流（cmd envelope；rigplane 首条 /ws 为 primary）
-  ws_.sendTextMessage(
-      QStringLiteral("{\"type\":\"cmd\",\"id\":\"sub1\",\"name\":\"subscribe\","
-                     "\"params\":{}}"));
+  ws_.sendTextMessage(QString::fromUtf8(
+      makeCommandEnvelope("sub1", "subscribe", QByteArrayLiteral("{}"))));
 }
 
 void EngineSpike::onWsText(const QString& msg) {
@@ -173,22 +154,19 @@ void EngineSpike::onAudioBinary(const QByteArray& msg) {
 
 void EngineSpike::onTuneClicked() {
   if (!ws_.isValid()) return;
-  ws_.sendTextMessage(
-      QStringLiteral("{\"type\":\"cmd\",\"id\":\"t1\",\"name\":\"set_freq\","
-                     "\"params\":{\"freq\":14100000,\"receiver\":0}}"));
+  ws_.sendTextMessage(QString::fromUtf8(makeCommandEnvelope(
+      "t1", "set_freq", QByteArrayLiteral("{\"freq\":14100000,\"receiver\":0}"))));
 }
 
 void EngineSpike::onPttClicked() {
   if (!ws_.isValid()) return;
   ptt_sent_ms_ = QDateTime::currentMSecsSinceEpoch();
-  ws_.sendTextMessage(
-      QStringLiteral("{\"type\":\"cmd\",\"id\":\"p1\",\"name\":\"ptt\","
-                     "\"params\":{\"state\":true}}"));
+  ws_.sendTextMessage(QString::fromUtf8(
+      makeCommandEnvelope("p1", "ptt", QByteArrayLiteral("{\"state\":true}"))));
   // 5 秒后自动回 RX（对齐本仓 SafetyGate 语义）
   QTimer::singleShot(5000, this, [this] {
-    ws_.sendTextMessage(QStringLiteral(
-        "{\"type\":\"cmd\",\"id\":\"p2\",\"name\":\"ptt\","
-        "\"params\":{\"state\":false}}"));
+    ws_.sendTextMessage(QString::fromUtf8(
+        makeCommandEnvelope("p2", "ptt", QByteArrayLiteral("{\"state\":false}"))));
   });
 }
 

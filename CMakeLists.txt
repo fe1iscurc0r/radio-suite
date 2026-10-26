@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_GUI "构建 Qt6 GUI 应用 (src/app)。headless/CI 关掉可零 Qt 编译 core+dsp" ON)
+option(BUILD_GUI "构建 Qt6 Widgets 应用；OFF 仍构建需 Qt6 Core/Network 的 core 与测试" ON)
 option(RADIO_SUITE_BUILD_TESTS "构建 Catch2 单元测试" ON)
 option(BUILD_ENGINE_SPIKE "构建 WO-274 rigplane 引擎 spike（需 Qt6 WebSockets）" OFF)
 

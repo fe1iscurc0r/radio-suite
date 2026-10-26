@@ -27,10 +27,12 @@ class RadioSession : public QObject {
   void stop();
 
   core::RadioStateStore& store() { return store_; }
-  core::SafetyGate& gate() { return gate_; }
+  const core::SafetyGate& gate() const { return gate_; }
 
   // ---- UI/总线命令（唯一出口，禁止绕过）----
   void pttButtonPressed();          // PTT 键按下：Rx→待确认→确认进入 Tx→再按回 Rx
+  bool beginScriptedTx();           // 一键发射：一次确认即进入 TX，并实际发送 PTT ON
+  void endScriptedTx();             // 播放结束/失败均回 RX；重复调用不重复发帧
   bool tuneTo(uint64_t hz);         // 设频（接收按宽 RX 范围门禁）
   bool tuneBy(int64_t delta_hz);    // 步进
   void setMode(core::civ::Mode m);

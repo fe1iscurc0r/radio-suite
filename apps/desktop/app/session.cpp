@@ -176,6 +176,34 @@ void RadioSession::pttButtonPressed() {
   emit pttPhaseChanged(static_cast<int>(last_phase_));
 }
 
+bool RadioSession::beginScriptedTx() {
+  const uint64_t now = nowMs();
+  if (gate_.phase() != core::PttPhase::Tx) {
+    if (!gate_.requestTx(now) || !gate_.confirmTx(now)) return false;
+    const uint64_t hz = store_.snapshot().freq_hz;
+    if (!core::SafetyGate::authorizeTx(hz)) {
+      gate_.requestRx(now);
+      last_phase_ = gate_.phase();
+      emit pttPhaseChanged(static_cast<int>(last_phase_));
+      emit txBlocked(static_cast<quint64>(hz));
+      return false;
+    }
+    sendPtt(true);
+  }
+  last_phase_ = gate_.phase();
+  emit pttPhaseChanged(static_cast<int>(last_phase_));
+  return true;
+}
+
+void RadioSession::endScriptedTx() {
+  if (gate_.phase() == core::PttPhase::Tx) {
+    gate_.requestRx(nowMs());
+    sendPtt(false);
+  }
+  last_phase_ = gate_.phase();
+  emit pttPhaseChanged(static_cast<int>(last_phase_));
+}
+
 bool RadioSession::tuneTo(uint64_t hz) {
   if (!core::SafetyGate::authorizeSetFreq(hz)) {
     qWarning() << "tuneTo rejected by RX range:" << hz << "Hz";

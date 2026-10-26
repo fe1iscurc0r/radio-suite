@@ -27,12 +27,12 @@ initial state acquisition still waiting on
 The process stays alive (observation poller loops) but `/healthz` never accepts
 connections (45 s polling at 5 s intervals: connection refused throughout).
 
-## Root cause (source-level)
+## Root cause (source-level; rechecked against `main` on 2026-10-26)
 
-- `rigs/ic705.toml:127-128` declares `receiver.main.unselected.freq_mode.*` as
+- `rigs/ic705.toml:132-133` declares `receiver.main.unselected.freq_mode.*` as
   `polling_only` capabilities.
-- `backends/rigctld_client/radio.py:856 get_freq` (and `get_mode`) only support
-  the MAIN receiver: `self._require_main_receiver(receiver, "get_freq")`.
+- `src/rigplane/backends/rigctld_client/radio.py:863-886` `get_freq` and
+  `get_mode` only support the MAIN receiver through `_require_main_receiver`.
 - There is no rigctld command mapping for the unselected VFO (hamlib's
   `x`/`get_rx_frequency` family or a VFO-argument form), so the three
   observations above can never be satisfied → `readyz` can never turn ready.
