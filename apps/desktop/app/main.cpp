@@ -6,8 +6,8 @@
 #include <memory>
 
 #include "app/MainWindow.h"
-#include "app/font_proxy_settings.h"
 #include "app/session.h"
+#include "ui_common/font_proxy_settings.h"
 #include "core/transport_mock.h"
 #ifdef RADIO_SUITE_HAVE_BUS
 #include "bus/bus_server.h"
@@ -25,8 +25,8 @@ int main(int argc, char* argv[]) {
   QApplication::setOrganizationName("radio-suite");
 
   // 启动即应用持久化的字体与代理（原版 FontManager/ProxyManager 语义）
-  radio::app::FontSettingsDialog::applySaved();
-  radio::app::ProxySettingsDialog::applySaved();
+  radio::ui::FontSettingsDialog::applySaved();
+  radio::ui::ProxySettingsDialog::applySaved();
 
   QCommandLineParser cli;
   cli.setApplicationDescription(

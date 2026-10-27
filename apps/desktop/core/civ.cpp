@@ -7,6 +7,41 @@
 #include <cmath>
 
 namespace radio::core::civ {
+namespace {
+
+uint8_t bcdByte(int v) {
+  return static_cast<uint8_t>(((v / 10) % 10) << 4 | (v % 10));
+}
+
+// 定宽 BCD，MSB-first（channel/level/菜单值用；与 0x03/0x05 的频率 LSB-first 相反）
+std::vector<uint8_t> bcdMsb(int value, int bytes) {
+  std::vector<uint8_t> out(static_cast<size_t>(bytes), 0);
+  for (int i = bytes - 1; i >= 0; --i) {
+    out[static_cast<size_t>(i)] = bcdByte(value % 100);
+    value /= 100;
+  }
+  return out;
+}
+
+std::optional<int> bcdMsbToInt(std::span<const uint8_t> data) {
+  int v = 0;
+  for (uint8_t b : data) {
+    const int hi = b >> 4, lo = b & 0x0F;
+    if (hi > 9 || lo > 9) return std::nullopt;
+    v = v * 100 + hi * 10 + lo;
+  }
+  return v;
+}
+
+int roundHalfEven(int num, int den) {
+  const int q = num / den;
+  const int r = num % den;
+  if (2 * r > den) return q + 1;
+  if (2 * r < den) return q;
+  return (q % 2 == 0) ? q : q + 1;
+}
+
+}  // namespace
 
 const char* modeName(Mode m) {
   switch (m) {
@@ -137,7 +172,7 @@ std::vector<uint8_t> pttFrame(bool tx, uint8_t to, uint8_t from) {
 }
 
 std::vector<uint8_t> readPttFrame(uint8_t to, uint8_t from) {
-  const uint8_t body[] = {kCmdReadPtt, 0x0C};
+  const uint8_t body[] = {kCmdReadPtt, 0x00};
   return buildFrame(to, from, body);
 }
 
@@ -244,7 +279,7 @@ std::optional<MeterInfo> parseMeterResponse(const CivFrame& f) {
 }
 
 std::optional<bool> parsePttResponse(const CivFrame& f) {
-  if (f.cmd != kCmdReadPtt || f.payload.size() != 2 || f.payload[0] != 0x0C)
+  if (f.cmd != kCmdReadPtt || f.payload.size() != 2 || f.payload[0] != 0x00)
     return std::nullopt;
   return f.payload[1] != 0x00;
 }
@@ -281,6 +316,273 @@ std::optional<uint32_t> parseOffsetResponse(const CivFrame& f) {
   return nib(f.payload[0], 1) * 1000ULL + nib(f.payload[0], 0) * 100ULL +
          nib(f.payload[1], 1) * 100000ULL + nib(f.payload[1], 0) * 10000ULL +
          nib(f.payload[2], 0) * 1000000ULL;
+}
+
+// ---------------- 双 VFO / SUB 带 ----------------
+
+static uint8_t vfoSub(bool unselected) {
+  return unselected ? kSubVfoUnselected : kSubVfoSelected;
+}
+
+std::vector<uint8_t> readVfoFreqFrame(bool unselected, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdVfoFreq, vfoSub(unselected)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> setVfoFreqFrame(bool unselected, uint64_t hz, uint8_t to,
+                                     uint8_t from) {
+  std::vector<uint8_t> body{kCmdVfoFreq, vfoSub(unselected)};
+  for (uint8_t b : freqToBcd5(hz).value_or(std::array<uint8_t, 5>{}))
+    body.push_back(b);
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readVfoModeFrame(bool unselected, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdVfoMode, vfoSub(unselected)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> setVfoModeFrame(bool unselected, Mode mode, int data_mode,
+                                     int filter, uint8_t to, uint8_t from) {
+  // 指南 p.15/p.26：26 <sub> <mode> <DATA> <filter>；整组发送以保留 DATA/滤波
+  const uint8_t body[] = {kCmdVfoMode, vfoSub(unselected),
+                          static_cast<uint8_t>(mode),
+                          static_cast<uint8_t>(data_mode & 0x01),
+                          static_cast<uint8_t>(filter)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> selectVfoFrame(bool sub, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdVfoSelect, static_cast<uint8_t>(sub ? 0x01 : 0x00)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> swapVfoFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdSwapVfo};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> equalizeVfoFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdEqualVfo};
+  return buildFrame(to, from, body);
+}
+
+std::optional<VfoFreqInfo> parseVfoFreqResponse(const CivFrame& f) {
+  if (f.cmd != kCmdVfoFreq || f.payload.size() < 6) return std::nullopt;
+  const uint8_t sub = f.payload[0];
+  if (sub != kSubVfoSelected && sub != kSubVfoUnselected) return std::nullopt;
+  auto hz = bcdToFreq(std::span<const uint8_t>(f.payload).subspan(1, 5));
+  if (!hz) return std::nullopt;
+  return VfoFreqInfo{sub == kSubVfoUnselected, *hz};
+}
+
+std::optional<VfoModeInfo> parseVfoModeResponse(const CivFrame& f) {
+  if (f.cmd != kCmdVfoMode || f.payload.size() < 2) return std::nullopt;
+  const uint8_t sub = f.payload[0];
+  if (sub != kSubVfoSelected && sub != kSubVfoUnselected) return std::nullopt;
+  auto mode = modeFromCode(f.payload[1]);
+  if (!mode) return std::nullopt;
+  VfoModeInfo out;
+  out.unselected = sub == kSubVfoUnselected;
+  out.mode = *mode;
+  out.data_mode = f.payload.size() >= 3 ? f.payload[2] : 0;
+  out.filter = f.payload.size() >= 4 ? f.payload[3] : 0;
+  return out;
+}
+
+// ---------------- CW Keyer ----------------
+
+std::vector<uint8_t> cwStopFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdCw, kCwStop};
+  return buildFrame(to, from, body);
+}
+
+std::vector<std::vector<uint8_t>> cwSendFrames(std::string_view text, uint8_t to,
+                                               uint8_t from) {
+  // 仅送 ASCII 可打印字符（大写、空白归一为空格）；每帧 ≤30 字节（commands/cw.py）
+  std::string clean;
+  clean.reserve(text.size());
+  for (char c : text) {
+    const auto u = static_cast<unsigned char>(c);
+    if (u == '\n' || u == '\r' || u == '\t') {
+      clean.push_back(' ');
+    } else if (u >= 32 && u <= 126) {
+      clean.push_back(static_cast<char>(std::toupper(u)));
+    }
+  }
+  std::vector<std::vector<uint8_t>> frames;
+  for (size_t i = 0; i < clean.size(); i += 30) {
+    const std::string chunk = clean.substr(i, 30);
+    std::vector<uint8_t> body{kCmdCw};
+    body.insert(body.end(), chunk.begin(), chunk.end());
+    frames.push_back(buildFrame(to, from, body));
+  }
+  return frames;
+}
+
+std::vector<uint8_t> level14ReadFrame(uint8_t sub, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdLevel14, sub};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> level14WriteFrame(uint8_t sub, int value, uint8_t to,
+                                       uint8_t from) {
+  std::vector<uint8_t> body{kCmdLevel14, sub};
+  for (uint8_t b : bcdMsb(value < 0 ? 0 : (value > 255 ? 255 : value), 2))
+    body.push_back(b);
+  return buildFrame(to, from, body);
+}
+
+std::optional<int> parseLevel14Response(const CivFrame& f, uint8_t sub) {
+  if (f.cmd != kCmdLevel14 || f.payload.size() != 3 || f.payload[0] != sub)
+    return std::nullopt;
+  return bcdMsbToInt(std::span<const uint8_t>(f.payload).subspan(1, 2));
+}
+
+int wpmToKeySpeedLevel(int wpm) {
+  if (wpm < 6) wpm = 6;
+  if (wpm > 48) wpm = 48;
+  const int num = (wpm - 6) * 255;
+  constexpr int kDen = 48 - 6;
+  const int q = num / kDen, r = num % kDen;
+  return q + (2 * r > kDen ? 1 : 0);  // nearest_half_down
+}
+
+int keySpeedLevelToWpm(int level) {
+  if (level < 0) level = 0;
+  if (level > 255) level = 255;
+  return 6 + roundHalfEven(level * (48 - 6), 255);
+}
+
+int hzToCwPitchLevel(int hz) {
+  if (hz < 300) hz = 300;
+  if (hz > 900) hz = 900;
+  const int num = (hz - 300) * 255;
+  constexpr int kDen = 900 - 300;
+  return (num + kDen - 1) / kDen;  // encode_rounding = ceil
+}
+
+int cwPitchLevelToHz(int level) {
+  if (level < 0) level = 0;
+  if (level > 255) level = 255;
+  return 300 + 5 * roundHalfEven(level * (900 - 300), 255 * 5);
+}
+
+std::vector<uint8_t> breakInFrame(bool on, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdSw16, kSub16BreakIn,
+                          static_cast<uint8_t>(on ? 0x01 : 0x00)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readBreakInFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdSw16, kSub16BreakIn};
+  return buildFrame(to, from, body);
+}
+
+std::optional<bool> parseBreakInResponse(const CivFrame& f) {
+  if (f.cmd != kCmdSw16 || f.payload.size() != 2 ||
+      f.payload[0] != kSub16BreakIn)
+    return std::nullopt;
+  return f.payload[1] != 0x00;
+}
+
+// ---------------- Set Mode 菜单项 ----------------
+
+std::vector<uint8_t> menuReadFrame(uint8_t group, uint8_t item, uint8_t to,
+                                   uint8_t from) {
+  const uint8_t body[] = {kCmdMenu, kSubMenu, group, item};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> menuWriteFrame(uint8_t group, uint8_t item,
+                                    std::span<const uint8_t> value, uint8_t to,
+                                    uint8_t from) {
+  std::vector<uint8_t> body{kCmdMenu, kSubMenu, group, item};
+  body.insert(body.end(), value.begin(), value.end());
+  return buildFrame(to, from, body);
+}
+
+std::optional<MenuValue> parseMenuResponse(const CivFrame& f) {
+  if (f.cmd != kCmdMenu || f.payload.size() < 3 || f.payload[0] != kSubMenu)
+    return std::nullopt;
+  MenuValue out;
+  out.group = f.payload[1];
+  out.item = f.payload[2];
+  out.value.assign(f.payload.begin() + 3, f.payload.end());
+  return out;
+}
+
+// ---------------- 记忆信道 ----------------
+
+std::vector<uint8_t> readMemoryChannelFrame(int channel, uint8_t to,
+                                            uint8_t from) {
+  std::vector<uint8_t> body{kCmdMenu, kSubMemoryContents};
+  for (uint8_t b : bcdMsb(channel, 2)) body.push_back(b);
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> writeMemoryChannelFrame(const MemoryChannel& mem, uint8_t to,
+                                             uint8_t from) {
+  std::vector<uint8_t> body{kCmdMenu, kSubMemoryContents};
+  for (uint8_t b : bcdMsb(mem.channel, 2)) body.push_back(b);
+  // 26 字节内容块（rigplane commands/memory.py:build_memory_contents_set）
+  body.push_back(static_cast<uint8_t>(mem.scan));
+  for (uint8_t b : freqToBcd5(mem.freq_hz).value_or(std::array<uint8_t, 5>{}))
+    body.push_back(b);
+  body.push_back(bcdByte(static_cast<int>(mem.mode)));
+  body.push_back(bcdByte(mem.filter));
+  body.push_back(static_cast<uint8_t>(((mem.data_mode & 0x0F) << 4) |
+                                      (mem.tone_mode & 0x0F)));
+  for (uint8_t b : bcdMsb(static_cast<int>(mem.tone_freq_hz), 3)) body.push_back(b);
+  for (uint8_t b : bcdMsb(static_cast<int>(mem.tsql_freq_hz), 3)) body.push_back(b);
+  std::string name = mem.name.substr(0, 10);
+  name.resize(10, '\0');
+  body.insert(body.end(), name.begin(), name.end());
+  body.push_back(0x00);  // 内容块第 26 字节（保留）
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> selectMemoryGroupFrame(int group, uint8_t to, uint8_t from) {
+  std::vector<uint8_t> body{kCmdMemoryMode, kSubMemoryGroup};
+  for (uint8_t b : bcdMsb(group, 2)) body.push_back(b);
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> selectMemoryChannelFrame(int channel, uint8_t to,
+                                              uint8_t from) {
+  std::vector<uint8_t> body{kCmdMemoryMode};
+  for (uint8_t b : bcdMsb(channel, 2)) body.push_back(b);
+  return buildFrame(to, from, body);
+}
+
+std::optional<MemoryChannel> parseMemoryChannelResponse(const CivFrame& f) {
+  // payload = [0x00, ch(2), scan, freq(5), mode, filter, nibbles, tone(3), tsql(3), name(10), pad]
+  if (f.cmd != kCmdMenu || f.payload.size() < 29 ||
+      f.payload[0] != kSubMemoryContents)
+    return std::nullopt;
+  auto channel = bcdMsbToInt(std::span<const uint8_t>(f.payload).subspan(1, 2));
+  auto mode = bcdMsbToInt(std::span<const uint8_t>(f.payload).subspan(9, 1));
+  auto filter = bcdMsbToInt(std::span<const uint8_t>(f.payload).subspan(10, 1));
+  auto freq = bcdToFreq(std::span<const uint8_t>(f.payload).subspan(4, 5));
+  auto tone = bcdMsbToInt(std::span<const uint8_t>(f.payload).subspan(12, 3));
+  auto tsql = bcdMsbToInt(std::span<const uint8_t>(f.payload).subspan(15, 3));
+  if (!channel || !mode || !filter || !freq || !tone || !tsql) return std::nullopt;
+  auto m = modeFromCode(static_cast<uint8_t>(*mode));
+  if (!m) return std::nullopt;
+  MemoryChannel out;
+  out.channel = *channel;
+  out.scan = f.payload[3];
+  out.freq_hz = *freq;
+  out.mode = *m;
+  out.filter = *filter;
+  out.data_mode = (f.payload[11] >> 4) & 0x0F;
+  out.tone_mode = f.payload[11] & 0x0F;
+  out.tone_freq_hz = static_cast<uint32_t>(*tone);
+  out.tsql_freq_hz = static_cast<uint32_t>(*tsql);
+  std::string name(reinterpret_cast<const char*>(f.payload.data() + 18), 10);
+  while (!name.empty() && name.back() == '\0') name.pop_back();
+  out.name = name;
+  return out;
 }
 
 uint16_t aprsPasscode(const std::string& callsign) {

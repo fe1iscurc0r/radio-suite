@@ -3,8 +3,8 @@
 // 原版（R1.0.0 HAMLOG GUI.py）功能对照：
 //   四字段模糊搜索（Callsign/QTH/Device/Remarks）✓ · LogDialog 完整编辑 ✓ ·
 //   以模板添加 ✓ · 删除 ✓ · 设置（my_* 四项直写 settings 表）✓ ·
-//   QRZ.com 查询（浏览器跳转版）✓ · ADIF 导出 ✓ · 关闭键 ✓
-//   LoTW 上传 / 字体 / 代理：原版独有服务，标 TODO 不做假件。
+//   QRZ.com 查询（浏览器跳转版）✓ · ADIF 导出 ✓ · 关闭键 ✓ ·
+//   LoTW 上传 / 字体 / 代理：共用 `ui_common` 对话框，已实现（非假件）。
 #pragma once
 
 #include <QWidget>
@@ -15,11 +15,6 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QTableWidget;
-
-namespace radio::app {
-class FontSettingsDialog;
-class ProxySettingsDialog;
-}
 
 namespace radio::logbook {
 

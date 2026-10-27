@@ -77,3 +77,23 @@ if(TARGET radio::logbook)
     Catch2::Catch2WithMain)
   catch_discover_tests(radio_logbook_tests)
 endif()
+
+# 对话框接线测试：需要 Widgets（BUILD_GUI=OFF 的 CI 任务自动跳过）
+if(BUILD_GUI AND TARGET radio::ui_common)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets)
+  add_executable(radio_ui_tests
+    test_dialogs.cpp
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/set_mode_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp")
+  target_include_directories(radio_ui_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/desktop")
+  target_link_libraries(radio_ui_tests PRIVATE
+    radio::core
+    Qt6::Widgets
+    Catch2::Catch2WithMain)
+  set_target_properties(radio_ui_tests PROPERTIES AUTOMOC ON)
+  catch_discover_tests(radio_ui_tests)
+endif()

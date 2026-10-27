@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // 字体/代理设置实现——对齐原版 FontManager 与 ProxyManager 语义（本地 HamLog R1.0.0）
-#include "app/font_proxy_settings.h"
+#include "ui_common/font_proxy_settings.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -15,7 +15,7 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
-namespace radio::app {
+namespace radio::ui {
 namespace {
 constexpr const char* kOrg = "radio-suite";
 }  // namespace
@@ -126,4 +126,4 @@ void ProxySettingsDialog::onApply() {
   accept();
 }
 
-}  // namespace radio::app
+}  // namespace radio::ui

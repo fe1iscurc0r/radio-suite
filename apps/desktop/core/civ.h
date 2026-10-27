@@ -13,6 +13,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <QString>
@@ -33,13 +34,38 @@ inline constexpr uint8_t kCmdReadFreq = 0x03;   // 读频率（应答回 5 字�
 inline constexpr uint8_t kCmdReadMode = 0x04;   // 读模式（应答回 [mode, filter]）
 inline constexpr uint8_t kCmdSetFreq = 0x05;    // 设频率（携带 5 字节 BCD）
 inline constexpr uint8_t kCmdSetMode = 0x06;    // 设模式（携带 [mode, filter]）
-inline constexpr uint8_t kCmdReadPtt = 0x14;    // 读 PTT 状态（子命令 0x0C）
+inline constexpr uint8_t kCmdReadPtt = 0x1C;    // 读 TX 状态（子命令 0x00；radio_link.py:839 实测）
 inline constexpr uint8_t kCmdReadSmeter = 0x1A; // 读 S-meter（子命令 0x03）
 inline constexpr uint8_t kCmdPtt = 0x1C;        // PTT 控制（子命令 0x00，数据 01=TX/00=RX）
 inline constexpr uint8_t kCmdAtt = 0x11;        // ATT 衰减（0x00=OFF / 0x20=20dB，仅 HF/50MHz）
 inline constexpr uint8_t kCmdSw16 = 0x16;       // 0x16 子命令开关族（见 kSub16*）
 inline constexpr uint8_t kAck = 0xFB;           // 设置类命令成功应答
 inline constexpr uint8_t kNak = 0xFA;           // 设置类命令拒绝应答
+
+// ---- 双 VFO / SUB 带（IC-705 CI-V Reference Guide A7560-8EX-1）----
+inline constexpr uint8_t kCmdVfoSelect = 0x07;    // 选择 VFO：00=MAIN(A) / 01=SUB(B)
+inline constexpr uint8_t kCmdVfoFreq = 0x25;      // 子命令 00=选中 VFO / 01=未选中 VFO（5B BCD）
+inline constexpr uint8_t kCmdVfoMode = 0x26;      // 子命令同上；数据 [mode, data_mode, filter]
+inline constexpr uint8_t kSubVfoSelected = 0x00;
+inline constexpr uint8_t kSubVfoUnselected = 0x01;
+inline constexpr uint8_t kCmdSwapVfo = 0xB0;      // A/B 交换（profiles [vfo] swap_ab）
+inline constexpr uint8_t kCmdEqualVfo = 0xA0;     // A=B：当前 VFO 复制到另一 VFO（equal_ab）
+
+// ---- CW Keyer（0x17 发送 ASCII；0x14 电平族 2B BCD MSB-first）----
+inline constexpr uint8_t kCmdCw = 0x17;           // ASCII 文本，≤30 字节/帧；0xFF=停止
+inline constexpr uint8_t kCmdLevel14 = 0x14;      // 0x14 电平族（2B BCD MSB-first，0..255）
+inline constexpr uint8_t kSub14CwPitch = 0x09;    // CW 侧音音高电平
+inline constexpr uint8_t kSub14KeySpeed = 0x0C;   // 键速电平（6..48 WPM 线性映射）
+inline constexpr uint8_t kSub14BreakInDelay = 0x0F;  // 半插入延时电平
+inline constexpr uint8_t kSub16BreakIn = 0x47;    // 半插入（break-in）0/1
+
+// ---- Set Mode / 记忆信道（0x1A 族）----
+inline constexpr uint8_t kCmdMenu = 0x1A;         // 0x1A 0x05：菜单项 [group, item, value...]
+inline constexpr uint8_t kSubMenu = 0x05;
+inline constexpr uint8_t kSubMemoryContents = 0x00;  // 0x1A 0x00：记忆信道内容
+inline constexpr uint8_t kCmdMemoryMode = 0x08;   // 0x08 [ch BCD2] / 0x08 A0 [group BCD2]
+inline constexpr uint8_t kSubMemoryGroup = 0xA0;  // IC-705 group/channel 寻址
+inline constexpr uint8_t kCwStop = 0xFF;
 
 // 0x16 子命令（radio_link.py:778-835，真机验证）
 inline constexpr uint8_t kSub16Pamp = 0x02;      // 前置放大 0/1/2
@@ -149,6 +175,112 @@ std::vector<uint8_t> offsetFrame(uint32_t offset_hz,
                                  uint8_t to = kIc705Addr,
                                  uint8_t from = kDefaultControllerAddr);
 
+// ---- 双 VFO / SUB 带（0x25/0x26/0x07/0xB0/0xA0；指南 p.3/p.15）----
+std::vector<uint8_t> readVfoFreqFrame(bool unselected,
+                                      uint8_t to = kIc705Addr,
+                                      uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> setVfoFreqFrame(bool unselected, uint64_t hz,
+                                     uint8_t to = kIc705Addr,
+                                     uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readVfoModeFrame(bool unselected,
+                                      uint8_t to = kIc705Addr,
+                                      uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> setVfoModeFrame(bool unselected, Mode mode,
+                                     int data_mode = 0, int filter = 0,
+                                     uint8_t to = kIc705Addr,
+                                     uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> selectVfoFrame(bool sub,
+                                    uint8_t to = kIc705Addr,
+                                    uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> swapVfoFrame(uint8_t to = kIc705Addr,
+                                  uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> equalizeVfoFrame(uint8_t to = kIc705Addr,
+                                      uint8_t from = kDefaultControllerAddr);
+// 0x25/0x26 应答：payload=[sub, 5B BCD] / [sub, mode, data, filter]
+struct VfoFreqInfo {
+  bool unselected = false;
+  uint64_t hz = 0;
+};
+struct VfoModeInfo {
+  bool unselected = false;
+  Mode mode = Mode::USB;
+  int data_mode = 0;
+  int filter = 0;
+};
+std::optional<VfoFreqInfo> parseVfoFreqResponse(const CivFrame& f);
+std::optional<VfoModeInfo> parseVfoModeResponse(const CivFrame& f);
+
+// ---- CW Keyer（0x17 / 0x14 / 0x16 0x47）----
+// 文本大写后按 30 字节分帧（commands/cw.py send_cw）
+std::vector<std::vector<uint8_t>> cwSendFrames(std::string_view text,
+                                               uint8_t to = kIc705Addr,
+                                               uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> cwStopFrame(uint8_t to = kIc705Addr,
+                                 uint8_t from = kDefaultControllerAddr);
+// 0x14 电平族：2B BCD MSB-first（radio_link.py:689-704 真机实测）
+std::vector<uint8_t> level14ReadFrame(uint8_t sub,
+                                      uint8_t to = kIc705Addr,
+                                      uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> level14WriteFrame(uint8_t sub, int value,
+                                       uint8_t to = kIc705Addr,
+                                       uint8_t from = kDefaultControllerAddr);
+std::optional<int> parseLevel14Response(const CivFrame& f, uint8_t sub);
+// 键速 6..48 WPM ↔ raw 0..255（ic705.toml [controls.key_speed]，nearest_half_down）
+int wpmToKeySpeedLevel(int wpm);
+int keySpeedLevelToWpm(int level);
+// CW 侧音 300..900 Hz ↔ raw 0..255（decode_quantum=5，encode_rounding=ceil）
+int hzToCwPitchLevel(int hz);
+int cwPitchLevelToHz(int level);
+std::vector<uint8_t> breakInFrame(bool on, uint8_t to = kIc705Addr,
+                                  uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readBreakInFrame(uint8_t to = kIc705Addr,
+                                      uint8_t from = kDefaultControllerAddr);
+std::optional<bool> parseBreakInResponse(const CivFrame& f);
+
+// ---- Set Mode 菜单项（0x1A 0x05；radio_link.py:966-978 + ic705.toml 菜单地址）----
+std::vector<uint8_t> menuReadFrame(uint8_t group, uint8_t item,
+                                   uint8_t to = kIc705Addr,
+                                   uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> menuWriteFrame(uint8_t group, uint8_t item,
+                                    std::span<const uint8_t> value,
+                                    uint8_t to = kIc705Addr,
+                                    uint8_t from = kDefaultControllerAddr);
+struct MenuValue {
+  uint8_t group = 0;
+  uint8_t item = 0;
+  std::vector<uint8_t> value;
+  bool operator==(const MenuValue&) const = default;
+};
+std::optional<MenuValue> parseMenuResponse(const CivFrame& f);
+
+// ---- 记忆信道（0x1A 0x00；ic705.toml [memory] group/channel 0..99）----
+struct MemoryChannel {
+  int channel = 0;
+  int scan = 0;
+  uint64_t freq_hz = 0;
+  Mode mode = Mode::USB;
+  int filter = 0;
+  int data_mode = 0;
+  int tone_mode = 0;
+  uint32_t tone_freq_hz = 0;
+  uint32_t tsql_freq_hz = 0;
+  std::string name;  // ≤10 ASCII
+  bool operator==(const MemoryChannel&) const = default;
+};
+std::vector<uint8_t> readMemoryChannelFrame(int channel,
+                                            uint8_t to = kIc705Addr,
+                                            uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> writeMemoryChannelFrame(const MemoryChannel& mem,
+                                             uint8_t to = kIc705Addr,
+                                             uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> selectMemoryGroupFrame(int group,
+                                            uint8_t to = kIc705Addr,
+                                            uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> selectMemoryChannelFrame(int channel,
+                                              uint8_t to = kIc705Addr,
+                                              uint8_t from = kDefaultControllerAddr);
+std::optional<MemoryChannel> parseMemoryChannelResponse(const CivFrame& f);
+
 // ---- 应答解析（输入 parseFrame 的产物；cmd/子命令/长度不符返回 nullopt）----
 std::optional<uint64_t> parseFreqResponse(const CivFrame& f);   // cmd=0x03 + 5B BCD
 struct ModeInfo {
@@ -163,7 +295,7 @@ struct MeterInfo {
   int alc = 0;
 };
 std::optional<MeterInfo> parseMeterResponse(const CivFrame& f);  // cmd=0x1A + [0x11, po2, swr2, alc]
-std::optional<bool> parsePttResponse(const CivFrame& f);        // cmd=0x14 + [0x0C, 0/1]
+std::optional<bool> parsePttResponse(const CivFrame& f);        // cmd=0x1C + [0x00, 0/1]
 std::optional<int> parseAttResponse(const CivFrame& f);         // cmd=0x11 + [val]
 std::optional<int> parseSw16Response(const CivFrame& f, uint8_t sub);  // cmd=0x16 + [sub, val]
 std::optional<int> parseDuplexResponse(const CivFrame& f);      // cmd=0x0F + [val]（simplex 读回 0x00）

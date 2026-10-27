@@ -6,6 +6,8 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
+#include <vector>
 
 #include "core/civ.h"
 
@@ -36,6 +38,22 @@ struct RadioState {
   bool rit = false;    // 0x21 0x01
   bool dtx = false;    // 0x21 0x02（ΔTX）
   uint32_t offset_hz = 0;  // 中继频差（0x0C 读回；DUP± 时 TX=RX∓/±offset）
+  // 双 VFO（0x25/0x26 读未选中 VFO；0x07 无回读，按命令本地记）
+  uint64_t sub_freq_hz = 0;
+  civ::Mode sub_mode = civ::Mode::LSB;
+  int sub_filter = 0;
+  bool selected_sub = false;
+  // CW Keyer（0x14 原始电平 + 0x16 0x47）
+  int cw_pitch_level = 0;
+  int cw_key_speed_level = 0;
+  int break_in_delay_level = 0;
+  bool break_in = false;
+  // Set Mode 菜单快照：key = (group << 8) | item
+  std::map<uint16_t, std::vector<uint8_t>> menu_values;
+  // 记忆信道：最近一次读回的内容 + 当前组/信道
+  std::optional<civ::MemoryChannel> memory_channel;
+  int memory_group = 0;
+  int memory_index = 0;
   uint64_t last_update_ms = 0;  // 最后一次字段变更的单调时钟
 
   bool operator==(const RadioState&) const = default;

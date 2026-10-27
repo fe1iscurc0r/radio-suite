@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/MainWindow.h"
 
+#include "app/cw_keyer.h"
+#include "app/memory_channel.h"
+#include "app/set_mode_dialog.h"
+
 #include <QDateTime>
 #include <QFile>
 #include <QFileDialog>
@@ -252,10 +256,19 @@ void MainWindow::buildUi() {
   dtmf_big_btn_->setToolTip("双音多频小键盘（ITU Q.23，生成 .wav）");
   auto* voice_big_btn_ = mk_big("VOICE\n录音", QColor(0x4a, 0x14, 0x8c));
   voice_big_btn_->setToolTip("Voice Memory：录音/列表/播放/门禁编排发射（原厂件）");
+  auto* cw_big_btn_ = mk_big("CW\n键控", QColor(0x5d, 0x40, 0x37));
+  cw_big_btn_->setToolTip("CW Keyer：0x17 文本发送 + 键速/侧音/半插入（原厂件）");
+  auto* set_big_btn_ = mk_big("SET\n设置", QColor(0x37, 0x47, 0x4f));
+  set_big_btn_->setToolTip("Set Mode 深设置树：0x1A 0x05 菜单项读写（原厂件）");
+  auto* memch_big_btn_ = mk_big("MEM\n信道", QColor(0x00, 0x69, 0x5c));
+  memch_big_btn_->setToolTip("记忆信道：0x1A 0x00 内容读写 + 0x08 组/信道选择（原厂件）");
   side->addWidget(aprs_big_btn_);
   side->addWidget(sstv_big_btn_);
   side->addWidget(dtmf_big_btn_);
   side->addWidget(voice_big_btn_);
+  side->addWidget(cw_big_btn_);
+  side->addWidget(set_big_btn_);
+  side->addWidget(memch_big_btn_);
   connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
     // 与主会话共享（真机时同一条链）；SstvDialog 改持裸指针+父窗口生命周期
     SstvDialog dlg(&session_, this);
@@ -267,6 +280,18 @@ void MainWindow::buildUi() {
   });
   connect(voice_big_btn_, &QPushButton::clicked, this, [this] {
     VoiceMemoryDialog dlg(&session_, this);
+    dlg.exec();
+  });
+  connect(cw_big_btn_, &QPushButton::clicked, this, [this] {
+    radio::app::CwKeyerDialog dlg(&session_, this);
+    dlg.exec();
+  });
+  connect(set_big_btn_, &QPushButton::clicked, this, [this] {
+    radio::app::SetModeDialog dlg(&session_, this);
+    dlg.exec();
+  });
+  connect(memch_big_btn_, &QPushButton::clicked, this, [this] {
+    radio::app::MemoryChannelDialog dlg(&session_, this);
     dlg.exec();
   });
 
@@ -369,6 +394,42 @@ QHBoxLayout* MainWindow::buildTuneRow(QWidget* central) {
     session_.tuneTo(9'500'000);
   });
   tune->addWidget(bcsw);
+
+  // 双 VFO（SUB 带）：另一 VFO 频率/模式 + A/B/交换/A=B
+  tune->addSpacing(12);
+  tune->addWidget(new QLabel("SUB", central));
+  sub_label_ = new QLabel("—", central);
+  sub_label_->setMinimumWidth(150);
+  sub_label_->setStyleSheet("color: #4dd0e1;");
+  tune->addWidget(sub_label_);
+
+  auto mk_vfo = [&](const QString& text, const QString& tip) {
+    auto* b = new QPushButton(text, central);
+    b->setToolTip(tip);
+    b->setMinimumWidth(36);
+    tune->addWidget(b);
+    return b;
+  };
+  vfo_a_btn_ = mk_vfo("A", "选 MAIN（A）");
+  vfo_b_btn_ = mk_vfo("B", "选 SUB（B）");
+  vfo_swap_btn_ = mk_vfo("A⇄B", "交换两个 VFO（发射中拒绝）");
+  vfo_equal_btn_ = mk_vfo("A=B", "把当前 VFO 复制到另一 VFO（发射中拒绝）");
+  vfo_a_btn_->setCheckable(true);
+  vfo_b_btn_->setCheckable(true);
+  connect(vfo_a_btn_, &QPushButton::clicked, this, [this] {
+    if (!session_.selectVfo(false)) flashStatus("发射中禁止切换 VFO", true);
+  });
+  connect(vfo_b_btn_, &QPushButton::clicked, this, [this] {
+    if (!session_.selectVfo(true)) flashStatus("发射中禁止切换 VFO", true);
+  });
+  connect(vfo_swap_btn_, &QPushButton::clicked, this, [this] {
+    if (session_.swapVfo()) flashStatus("A⇄B 已交换", false);
+    else flashStatus("发射中禁止交换 VFO", true);
+  });
+  connect(vfo_equal_btn_, &QPushButton::clicked, this, [this] {
+    if (session_.equalizeVfo()) flashStatus("当前 VFO 已复制到另一 VFO", false);
+    else flashStatus("发射中禁止 VFO 复制", true);
+  });
   return tune;
 }
 
@@ -492,6 +553,12 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
   rb(rit_btn_, s.rit);
   rb(dtx_btn_, s.dtx);
   rb(split_btn_, s.split);
+  {
+    QSignalBlocker ga(vfo_a_btn_);
+    QSignalBlocker gb(vfo_b_btn_);
+    vfo_a_btn_->setChecked(!s.selected_sub);
+    vfo_b_btn_->setChecked(s.selected_sub);
+  }
 }
 
 void MainWindow::refreshState() {
@@ -518,6 +585,9 @@ void MainWindow::refreshState() {
     tx_label_->setText("");
     tx_label_->setToolTip("同频（simplex）：收发同频");
   }
+  sub_label_->setText(QString("SUB %1 %2")
+                          .arg(formatFreq(s.sub_freq_hz))
+                          .arg(radio::core::civ::modeName(s.sub_mode)));
   syncTogglesFromState(s);
 }
 
