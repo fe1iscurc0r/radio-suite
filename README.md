@@ -43,7 +43,7 @@ ctest --test-dir build --output-on-failure
 |---|---|---|---|
 | `apps/desktop/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
 | `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
-| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（176px 旋钮调谐台）、QOpenGLWidget 瀑布、CW/Set Mode/记忆信道/中继·亚音对话框 |
+| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（紧凑旋钮台，S 表/Po·SWR 同排）、QOpenGLWidget 瀑布、CW/Set Mode/记忆信道/中继·亚音对话框 |
 | `apps/desktop/audio` | — | M2 | RtAudio 输入 |
 | `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
 | `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |

@@ -50,7 +50,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | 安全门禁 | ✅ PTT 二次确认 + 10min 自动回 RX + **非业余段拒绝发射**（TX 中调谐也拦） | tests `[safety]` + `[session][ptt]` 帧序列 |
 | 频谱/瀑布 | ✅ OpenGL 纹理滚屏 + 谱线（**上谱下瀑分区**）+ 半圆指针 S 表 + Po/SWR 表；**当前谱源为 SignalSynth 合成信号，不是 RF/音频/50003** | 截图 `docs/screenshots/` + `SignalSynth` 调用点 |
 | 频率/模式/开关 | ✅ 频率/模式/滤波/RIT/ΔTX/Split/ATT/NB/NR/NOTCH/VOX/PAMP/AGC/DUP + **双 VFO(SUB 带)** + **中继频差(0x0D) / CTCSS·TSQL·DTCS** | 对照原厂 `IC-705.ini` 全清单；SUB/频差/亚音帧级测试 `[civ]`/`[session]` |
-| 原厂件 | ✅ 调谐旋钮（176px 旋钮台 + 步进档）、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory、**CW Keyer / Set Mode / Memory Channel / 中继·亚音对话框** | 原厂 CHM 清单逐项对照；四件见 `docs/original-rsba1-feature-map.md` §K，UI/频差/亚音见 §L |
+| 原厂件 | ✅ 调谐旋钮（132px 旋钮台，与 S 表/Po·SWR 同排）、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory、**CW Keyer / Set Mode / Memory Channel / 中继·亚音对话框** | 原厂 CHM 清单逐项对照；四件见 `docs/original-rsba1-feature-map.md` §K，UI/频差/亚音见 §L |
 | SSTV | ✅ 8 制式编解码（Robot36/72 + Martin M1/M2）+ VoX 校准头 + **编解码回环自校验** | tests `[sstv]`(31 断言) |
 | DTMF | ✅ 16 键编解码 + 回环 | tests `[dtmf]` |
 | APRS-IS | ✅ 台站聚合表 + 信标/消息上行 + 通行码 | 实测连 china.aprs2.net（308 台/7805 包） |
@@ -88,7 +88,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
      LCD 与 `app/repeater_dialog.*` 同时显示 RX/TX 两个频率（DUP−/DUP+ 自动算 TX）。
    - 亚音：`0x16 0x5D/0x42/0x43/0x4B` + `0x1B 0x00/0x01/0x02`，EIA 50 音 +
      104 个常用 DCS 码；DTCS 极性字节布局按指南推定，**真机未验**。
-   - UI 重排：176px 旋钮台 + 步进文案、统一圆角按钮尺寸、功能区分两行。
+   - UI 重排：132px 旋钮台与 S 表 / Po·SWR 同排，频谱纵向拉伸（最小 260px），
+     RX 44pt / TX 18pt 双频大字。
    真机复验清单（按风险排序）见 `docs/original-rsba1-feature-map.md` §K / §L.5。
 5. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
 6. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，

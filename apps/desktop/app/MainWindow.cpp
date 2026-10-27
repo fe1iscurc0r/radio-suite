@@ -147,7 +147,7 @@ void MainWindow::buildUi() {
   freq_label_ = new QLabel("__.__._ MHz", lcd);
   QFont mono("Cascadia Mono");
   mono.setStyleHint(QFont::Monospace);
-  mono.setPointSize(36);
+  mono.setPointSize(44);
   mono.setBold(true);
   freq_label_->setFont(mono);
   freq_label_->setStyleSheet("color: #ffb300; background: transparent;"
@@ -155,22 +155,22 @@ void MainWindow::buildUi() {
   lcd_lay->addWidget(freq_label_, 1);
   mode_label_ = new QLabel("--", lcd);
   QFont moded = mode_label_->font();
-  moded.setPointSize(15);
+  moded.setPointSize(17);
   moded.setBold(true);
   mode_label_->setFont(moded);
   mode_label_->setStyleSheet("color: #7ee0a0; background: transparent;");
   mode_label_->setAlignment(Qt::AlignCenter);
-  mode_label_->setMinimumWidth(96);
+  mode_label_->setMinimumWidth(104);
   lcd_lay->addWidget(mode_label_);
   // 中继双频副显示：DUP± 时显示真实 TX 频率（offset 0x0C 读回，不猜惯例值）
   tx_label_ = new QLabel("", lcd);
   QFont txf = tx_label_->font();
-  txf.setPointSize(11);
+  txf.setPointSize(18);
   txf.setBold(true);
   tx_label_->setFont(txf);
   tx_label_->setStyleSheet("color:#ff8a65; background: transparent;");
   tx_label_->setAlignment(Qt::AlignCenter);
-  tx_label_->setMinimumWidth(210);
+  tx_label_->setMinimumWidth(250);
   lcd_lay->addWidget(tx_label_);
   top->addWidget(lcd, 1);
 
@@ -199,28 +199,28 @@ void MainWindow::buildUi() {
   auto* body = new QHBoxLayout();
   auto* main_col = new QVBoxLayout();
 
-  // 仪表行（主信息）：指针 S 表 + Po/SWR
-  auto* meters = new QHBoxLayout();
-  smeter_ = new SMeterWidget(central);
-  poswr_ = new PoSwrWidget(central);
-  meters->addWidget(smeter_, 3);
-  meters->addWidget(poswr_, 2);
-  main_col->addLayout(meters);
+  // 仪表 + 调谐同排：S 表靠左、旋钮居中、Po/SWR 缩到右侧
   main_col->addLayout(buildTuneBlock(central));
   main_col->addLayout(buildFuncBlock(central));
 
   waterfall_ = new WaterfallWidget(central);
   waterfall_->setDbRange(-110.0f, -10.0f);
+  waterfall_->setMinimumHeight(260);
+  waterfall_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   main_col->addWidget(waterfall_, 1);
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   if (hamlog_.available()) {
+    // 最近 QSO 与工作台入口同排，避免再吃掉一条频谱高度
+    auto* qso_row = new QHBoxLayout();
+    qso_row->setSpacing(6);
     qso_list_ = new QListWidget(central);
-    qso_list_->setMaximumHeight(96);
-    main_col->addWidget(qso_list_);
+    qso_list_->setMaximumHeight(84);
+    qso_row->addWidget(qso_list_, 1);
     refreshQsoList();
 
-    auto* wb_btn = new QPushButton("HamLog 工作台…", central);
+    auto* wb_btn = new QPushButton("HamLog\n工作台…", central);
+    wb_btn->setMinimumWidth(108);
     wb_btn->setToolTip("C++ 重构的全表浏览/搜索/统计/ADIF 窗口（同一 Log.db）");
     connect(wb_btn, &QPushButton::clicked, this, [this] {
       auto* wb = new radio::logbook::HamLogWorkbench(this);
@@ -228,7 +228,8 @@ void MainWindow::buildUi() {
       wb->resize(860, 520);
       wb->show();
     });
-    main_col->addWidget(wb_btn);
+    qso_row->addWidget(wb_btn);
+    main_col->addLayout(qso_row);
   }
 #endif
   body->addLayout(main_col, 1);
@@ -339,17 +340,23 @@ void MainWindow::buildUi() {
 
 QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   auto* block = new QVBoxLayout();
-  block->setSpacing(8);
+  block->setSpacing(6);
 
-  // ---- 调谐台：大旋钮（主交互）+ 步进档 + 直接输频 ----
+  // ---- 第一行：S 表（左）+ 紧凑旋钮台（中）+ Po/SWR（右）----
+  auto* console_row = new QHBoxLayout();
+  console_row->setSpacing(10);
+
+  smeter_ = new SMeterWidget(central);
+  console_row->addWidget(smeter_, 0, Qt::AlignVCenter);
+
   auto* deck = new QFrame(central);
   deck->setObjectName("tuneDeck");
   auto* deck_lay = new QHBoxLayout(deck);
-  deck_lay->setContentsMargins(14, 10, 14, 10);
-  deck_lay->setSpacing(16);
+  deck_lay->setContentsMargins(10, 6, 10, 6);
+  deck_lay->setSpacing(12);
 
   dial_ = new DialWidget(deck);
-  dial_->setFixedSize(176, 176);
+  dial_->setFixedSize(132, 132);
   dial_->setToolTip("拖动或滚轮调谐：每格 = 当前步进档");
   connect(dial_, &DialWidget::steps, this, [this](int n) {
     qint64 step = 1'000;
@@ -361,19 +368,20 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   deck_lay->addWidget(dial_, 0, Qt::AlignVCenter);
 
   auto* knob_col = new QVBoxLayout();
-  knob_col->setSpacing(6);
+  knob_col->setSpacing(4);
+  knob_col->addStretch(1);
   step_label_ = new QLabel(deck);
   step_label_->setStyleSheet("color: #ffb300; font-weight: bold;");
   knob_col->addWidget(step_label_);
 
   auto* step_row = new QHBoxLayout();
-  step_row->setSpacing(6);
+  step_row->setSpacing(4);
   for (int i = 0; i < 4; ++i) {
     auto* btn = new QPushButton(kStepNames[i], deck);
     btn->setCheckable(true);
     btn->setChecked(i == kDefaultStep);
     btn->setProperty("step_hz", static_cast<qlonglong>(kSteps[i]));
-    btn->setMinimumSize(68, 36);
+    btn->setMinimumSize(54, 28);
     const int idx = i;
     connect(btn, &QPushButton::clicked, this, [this, idx] {
       for (int j = 0; j < static_cast<int>(step_btns_.size()); ++j)
@@ -387,42 +395,42 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   step_row->addStretch(1);
   knob_col->addLayout(step_row);
 
-  auto* nudge_row = new QHBoxLayout();
-  nudge_row->setSpacing(6);
+  auto* entry_row = new QHBoxLayout();
+  entry_row->setSpacing(4);
   auto* down = new QPushButton("▼ 降频", deck);
   auto* up = new QPushButton("▲ 升频", deck);
-  down->setMinimumSize(96, 40);
-  up->setMinimumSize(96, 40);
+  down->setMinimumSize(72, 30);
+  up->setMinimumSize(72, 30);
   connect(down, &QPushButton::clicked, this, [this] { onTuneStep(-1); });
   connect(up, &QPushButton::clicked, this, [this] { onTuneStep(+1); });
-  nudge_row->addWidget(down);
-  nudge_row->addWidget(up);
-  nudge_row->addStretch(1);
-  knob_col->addLayout(nudge_row);
-
-  auto* entry_row = new QHBoxLayout();
-  entry_row->setSpacing(6);
+  entry_row->addWidget(down);
+  entry_row->addWidget(up);
   freq_edit_ = new QLineEdit(deck);
   freq_edit_->setPlaceholderText("直接输入 MHz，如 145.500");
-  freq_edit_->setMinimumHeight(36);
+  freq_edit_->setMinimumHeight(30);
   freq_edit_->setAlignment(Qt::AlignRight);
   connect(freq_edit_, &QLineEdit::returnPressed, this, &MainWindow::onManualFreq);
   entry_row->addWidget(freq_edit_, 1);
   auto* go = new QPushButton("GO", deck);
-  go->setMinimumSize(60, 36);
+  go->setMinimumSize(48, 30);
   connect(go, &QPushButton::clicked, this, &MainWindow::onManualFreq);
   entry_row->addWidget(go);
   knob_col->addLayout(entry_row);
   knob_col->addStretch(1);
   deck_lay->addLayout(knob_col, 1);
-  block->addWidget(deck);
+  console_row->addWidget(deck, 1);
+
+  poswr_ = new PoSwrWidget(central);
+  console_row->addWidget(poswr_, 0, Qt::AlignVCenter);
+
+  block->addLayout(console_row);
 
   // ---- 频段快捷 + 接收波段（可听不可发）----
   auto* bands = new QHBoxLayout();
-  bands->setSpacing(6);
+  bands->setSpacing(5);
   for (const auto& b : kBands) {
     auto* btn = new QPushButton(b.name, central);
-    btn->setMinimumSize(62, 32);
+    btn->setMinimumSize(54, 28);
     btn->setProperty("center_hz", static_cast<qulonglong>(b.center_hz));
     connect(btn, &QPushButton::clicked, this, &MainWindow::onBandClicked);
     bands->addWidget(btn);
@@ -431,7 +439,7 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   auto mk_preset = [&](const QString& text, const QString& tip, auto action) {
     auto* btn = new QPushButton(text, central);
     btn->setToolTip(tip);
-    btn->setMinimumSize(74, 32);
+    btn->setMinimumSize(64, 28);
     connect(btn, &QPushButton::clicked, this, action);
     bands->addWidget(btn);
   };
@@ -451,12 +459,13 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
 
   // ---- 双 VFO（SUB 带）----
   auto* vfo = new QHBoxLayout();
-  vfo->setSpacing(6);
+  vfo->setSpacing(5);
   vfo->addWidget(new QLabel("双 VFO", central));
   sub_label_ = new QLabel("—", central);
-  sub_label_->setMinimumWidth(230);
+  sub_label_->setMinimumWidth(190);
   QFont subf("Cascadia Mono");
   subf.setStyleHint(QFont::Monospace);
+  subf.setPointSize(11);
   sub_label_->setFont(subf);
   sub_label_->setStyleSheet("color: #4dd0e1;");
   vfo->addWidget(sub_label_);
@@ -464,7 +473,7 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   auto mk_vfo = [&](const QString& text, const QString& tip) {
     auto* b = new QPushButton(text, central);
     b->setToolTip(tip);
-    b->setMinimumSize(52, 32);
+    b->setMinimumSize(48, 28);
     vfo->addWidget(b);
     return b;
   };
@@ -492,7 +501,7 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   // 双守听：IC-705 单接收机，不摆假按钮；如实说明替代方案
   auto* dual_info = new QPushButton("双守听？", central);
   dual_info->setToolTip("IC-705 无 DUAL 双守听：单接收机。用 A/B 双 VFO 手动守听 SUB 带。");
-  dual_info->setMinimumSize(96, 32);
+  dual_info->setMinimumSize(84, 28);
   dual_info->setStyleSheet(
       "QPushButton { border-color: #546e7a; color: #90caf9; }");
   connect(dual_info, &QPushButton::clicked, this, [this] {

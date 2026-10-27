@@ -15,8 +15,10 @@ float dbmToNorm(float dbm) {
 }  // namespace
 
 SMeterWidget::SMeterWidget(QWidget* parent) : QFrame(parent) {
-  setMinimumSize(260, 130);
-  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  // 横向限宽：与紧凑旋钮台同排，把纵向空间让给频谱
+  setMinimumSize(240, 108);
+  setMaximumSize(320, 124);
+  setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   startTimer(33);  // 指针缓动动画
 }
 
@@ -102,8 +104,10 @@ void SMeterWidget::paintEvent(QPaintEvent*) {
 }
 
 PoSwrWidget::PoSwrWidget(QWidget* parent) : QFrame(parent) {
-  setMinimumSize(200, 58);
-  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+  // 缩成同排右侧的小表：两条短横条，不再占半行宽
+  setMinimumSize(180, 64);
+  setMaximumSize(220, 80);
+  setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 }
 
 void PoSwrWidget::setPoSwr(float po_w, float swr) {
@@ -116,6 +120,7 @@ void PoSwrWidget::paintEvent(QPaintEvent*) {
   QPainter p(this);
   p.setRenderHint(QPainter::Antialiasing);
   const int w = width(), h = height();
+  const int top = (h - 42) / 2;  // 两条表纵向居中
 
   auto bar = [&](int y, const QString& name, float v, float vmax, float red_from,
                  const QString& unit) {
@@ -134,6 +139,6 @@ void PoSwrWidget::paintEvent(QPaintEvent*) {
                QString::number(v, 'f', v < 10 ? 1 : 0) + unit);
   };
 
-  bar(2, "Po", po_w_, 10.0f, 9.5f, "W");
-  bar(28, "SWR", swr_, 6.0f, 3.0f, "");
+  bar(top + 2, "Po", po_w_, 10.0f, 9.5f, "W");
+  bar(top + 28, "SWR", swr_, 6.0f, 3.0f, "");
 }
