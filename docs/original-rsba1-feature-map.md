@@ -9,20 +9,23 @@
 
 ✅ 已实现（含 mock 语义与测试）｜🚧 协议层已有码、UI 待接｜📋 列入里程碑｜🅿️ P3+ 另议
 
+> 真机线路自 2026-08 起按指示搁置：✅ 只代表**协议帧 + UI 已由 mock 与帧级测试
+> 锁定**，不代表真机端到端已验。2026-10-27 新增的四个原厂件的真机复验清单见 §K。
+
 ## A. 核心操作
 
 | 原厂项 (ini 注释) | CI-V | 状态 | 说明 |
 |---|---|---|---|
 | Tx (PTT) | 1C 00 | ✅ | 二次确认 + 10min 自动回 RX + 非业余段拦截 |
 | XFC | — | 📋 M3 | 发射频率监听 |
-| Split | — | 📋 M3 | |
+| Split | 0F 00/01 | 🚧 | 写已接 + 发射中调谐保护；无回读（拆分状态不回读） |
 | Freq | 05/03 | ✅ | 手动输频 + 步进 + 频段/波段快捷 |
 | Mode | 06/04 | ✅ | LSB/USB/AM/CW/FM/WFM 按钮组 |
 | Fil（滤波器） | — | 🚧 | 模式回读含 filter 号；选择器 M3（Filw/Slope/Roof 同期） |
-| Dup / Dupofs | 0F/0D | ✅/🚧 | 方向循环已接；频差偏移值 UI M3（协议已验：3B BCD） |
-| RIT / RIT频率 | — | 📋 M3 | |
+| Dup / Dupofs | 0F/0D | ✅/🚧 | 方向循环已接；频差偏移值可回读并在 TX 行显示，设置 UI M3 |
+| RIT / RIT频率 | 21 01/02 | 🚧 | RIT/ΔTX 开关写 + 回读已接；RIT 频率步进值 M3 |
 | Dial Lock | — | 📋 M3 | |
-| VFO（A/B/等量/交换） | 0C | 📋 M3 | |
+| VFO（A/B/等量/交换） | 07/B0/A0 | ✅ | 原厂 ini 标 0C，实机为 07 选 VFO、B0 交换、A0 等量（§K.2） |
 | Tracking | — | 📋 M3 | |
 
 ## B. 亚音 / 编码
@@ -52,7 +55,7 @@
 | Vox | 16 46 | ✅（延迟/增益参数 M3） |
 | Comp | — | 📋 M3 |
 | Apf / Tpf | — | 📋 M3 |
-| CW 侧音/键速/PBT/Bkin | — | 📋 M3 |
+| CW 侧音/键速/PBT/Bkin | 17 / 14 09 0C / 16 47 | ✅/📋 | 文本发送、侧音、键速、Break-in 已接（§K.1）；PBT 📋 |
 
 ## E. 发射限制
 
@@ -69,7 +72,7 @@
 ## H. DV 数字语音 / 记忆 / 扫描
 
 | Mycall/Txmsg/DV 收发呼叫与录音 | — | 🅿️ | DV(D-STAR) P3+ 另议 |
-| Mseq / Memory 通道 | — | 📋 M3 | |
+| Mseq / Memory 通道 | 1A 00 / 08 | ✅/📋 | 信道读/写 + 选组/选信道已接（§K.4）；Mseq 记忆序列 📋 |
 | Scan | — | 📋 M3 | |
 
 ## I. 接收范围（原厂权威数据，已入代码）
@@ -89,7 +92,37 @@
 | APRS | **P3 另议**（工单 §五"不做 APRS 发射"）；接收/显示侧若提前立项：APRSLocus（GPL-3.0）依 AGPL §13 并入，数据（tocalls=CC BY-SA 2.0 / 符号图）单独核许可 |
 | scratchpad（AGPL 同许可） | 组件可双向流动（如 SpectrumPanel），PR 须标注来源/commit/版权人；当前 GLSL 瀑布为自研，等 M2 重写时评估是否换用 |
 
+## K. 2026-10-27 补齐的四个原厂件（mock 帧级验证，真机未验）
+
+按 `libs/protocol/rsba1-core/src/rsba1/radio_link.py` 与 rigplane
+`main @ 134f8446`（`rigs/ic705.toml` + `commands/*.py`）双源核对后实现，全部走
+`RadioSession` 单一出口；UI 为主窗口 VFO 按钮 + 三个对话框。**真机端到端未验**
+（线路搁置），下表同时就是真机复验清单。
+
+| 件 | CI-V | 落地位置 | 测试 |
+|---|---|---|---|
+| CW Keyer | 0x17 文本 / 0xFF 停止；0x14 0x09 侧音、0x14 0x0C 键速、0x16 0x47 Break-in | `app/cw_keyer.*`、`session sendCwText/stopCw` | `[civ] cw …`、`[mock] cw …`、`[session] cw …`、`[ui] cw keyer dialog …` |
+| 双 VFO（SUB 带） | 0x25 sub 频率、0x26 sub 模式、0x07 选 VFO、0xB0 交换、0xA0 等量 | 主窗口 SUB 行 + `A/B/A⇄B/A=B` | `[civ] dual-vfo …`、`[session] sub band …` |
+| Set Mode 深设置树 | 0x1A 0x05 group item [value…] | `app/set_mode_dialog.*`（14 个常用项预设 + 任意 group/item） | `[civ] menu item …`、`[ui] set mode dialog …` |
+| Memory Channel | 0x1A 0x00 读/写 26 字节块；0x08 选组 / 选信道 | `app/memory_channel.*` | `[civ] memory channel …`、`[session] menu and memory …`、`[ui] memory channel dialog …` |
+
+真机复验要点（按风险排序）：
+
+1. **PTT 状态读回**（0x1C 0x00）——旧代码写作 0x14 0x0C，与 CW 键速电平冲突，
+   已纠正；真机确认读/写均走 0x1C 0x00。
+2. **键速/侧音量化的边界**：WPM 6–48 ↔ 0–255 用 nearest-half-down，
+   侧音 300–900 Hz ↔ 0–255 编码向上取整、解码 5 Hz 量子；复核首尾与中点。
+3. **Break-in 子命令 0x16 0x47** 在 IC-705 上的可用性（参考实现有码，本机未验）。
+4. **记忆信道 26 字节块偏移**：本仓按 payload 含 subcmd 解析，已与
+   `parse_memory_contents_response` 逐字段对齐；用真机信道 1 做一次读→写→读。
+5. **0x25/0x26 的 sub 语义**：线上 0 = 当前选中 VFO；本仓按本地记录的
+   `selected_sub` 折算 A/MAIN 与 B/SUB（0x07 只写，无法回读核对，需真机人工确认）。
+6. **菜单项 0x1A 0x05 的 group/item 取值表**（IC-705 手册 A7560-8EX-1 附录），
+   对话框里的 14 个预设只是常用项，真机需抽查 3–5 项读写。
+
 ## 本仓与原厂的差距声明（诚实版）
 
-原厂 = 上述 ~120 个可控项 + 成熟面板布局。本仓当前 = A/C/D 三区约 15 项 + 瀑布/门禁/测试
-底座。差距按 M1(真机链) → M2(频谱对齐) → M3(面板补全) 收敛，本表是逐项验收单。
+原厂 = 上述 ~120 个可控项 + 成熟面板布局。本仓当前 = A/C/D 三区约 20 项
++ Set Mode 任意菜单项读写 + 记忆信道 + 瀑布/门禁/测试底座。Set Mode 与 Memory
+把「逐项重画 UI」变成「按菜单表读取」，其余差距按 M1(真机链) → M2(频谱对齐) →
+M3(面板补全) 收敛，本表是逐项验收单。

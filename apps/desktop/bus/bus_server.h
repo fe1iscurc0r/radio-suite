@@ -31,6 +31,7 @@ class BusServer : public QObject {
 
   bool start(const Config& cfg, QString* error);
   uint64_t spectrumSeq() const { return analyzer_.frameSeq(); }
+  uint16_t port() const { return bound_port_; }
 
  private:
   bool authorized(const QHttpServerRequest& req) const;
@@ -40,6 +41,7 @@ class BusServer : public QObject {
   radio::app::RadioSession& session_;
   QHttpServer http_;
   Config cfg_;
+  uint16_t bound_port_ = 0;
 
   // 合成谱源（headless 下总线侧自产；GUI 模式 MainWindow 另持一份用于显示）
   static constexpr size_t kFftSize = 2048;

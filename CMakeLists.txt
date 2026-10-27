@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_GUI "构建 Qt6 GUI 应用 (src/app)。headless/CI 关掉可零 Qt 编译 core+dsp" ON)
+option(BUILD_GUI "构建 Qt6 Widgets 应用；OFF 仍构建需 Qt6 Core/Network 的 core 与测试" ON)
 option(RADIO_SUITE_BUILD_TESTS "构建 Catch2 单元测试" ON)
 option(BUILD_ENGINE_SPIKE "构建 WO-274 rigplane 引擎 spike（需 Qt6 WebSockets）" OFF)
 
@@ -30,6 +30,7 @@ include(cmake/dependencies.cmake)
 
 add_subdirectory(apps/desktop/core)
 add_subdirectory(libs/dsp/dsp)  # WO-273 单仓裁决：dsp 双端共用（web 未来也用）
+add_subdirectory(apps/desktop/ui_common)  # app/logbook 共用设置对话框（无 Qt Widgets 自动跳过）
 add_subdirectory(apps/desktop/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断）
 add_subdirectory(apps/desktop/audio)    # RtAudio (MIT, vendor/)：SSTV/DV 播放
 if(BUILD_GUI)

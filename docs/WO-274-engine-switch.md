@@ -40,18 +40,19 @@ $ grep -c "未文档化" docs/engine/rigplane-api-notes.md
     后端一切就绪）。
 - spike 客户端已就绪（`apps/spike/`，BUILD_ENGINE_SPIKE 默认 OFF）：
   - QWebSocket 三通道 + scope 16B 头解码（逐字段对照 protocol.py:56-79）
-  - cmd envelope + 15s ping / 30s 无帧重连（对齐 rigplane 前端语义）
+  - cmd envelope + 15s ping / 断线 5s 重连
   - 四指标测量点内建（FPS/帧间隔/PTT lifecycle 毫秒/音频帧计数丢包）
 - 解码正确性单测锁定：`tests/test_engine_spike.cpp`
 - 构建：`rs-build.bat spike-configure && spike-build` → build-spike/engine-spike.exe ✓
-- 主构建 56/56 全绿（ctest 0xc0000135 = Qt DLL PATH，rs-build.bat 已修）
+- 主构建 69/69 全绿（2026-10-26 补生产 wire、session、真实 socket/SQLite 测试后）
 
 ## §C/D/E（E 节已完成；C/D 等 B 解除）
 
 - **E 节 ✅**（`b3dbb7e`）：`docs/engine/268-delta.md`——268 段落级修正清单
   （M1 自研协议段作废→274 四指标；M0/M3/M4/M5 实况对照；SafetyGate 升级为
   纵深防御二层）+ 引擎依赖声明。
-- 上游 issue 文本定稿 ✅：`docs/upstream-rigplane-issue.md`（可粘贴正文）。
+- 上游 issue 已提交 ✅：**#4352**（2026-10-26，b20 与 main 双版本复现；
+  正文与复核证据存档 `docs/upstream-rigplane-issue.md`）。
 - C（engine_client 正式化）/ D（音频路径裁决）：等 B 解除（上游修 rigctld
   后端 unselected 轮询，或 rigplane 侧接受配置跳过）后执行。
 

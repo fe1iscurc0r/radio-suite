@@ -19,7 +19,9 @@ set(APP_SRC
   sstv_dialog.cpp
   dtmf_dialog.cpp
   voice_memory.cpp
-  font_proxy_settings.cpp
+  cw_keyer.cpp
+  set_mode_dialog.cpp
+  memory_channel.cpp
   aprs_panel.cpp)
 
 if(Qt6HttpServer_FOUND)
@@ -33,7 +35,8 @@ target_link_libraries(radio-suite PRIVATE
   Qt6::OpenGLWidgets
   radio::core
   radio::dsp
-  radio::audio)
+  radio::audio
+  radio::ui_common)
 if(Qt6HttpServer_FOUND)
   target_link_libraries(radio-suite PRIVATE Qt6::HttpServer)
   target_compile_definitions(radio-suite PRIVATE RADIO_SUITE_HAVE_BUS=1)

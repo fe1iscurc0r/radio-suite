@@ -111,9 +111,9 @@ bool BusServer::start(const Config& cfg, QString* error) {
     if (error) *error = QString("总线监听失败 %1:%2").arg(cfg_.bind_addr).arg(cfg_.port);
     return false;
   }
-  const quint16 bound = srv->serverPort();
+  bound_port_ = srv->serverPort();
   spec_timer_.start(66);  // ~15fps 快照源
-  qInfo() << "bus: http://" + cfg_.bind_addr + ":" + QString::number(bound) +
+  qInfo() << "bus: http://" + cfg_.bind_addr + ":" + QString::number(bound_port_) +
                  "/  (/api/state /api/spectrum)"
           << (cfg_.token.isEmpty() ? "" : "（token 已启用）");
   return true;

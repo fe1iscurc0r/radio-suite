@@ -6,6 +6,31 @@
 
 namespace radio::core {
 
+namespace {
+
+// 2B/3B BCD MSB-first（与 civ.cpp 的编码保持一致，供模拟器回放）
+std::vector<uint8_t> bcdMsb(int value, int bytes) {
+  std::vector<uint8_t> out(static_cast<size_t>(bytes), 0);
+  for (int i = bytes - 1; i >= 0; --i) {
+    out[static_cast<size_t>(i)] = static_cast<uint8_t>(
+        ((value / 10) % 10) << 4 | (value % 10));
+    value /= 100;
+  }
+  return out;
+}
+
+int bcdMsbToInt(std::span<const uint8_t> data) {
+  int v = 0;
+  for (uint8_t b : data) {
+    const int hi = b >> 4, lo = b & 0x0F;
+    if (hi > 9 || lo > 9) return -1;
+    v = v * 100 + hi * 10 + lo;
+  }
+  return v;
+}
+
+}  // namespace
+
 std::vector<uint8_t> ICivTransport::frame(uint8_t to, uint8_t from, uint8_t cmd,
                                           std::span<const uint8_t> payload) {
   std::vector<uint8_t> body;
@@ -53,7 +78,85 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       pushResponse(civ::kCmdReadMode, p);
       return true;
     }
-    case civ::kCmdReadSmeter: {
+    case civ::kCmdReadSmeter: {  // 0x1A 族：S-meter 0x03/复合表 0x11/记忆 0x00/菜单 0x05
+      if (!parsed->payload.empty() && parsed->payload[0] == 0x00 &&
+          parsed->payload.size() >= 29) {  // 写记忆信道：ch(2) + 26 字节内容
+        const auto p = std::span<const uint8_t>(parsed->payload);
+        civ::MemoryChannel m;
+        m.channel = bcdMsbToInt(p.subspan(1, 2));
+        m.scan = p[3];
+        const auto hz = civ::bcdToFreq(p.subspan(4, 5));
+        const auto mode = bcdMsbToInt(p.subspan(9, 1));
+        const auto filter = bcdMsbToInt(p.subspan(10, 1));
+        const auto tone = bcdMsbToInt(p.subspan(12, 3));
+        const auto tsql = bcdMsbToInt(p.subspan(15, 3));
+        if (m.channel < 0 || !hz || mode < 0 || filter < 0 || tone < 0 || tsql < 0 ||
+            !civ::modeFromCode(static_cast<uint8_t>(mode))) {
+          pushResponse(civ::kNak, {});
+          return true;
+        }
+        m.freq_hz = *hz;
+        m.mode = static_cast<civ::Mode>(mode);
+        m.filter = filter;
+        m.data_mode = (p[11] >> 4) & 0x0F;
+        m.tone_mode = p[11] & 0x0F;
+        m.tone_freq_hz = static_cast<uint32_t>(tone);
+        m.tsql_freq_hz = static_cast<uint32_t>(tsql);
+        m.name.assign(reinterpret_cast<const char*>(p.data() + 18), 10);
+        while (!m.name.empty() && m.name.back() == '\0') m.name.pop_back();
+        sim_.memory[m.channel] = m;
+        pushResponse(civ::kAck, {});
+        return true;
+      }
+      if (!parsed->payload.empty() && parsed->payload[0] == 0x00 &&
+          parsed->payload.size() >= 3) {
+        const int ch = bcdMsbToInt(std::span<const uint8_t>(parsed->payload).subspan(1, 2));
+        const auto it = sim_.memory.find(ch);
+        if (it == sim_.memory.end()) {
+          pushResponse(civ::kNak, {});
+          return true;
+        }
+        const civ::MemoryChannel& m = it->second;
+        std::vector<uint8_t> p{0x00};
+        for (uint8_t b : bcdMsb(m.channel, 2)) p.push_back(b);
+        p.push_back(static_cast<uint8_t>(m.scan));
+        for (uint8_t b : civ::freqToBcd5(m.freq_hz).value_or(std::array<uint8_t, 5>{}))
+          p.push_back(b);
+        p.push_back(static_cast<uint8_t>(((static_cast<int>(m.mode) / 10) % 10) << 4 |
+                                         (static_cast<int>(m.mode) % 10)));
+        p.push_back(static_cast<uint8_t>(((m.filter / 10) % 10) << 4 | (m.filter % 10)));
+        p.push_back(static_cast<uint8_t>(((m.data_mode & 0x0F) << 4) |
+                                         (m.tone_mode & 0x0F)));
+        for (uint8_t b : bcdMsb(static_cast<int>(m.tone_freq_hz), 3)) p.push_back(b);
+        for (uint8_t b : bcdMsb(static_cast<int>(m.tsql_freq_hz), 3)) p.push_back(b);
+        std::string name = m.name.substr(0, 10);
+        name.resize(10, '\0');
+        p.insert(p.end(), name.begin(), name.end());
+        p.push_back(0x00);
+        pushResponse(civ::kCmdReadSmeter, p);
+        return true;
+      }
+      if (!parsed->payload.empty() && parsed->payload[0] == 0x05 &&
+          parsed->payload.size() >= 3) {
+        const uint8_t group = parsed->payload[1], item = parsed->payload[2];
+        const uint16_t key =
+            static_cast<uint16_t>((static_cast<uint16_t>(group) << 8) | item);
+        if (parsed->payload.size() == 3) {  // 读
+          const auto it = sim_.menu.find(key);
+          if (it == sim_.menu.end()) {
+            pushResponse(civ::kNak, {});
+            return true;
+          }
+          std::vector<uint8_t> p{0x05, group, item};
+          p.insert(p.end(), it->second.begin(), it->second.end());
+          pushResponse(civ::kCmdReadSmeter, p);
+          return true;
+        }
+        sim_.menu[key] = std::vector<uint8_t>(parsed->payload.begin() + 3,
+                                              parsed->payload.end());
+        pushResponse(civ::kAck, {});
+        return true;
+      }
       if (!parsed->payload.empty() && parsed->payload[0] == 0x11) {
         // 复合表：TX 时给典型值（Po≈5W→50, SWR≈1.2→12），RX 全 0；量纲 M1 真机标定
         const int po = sim_.ptt ? 50 : 0;
@@ -71,9 +174,18 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       const uint8_t p[] = {0x03, static_cast<uint8_t>(sim_.smeter_raw & 0xFF)};
       pushResponse(civ::kCmdReadSmeter, p);
       return true;
-    }    case civ::kCmdReadPtt: {
-      const uint8_t p[] = {0x0C, static_cast<uint8_t>(sim_.ptt ? 1 : 0)};
-      pushResponse(civ::kCmdReadPtt, p);
+    }    case civ::kCmdPtt: {  // 0x1C 0x00：读 [0x00] / 写 [0x00, 0|1]
+      if (parsed->payload.empty() || parsed->payload[0] != 0x00) {
+        pushResponse(civ::kNak, {});
+      } else if (parsed->payload.size() == 1) {
+        const uint8_t p[] = {0x00, static_cast<uint8_t>(sim_.ptt ? 1 : 0)};
+        pushResponse(civ::kCmdPtt, p);
+      } else if (parsed->payload.size() == 2 && parsed->payload[1] <= 1) {
+        sim_.ptt = parsed->payload[1] != 0x00;
+        pushResponse(civ::kAck, {});
+      } else {
+        pushResponse(civ::kNak, {});
+      }
       return true;
     }
     case civ::kCmdSetFreq: {
@@ -177,6 +289,7 @@ bool MockTransport::send(std::span<const uint8_t> data) {
           case civ::kSub16Moni: val = sim_.moni ? 1 : 0; break;
           case civ::kSub16NotchAuto: val = sim_.notch_auto ? 1 : 0; break;
           case civ::kSub16Vox: val = sim_.vox ? 1 : 0; break;
+          case civ::kSub16BreakIn: val = sim_.break_in ? 1 : 0; break;
           default: return true;  // 未模拟的子命令静默
         }
         const uint8_t p[] = {sub, val};
@@ -198,6 +311,7 @@ bool MockTransport::send(std::span<const uint8_t> data) {
         case civ::kSub16Moni: ok = val <= 1; if (ok) sim_.moni = val != 0; break;
         case civ::kSub16NotchAuto: ok = val <= 1; if (ok) sim_.notch_auto = val != 0; break;
         case civ::kSub16Vox:  ok = val <= 1; if (ok) sim_.vox = val != 0; break;
+        case civ::kSub16BreakIn: ok = val <= 1; if (ok) sim_.break_in = val != 0; break;
         default: return true;  // 未模拟的子命令静默忽略
       }
       pushResponse(ok ? civ::kAck : civ::kNak, {});
@@ -213,13 +327,162 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       }
       return true;
     }
-    case civ::kCmdPtt: {
-      if (parsed->payload.size() != 2 || parsed->payload[0] != 0x00) {
+    case civ::kCmdVfoFreq: {  // 0x25：读/写指定 VFO 频率
+      if (parsed->payload.empty() || parsed->payload[0] > 1) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const bool unselected = parsed->payload[0] == 1;
+      if (parsed->payload.size() == 1) {
+        const uint64_t hz = unselected ? sim_.sub_freq_hz : sim_.freq_hz;
+        std::vector<uint8_t> p{parsed->payload[0]};
+        for (uint8_t b : civ::freqToBcd5(hz).value_or(std::array<uint8_t, 5>{}))
+          p.push_back(b);
+        pushResponse(civ::kCmdVfoFreq, p);
+        return true;
+      }
+      if (parsed->payload.size() != 6) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      auto hz = civ::bcdToFreq(std::span<const uint8_t>(parsed->payload).subspan(1, 5));
+      if (!hz || !isRxAllowed(*hz)) {
         pushResponse(civ::kNak, {});
       } else {
-        sim_.ptt = parsed->payload[1] != 0x00;
+        (unselected ? sim_.sub_freq_hz : sim_.freq_hz) = *hz;
         pushResponse(civ::kAck, {});
       }
+      return true;
+    }
+    case civ::kCmdVfoMode: {  // 0x26：读/写 [sub, mode, data, filter]
+      if (parsed->payload.empty() || parsed->payload[0] > 1) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const bool unselected = parsed->payload[0] == 1;
+      if (parsed->payload.size() == 1) {
+        const uint8_t p[] = {
+            parsed->payload[0],
+            static_cast<uint8_t>(unselected ? sim_.sub_mode : sim_.mode),
+            static_cast<uint8_t>(unselected ? sim_.sub_data_mode : 0),
+            static_cast<uint8_t>(unselected ? sim_.sub_filter : sim_.filter)};
+        pushResponse(civ::kCmdVfoMode, p);
+        return true;
+      }
+      if (parsed->payload.size() != 4 || !civ::modeFromCode(parsed->payload[1])) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      if (unselected) {
+        sim_.sub_mode = static_cast<civ::Mode>(parsed->payload[1]);
+        sim_.sub_data_mode = parsed->payload[2] & 0x01;
+        sim_.sub_filter = parsed->payload[3];
+      } else {
+        sim_.mode = static_cast<civ::Mode>(parsed->payload[1]);
+        sim_.filter = parsed->payload[3];
+      }
+      pushResponse(civ::kAck, {});
+      return true;
+    }
+    case civ::kCmdVfoSelect: {  // 0x07
+      if (parsed->payload.size() != 1 || parsed->payload[0] > 1) {
+        pushResponse(civ::kNak, {});
+      } else {
+        sim_.selected_sub = parsed->payload[0] == 1;
+        pushResponse(civ::kAck, {});
+      }
+      return true;
+    }
+    case civ::kCmdSwapVfo: {  // 0xB0
+      std::swap(sim_.freq_hz, sim_.sub_freq_hz);
+      std::swap(sim_.mode, sim_.sub_mode);
+      std::swap(sim_.filter, sim_.sub_filter);
+      pushResponse(civ::kAck, {});
+      return true;
+    }
+    case civ::kCmdEqualVfo: {  // 0xA0：把当前 VFO 复制到另一 VFO
+      if (sim_.selected_sub) {
+        sim_.freq_hz = sim_.sub_freq_hz;
+        sim_.mode = sim_.sub_mode;
+        sim_.filter = sim_.sub_filter;
+      } else {
+        sim_.sub_freq_hz = sim_.freq_hz;
+        sim_.sub_mode = sim_.mode;
+        sim_.sub_filter = sim_.filter;
+      }
+      pushResponse(civ::kAck, {});
+      return true;
+    }
+    case civ::kCmdLevel14: {  // 0x14 电平族（2B BCD MSB-first）
+      if (parsed->payload.empty()) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      int* target = nullptr;
+      switch (parsed->payload[0]) {
+        case civ::kSub14CwPitch: target = &sim_.cw_pitch_level; break;
+        case civ::kSub14KeySpeed: target = &sim_.key_speed_level; break;
+        case civ::kSub14BreakInDelay: target = &sim_.break_in_delay_level; break;
+        default: pushResponse(civ::kNak, {}); return true;
+      }
+      if (parsed->payload.size() == 1) {
+        std::vector<uint8_t> p{parsed->payload[0]};
+        for (uint8_t b : bcdMsb(*target, 2)) p.push_back(b);
+        pushResponse(civ::kCmdLevel14, p);
+        return true;
+      }
+      if (parsed->payload.size() != 3) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const int v = bcdMsbToInt(std::span<const uint8_t>(parsed->payload).subspan(1, 2));
+      if (v < 0 || v > 255) {
+        pushResponse(civ::kNak, {});
+      } else {
+        *target = v;
+        pushResponse(civ::kAck, {});
+      }
+      return true;
+    }
+    case civ::kCmdCw: {  // 0x17：ASCII 文本（≤30B/帧）/ 0xFF 停止
+      if (parsed->payload.empty()) {
+        pushResponse(civ::kNak, {});
+      } else if (parsed->payload[0] == civ::kCwStop) {
+        sim_.cw_text.clear();
+        sim_.cw_sending = false;
+        pushResponse(civ::kAck, {});
+      } else {
+        sim_.cw_text.append(reinterpret_cast<const char*>(parsed->payload.data()),
+                            parsed->payload.size());
+        sim_.cw_sending = true;
+        pushResponse(civ::kAck, {});
+      }
+      return true;
+    }
+    case civ::kCmdMemoryMode: {  // 0x08 / 0x08 A0：选记忆信道 / 记忆组
+      if (parsed->payload.size() == 2) {
+        const int ch = bcdMsbToInt(parsed->payload);
+        if (ch < 0) {
+          pushResponse(civ::kNak, {});
+        } else {
+          sim_.memory_channel = ch;
+          pushResponse(civ::kAck, {});
+        }
+        return true;
+      }
+      if (parsed->payload.size() == 3 &&
+          parsed->payload[0] == civ::kSubMemoryGroup) {
+        const int group =
+            bcdMsbToInt(std::span<const uint8_t>(parsed->payload).subspan(1, 2));
+        if (group < 0) {
+          pushResponse(civ::kNak, {});
+        } else {
+          sim_.memory_group = group;
+          pushResponse(civ::kAck, {});
+        }
+        return true;
+      }
+      pushResponse(civ::kNak, {});
       return true;
     }
     default:

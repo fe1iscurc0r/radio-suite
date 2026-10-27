@@ -175,3 +175,159 @@ TEST_CASE("civ: smeter conversion anchors", "[civ]") {
   CHECK(civ::smeterToDbm(241) == Approx(-13.0f).margin(0.01f));
   CHECK(civ::smeterSUnits(120) == Approx(9.0f).margin(0.001f));
 }
+
+TEST_CASE("civ: dual-vfo frames and parsers", "[civ][vfo]") {
+  // 指南 p.3/p.15：0x25/0x26 sub=00 选中 VFO、01 未选中 VFO
+  CHECK(toHex(civ::readVfoFreqFrame(false, 0xA4, 0xE0)) == "fefea4e02500fd");
+  CHECK(toHex(civ::readVfoFreqFrame(true, 0xA4, 0xE0)) == "fefea4e02501fd");
+  CHECK(toHex(civ::setVfoFreqFrame(true, 7'074'000, 0xA4, 0xE0)) ==
+        "fefea4e025010040070700fd");
+  CHECK(toHex(civ::readVfoModeFrame(true, 0xA4, 0xE0)) == "fefea4e02601fd");
+  CHECK(toHex(civ::setVfoModeFrame(true, civ::Mode::CW, 0, 1, 0xA4, 0xE0)) ==
+        "fefea4e02601030001fd");
+  CHECK(toHex(civ::selectVfoFrame(true, 0xA4, 0xE0)) == "fefea4e00701fd");
+  CHECK(toHex(civ::swapVfoFrame(0xA4, 0xE0)) == "fefea4e0b0fd");
+  CHECK(toHex(civ::equalizeVfoFrame(0xA4, 0xE0)) == "fefea4e0a0fd");
+
+  auto mk = [](uint8_t cmd, std::span<const uint8_t> payload) {
+    civ::CivFrame f;
+    f.to = 0xE0; f.from = 0xA4; f.cmd = cmd;
+    f.payload.assign(payload.begin(), payload.end());
+    return f;
+  };
+  const uint8_t freq[] = {0x01, 0x00, 0x40, 0x07, 0x07, 0x00};
+  auto vf = civ::parseVfoFreqResponse(mk(0x25, freq));
+  REQUIRE(vf.has_value());
+  CHECK(vf->unselected);
+  CHECK(vf->hz == 7'074'000ULL);
+
+  const uint8_t mode[] = {0x00, 0x03, 0x00, 0x02};
+  auto vm = civ::parseVfoModeResponse(mk(0x26, mode));
+  REQUIRE(vm.has_value());
+  CHECK_FALSE(vm->unselected);
+  CHECK(vm->mode == civ::Mode::CW);
+  CHECK(vm->filter == 2);
+
+  const uint8_t bad_sub[] = {0x02, 0x00, 0x40, 0x07, 0x07, 0x00};
+  CHECK_FALSE(civ::parseVfoFreqResponse(mk(0x25, bad_sub)).has_value());
+}
+
+TEST_CASE("civ: cw text frames chunk and sanitize", "[civ][cw]") {
+  auto one = civ::cwSendFrames("cq de k1abc", 0xA4, 0xE0);
+  REQUIRE(one.size() == 1);
+  CHECK(toHex(one[0]) == "fefea4e0174351204445204b31414243fd");
+
+  auto long_text = civ::cwSendFrames(std::string(65, 'x'), 0xA4, 0xE0);
+  REQUIRE(long_text.size() == 3);
+  CHECK(long_text[0].size() == 36);  // FE FE to from cmd + 30B + FD
+  CHECK(long_text[1].size() == 36);
+  CHECK(long_text[2].size() == 11);  // 余 5 字节
+
+  CHECK(civ::cwSendFrames("", 0xA4, 0xE0).empty());
+  CHECK(toHex(civ::cwStopFrame(0xA4, 0xE0)) == "fefea4e017fffd");
+}
+
+TEST_CASE("civ: cw level conversions and 2B-BCD frames", "[civ][cw]") {
+  CHECK(civ::wpmToKeySpeedLevel(6) == 0);
+  CHECK(civ::wpmToKeySpeedLevel(48) == 255);
+  CHECK(civ::wpmToKeySpeedLevel(20) == 85);
+  CHECK(civ::keySpeedLevelToWpm(0) == 6);
+  CHECK(civ::keySpeedLevelToWpm(255) == 48);
+  CHECK(civ::keySpeedLevelToWpm(85) == 20);
+
+  CHECK(civ::hzToCwPitchLevel(300) == 0);
+  CHECK(civ::hzToCwPitchLevel(900) == 255);
+  CHECK(civ::hzToCwPitchLevel(600) == 128);
+  CHECK(civ::cwPitchLevelToHz(0) == 300);
+  CHECK(civ::cwPitchLevelToHz(255) == 900);
+  CHECK(civ::cwPitchLevelToHz(128) == 600);
+
+  // 255 → 02 55（2B BCD MSB-first，与 radio_link.py 电平族一致）
+  CHECK(toHex(civ::level14WriteFrame(civ::kSub14KeySpeed, 255, 0xA4, 0xE0)) ==
+        "fefea4e0140c0255fd");
+  CHECK(toHex(civ::level14ReadFrame(civ::kSub14CwPitch, 0xA4, 0xE0)) ==
+        "fefea4e01409fd");
+  CHECK(toHex(civ::breakInFrame(true, 0xA4, 0xE0)) == "fefea4e0164701fd");
+
+  civ::CivFrame lv;
+  lv.cmd = 0x14;
+  lv.payload = {0x0C, 0x00, 0x55};
+  CHECK(*civ::parseLevel14Response(lv, civ::kSub14KeySpeed) == 55);
+  CHECK_FALSE(civ::parseLevel14Response(lv, civ::kSub14CwPitch).has_value());
+
+  civ::CivFrame bi;
+  bi.cmd = 0x16;
+  bi.payload = {0x47, 0x01};
+  CHECK(*civ::parseBreakInResponse(bi));
+}
+
+TEST_CASE("civ: menu item frames and response", "[civ][menu]") {
+  // 1A 05 gg ii：[value...] 写；读不带 value（ic705.toml [menu]）
+  CHECK(toHex(civ::menuReadFrame(0x00, 0x45, 0xA4, 0xE0)) ==
+        "fefea4e01a050045fd");
+  const uint8_t v[] = {0x01};
+  CHECK(toHex(civ::menuWriteFrame(0x01, 0x31, v, 0xA4, 0xE0)) ==
+        "fefea4e01a05013101fd");
+
+  civ::CivFrame f;
+  f.cmd = 0x1A;
+  f.payload = {0x05, 0x03, 0x59, 0x20};
+  auto mv = civ::parseMenuResponse(f);
+  REQUIRE(mv.has_value());
+  CHECK(mv->group == 3);
+  CHECK(mv->item == 0x59);
+  CHECK(mv->value == std::vector<uint8_t>{0x20});
+
+  civ::CivFrame wrong;
+  wrong.cmd = 0x1A;
+  wrong.payload = {0x03, 0x00, 0x00};
+  CHECK_FALSE(civ::parseMenuResponse(wrong).has_value());
+}
+
+TEST_CASE("civ: memory channel encode/decode", "[civ][memory]") {
+  civ::MemoryChannel m;
+  m.channel = 5;
+  m.freq_hz = 7'050'000;
+  m.mode = civ::Mode::LSB;
+  m.filter = 1;
+  m.name = "TEST";
+
+  const std::vector<uint8_t> body = {
+      0x1A, 0x00,              // cmd + sub
+      0x00, 0x05,              // channel BCD2
+      0x00,                    // scan
+      0x00, 0x00, 0x05, 0x07, 0x00,  // freq 5B LSB-first
+      0x00, 0x01,              // mode / filter（BCD1）
+      0x00,                    // data<<4 | tone
+      0x00, 0x00, 0x00,        // tone freq BCD3
+      0x00, 0x00, 0x00,        // tsql freq BCD3
+      'T', 'E', 'S', 'T', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // name 10B
+      0x00};                   // 第 26 字节保留
+  CHECK(civ::writeMemoryChannelFrame(m, 0xA4, 0xE0) ==
+        civ::buildFrame(0xA4, 0xE0, body));
+  CHECK(toHex(civ::readMemoryChannelFrame(5, 0xA4, 0xE0)) ==
+        "fefea4e01a000005fd");
+  CHECK(toHex(civ::selectMemoryGroupFrame(3, 0xA4, 0xE0)) ==
+        "fefea4e008a00003fd");
+  CHECK(toHex(civ::selectMemoryChannelFrame(7, 0xA4, 0xE0)) ==
+        "fefea4e0080007fd");
+
+  // 应答 payload：sub + channel(2) + 26 字节内容块（memory.py:parse_memory_contents_response）
+  civ::CivFrame resp;
+  resp.cmd = 0x1A;
+  resp.payload = {0x00, 0x00, 0x05,  // sub + channel(2)
+                  0x00,             // scan
+                  0x00, 0x00, 0x05, 0x07, 0x00,
+                  0x00, 0x01, 0x00,
+                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                  'T', 'E', 'S', 'T', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                  0x00};
+  auto got = civ::parseMemoryChannelResponse(resp);
+  REQUIRE(got.has_value());
+  CHECK(*got == m);
+
+  civ::CivFrame short_resp;
+  short_resp.cmd = 0x1A;
+  short_resp.payload = {0x00, 0x00, 0x05, 0x00};
+  CHECK_FALSE(civ::parseMemoryChannelResponse(short_resp).has_value());
+}

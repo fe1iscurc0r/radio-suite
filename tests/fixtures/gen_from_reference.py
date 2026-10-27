@@ -47,8 +47,9 @@ def main() -> int:
         "read_freq_resp_14270k.hex": resp(0x03, civcmd.freq_to_bytes(14_270_000)),
         "read_mode_resp_fm.hex": resp(0x04, bytes([0x05, 0x01])),      # FM / 滤波器1
         "read_smeter_resp_s9.hex": resp(0x1A, bytes([0x03, 120])),     # S9
-        "read_ptt_resp_on.hex": resp(0x14, bytes([0x0C, 0x01])),
-        "read_ptt_resp_off.hex": resp(0x14, bytes([0x0C, 0x00])),
+        # 0x1C 0x00 = 读 TX 状态（radio_link.py:838 read_tx_status；旧 0x14 0x0C 与键速电平冲突）
+        "read_ptt_resp_on.hex": resp(0x1C, bytes([0x00, 0x01])),
+        "read_ptt_resp_off.hex": resp(0x1C, bytes([0x00, 0x00])),
     }
 
     # ---- UDP (RS-BA1 V2) 协议 fixtures：固定参数，与 C++ rsba1_proto 逐字节互锁 ----

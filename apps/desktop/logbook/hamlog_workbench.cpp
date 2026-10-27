@@ -18,8 +18,7 @@
 
 #include "logbook/lotw_upload_dialog.h"
 #include "logbook/qso_edit_dialog.h"
-
-#include "app/font_proxy_settings.h"
+#include "ui_common/font_proxy_settings.h"
 
 namespace radio::logbook {
 
@@ -39,14 +38,14 @@ HamLogWorkbench::HamLogWorkbench(QWidget* parent) : QWidget(parent) {
   auto* font_btn = new QPushButton("字体", this);
   font_btn->setToolTip("全局字体/字号（原版 FontManager 语义，持久保存）");
   connect(font_btn, &QPushButton::clicked, this, [this] {
-    radio::app::FontSettingsDialog dlg(this);
+    radio::ui::FontSettingsDialog dlg(this);
     dlg.exec();
   });
   head->addWidget(font_btn);
   auto* proxy_btn = new QPushButton("代理", this);
   proxy_btn->setToolTip("HTTP/SOCKS5 应用级代理（作用于 LoTW 上传等网络请求）");
   connect(proxy_btn, &QPushButton::clicked, this, [this] {
-    radio::app::ProxySettingsDialog dlg(this);
+    radio::ui::ProxySettingsDialog dlg(this);
     dlg.exec();
   });
   head->addWidget(proxy_btn);

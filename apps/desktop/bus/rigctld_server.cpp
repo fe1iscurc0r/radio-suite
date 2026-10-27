@@ -19,8 +19,9 @@ bool RigctldServer::start(const Config& cfg, QString* error) {
     if (error) *error = QString("rigctld 监听失败 %1:%2").arg(cfg.bind_addr).arg(cfg.port);
     return false;
   }
-  qInfo() << "rigctld: tcp://" + cfg.bind_addr + ":" + QString::number(cfg.port)
-             + "（WSJT-X/fldigi 即插；rigplane 语义移植）";
+  qInfo() << "rigctld: tcp://" + cfg.bind_addr + ":" +
+                 QString::number(server_->serverPort()) +
+                 "（WSJT-X/fldigi 即插；rigplane 语义移植）";
   return true;
 }
 

@@ -211,40 +211,19 @@ void SstvDialog::onGenerate() {
 }
 
 void SstvDialog::onTransmit() {
-  // 全程走 PTT 门禁（safety 是唯一出口，UI 只编排交互）：
-  // 第一击 requestTx → 立即 confirmTx（对话框内视为同一次确认动作）
-  // → TX + 播放 → 播完 requestRx。mock 上完整可演；真机等 M1 验收。
   if (last_pcm_.empty()) return;
   if (!session_) {
     info_->setText("会话未就绪");
     return;
   }
-  const uint64_t now = QDateTime::currentMSecsSinceEpoch();
-  auto& gate = session_->gate();
-  if (gate.phase() != radio::core::PttPhase::Tx) {
-    gate.requestTx(now);
-    if (!gate.confirmTx(now)) {
-      info_->setText("PTT 门禁未确认（5s 窗口），再点一次");
-      return;
-    }
-    // 门禁最后一道：非业余段拒绝发射
-    const uint64_t hz = session_->store().snapshot().freq_hz;
-    if (!radio::core::SafetyGate::authorizeTx(hz)) {
-      gate.requestRx(now);
-      info_->setText(QString("发射被拒：%1 MHz 不在业余频段").arg(hz / 1e6));
-      return;
-    }
-    // 发射命令（mock 直接生效；真机同帧路径）
-    session_->setMode(session_->store().snapshot().mode);  // 占位保活
+  if (!session_->beginScriptedTx()) {
+    info_->setText("发射被门禁拒绝");
+    return;
   }
 
   info_->setText("发射中…（音频直出 MOD）");
   std::string err;
   const bool ok = audio_->play(last_pcm_, 44100, 0, &err);
-  if (gate.phase() == radio::core::PttPhase::Tx) {
-    gate.requestRx(QDateTime::currentMSecsSinceEpoch());
-    session_->pttButtonPressed();  // 清 TX 态并补发 PTT OFF 帧
-    session_->pttButtonPressed();  // 上一次点击回 RX（幂等）
-  }
+  session_->endScriptedTx();
   info_->setText(ok ? "已播完并回 RX" : QString("音频失败：") + err.c_str());
 }

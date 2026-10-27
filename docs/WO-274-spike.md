@@ -58,12 +58,11 @@ session_lifecycle 的 discovery 重试（3 次 × ~40s）后退出。
 落点：`apps/spike/`（BUILD_ENGINE_SPIKE 选项，默认 OFF——不进主构建产物，
 显式 -DBUILD_ENGINE_SPIKE=ON 编译）。
 
-- `engine_client_spike.cpp`：QWebSocket 三通道（ws/scope/audio）+ 16B scope 头
-  解码（rigplane web/protocol.py:56-79 逐字段）→ 复用 WaterfallWidget 上屏 +
-  cmd envelope（set_freq/ptt）+ 15s ping / 30s 无帧重连（对齐 rigplane 浏览器
-  客户端 KEEPALIVE/HEARTBEAT 语义）+ 指标测量（帧时间戳/延迟/lifecycle）。
-- 单测（不依赖 sidecar）：合成 scope 帧逐字段解码断言、命令 envelope 编码、
-  重连状态机迁移（`tests/test_engine_spike.cpp`）。
+- `engine_spike.cpp`：QWebSocket 三通道（ws/scope/audio）→ 复用 WaterfallWidget
+  上屏 + 15s ping / 断线 5s 重连 + 指标测量（帧时间戳/延迟/lifecycle）；
+  `scope_wire.*` 提供生产用 16B scope 头解码与 cmd envelope（set_freq/ptt/subscribe）。
+- 单测（不依赖 sidecar）：直接调用 `scope_wire.*` 生产函数，做合成 scope 帧逐字段
+  解码断言和 JSON envelope 解析断言（`tests/test_engine_spike.cpp`）。
 
 ## 2B. self-hosted 全链实测（v2 追加：无真机替代路径）
 
@@ -96,15 +95,17 @@ $ python -m rigplane --backend rigctld --host 127.0.0.1 --control-port 4532 \
 → 45s 内 /healthz 全程 000（每 5s 轮询），端口无 LISTEN
 ```
 
-根因（源码定位）：`backends/rigctld_client/radio.py:856 get_freq 只支持 MAIN
-（_require_main_receiver）`，而 `rigs/ic705.toml:127` 声明
+根因（2026-10-26 上游 main 复核）：`src/rigplane/backends/rigctld_client/radio.py:863`
+附近 `get_freq` 只支持 MAIN（`_require_main_receiver`），而 `rigs/ic705.toml:132-133` 声明
 `receiver.main.unselected.freq_mode.*` 属于 polling_only——**rigplane 的
 rigctld 后端无法满足 IC-705 profile 的 unselected 观测** → initial state
 acquisition 永不完成 → listener 永不开放（web_startup 的 gate 语义）。
 
 **这是 rigplane 的空缺，不是我们的缺陷**：IC-705 是单接收机，unselected 字段
-在 rigctld 协议下本来就没有可靠的 hamlib 命令映射。处置：提 issue/PR 给上游
-（工单硬边界：不改其仓）。
+在 rigctld 协议下本来就没有可靠的 hamlib 命令映射。已提 issue **#4352**
+（2026-10-26；b20 与 main @ `134f8446` 双版本复现，10s 降级释放 62/65 条后只剩
+split + unselected 三条被判 critical 而 gate 永不放行；证据见
+`docs/upstream-rigplane-issue.md`）。
 
 **四指标最终判定（无真机）**：1/2/3 需 radio ready（两后端均不可达，见 §1+§2B）；
 4 需 sidecar 先起来。**全部不可达，spike 端到端测量正式搁置**——除非：

@@ -255,3 +255,158 @@ TEST_CASE("mock: send fails when closed; garbage yields no response", "[mock]") 
   CHECK(mt.poll() == 0);
   CHECK(frames.empty());
 }
+
+TEST_CASE("mock: ptt read and set share 0x1C 0x00", "[mock][ptt]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  mt.send(civ::readPttFrame());
+  mt.poll();
+  REQUIRE(frames.size() == 1);
+  REQUIRE(civ::parsePttResponse(frames.back()).has_value());
+  CHECK_FALSE(*civ::parsePttResponse(frames.back()));
+
+  frames.clear();
+  mt.send(civ::pttFrame(true));
+  mt.poll();
+  REQUIRE(frames.size() == 1);
+  CHECK(civ::isAck(frames[0]));
+  CHECK(mt.sim().ptt);
+
+  frames.clear();
+  mt.send(civ::readPttFrame());
+  mt.poll();
+  CHECK(*civ::parsePttResponse(frames.back()));
+}
+
+TEST_CASE("mock: vfo select/swap/equal and sub tuning", "[mock][vfo]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  mt.send(civ::readVfoFreqFrame(false));
+  mt.send(civ::readVfoFreqFrame(true));
+  mt.send(civ::readVfoModeFrame(true));
+  mt.poll();
+  REQUIRE(frames.size() == 3);
+  auto a = civ::parseVfoFreqResponse(frames[0]);
+  auto b = civ::parseVfoFreqResponse(frames[1]);
+  auto bm = civ::parseVfoModeResponse(frames[2]);
+  REQUIRE(a.has_value());
+  REQUIRE(b.has_value());
+  REQUIRE(bm.has_value());
+  CHECK_FALSE(a->unselected);
+  CHECK(a->hz == 14'270'000ULL);
+  CHECK(b->hz == 7'074'000ULL);
+  CHECK(bm->mode == civ::Mode::LSB);
+
+  CHECK(mt.send(civ::setVfoFreqFrame(true, 7'030'000)));
+  CHECK(mt.sim().sub_freq_hz == 7'030'000ULL);
+
+  CHECK(mt.send(civ::swapVfoFrame()));
+  CHECK(mt.sim().freq_hz == 7'030'000ULL);
+  CHECK(mt.sim().sub_freq_hz == 14'270'000ULL);
+
+  CHECK(mt.send(civ::equalizeVfoFrame()));  // 当前选中 A → B = A
+  CHECK(mt.sim().sub_freq_hz == mt.sim().freq_hz);
+
+  CHECK(mt.send(civ::selectVfoFrame(true)));
+  CHECK(mt.sim().selected_sub);
+
+  // 2.4 GHz 超出接收范围 → NAK
+  CHECK(mt.send(civ::setVfoFreqFrame(true, 2'400'000'000)));
+  mt.poll();
+  CHECK(civ::isNak(frames.back()));
+}
+
+TEST_CASE("mock: cw text, stop, and level settings", "[mock][cw]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  for (const auto& fr : civ::cwSendFrames("cq test")) CHECK(mt.send(fr));
+  mt.poll();
+  CHECK(mt.sim().cw_text == "CQ TEST");
+  CHECK(mt.sim().cw_sending);
+  REQUIRE(frames.size() == 1);
+  CHECK(civ::isAck(frames[0]));
+
+  mt.send(civ::cwStopFrame());
+  mt.poll();
+  CHECK_FALSE(mt.sim().cw_sending);
+  CHECK(mt.sim().cw_text.empty());
+
+  frames.clear();
+  mt.send(civ::level14WriteFrame(civ::kSub14KeySpeed, 85));
+  mt.send(civ::level14ReadFrame(civ::kSub14KeySpeed));
+  mt.poll();
+  CHECK(mt.sim().key_speed_level == 85);
+  REQUIRE(frames.size() == 2);
+  CHECK(*civ::parseLevel14Response(frames[1], civ::kSub14KeySpeed) == 85);
+
+  mt.send(civ::breakInFrame(true));
+  mt.send(civ::readBreakInFrame());
+  mt.poll();
+  CHECK(mt.sim().break_in);
+  CHECK(*civ::parseBreakInResponse(frames.back()));
+}
+
+TEST_CASE("mock: menu item and memory channel roundtrip", "[mock][menu][memory]") {
+  MockTransport mt;
+  mt.open(nullptr);
+  std::vector<civ::CivFrame> frames;
+  mt.setFrameCallback([&](std::span<const uint8_t> raw) {
+    if (auto f = civ::parseFrame(raw)) frames.push_back(*f);
+  });
+
+  const uint8_t v[] = {0x20};
+  mt.send(civ::menuWriteFrame(0x03, 0x59, v));
+  mt.send(civ::menuReadFrame(0x03, 0x59));
+  mt.poll();
+  REQUIRE(frames.size() == 2);
+  CHECK(civ::isAck(frames[0]));
+  auto mv = civ::parseMenuResponse(frames[1]);
+  REQUIRE(mv.has_value());
+  CHECK(mv->group == 0x03);
+  CHECK(mv->item == 0x59);
+  CHECK(mv->value == std::vector<uint8_t>{0x20});
+
+  civ::MemoryChannel m;
+  m.channel = 5;
+  m.freq_hz = 7'050'000;
+  m.mode = civ::Mode::LSB;
+  m.filter = 1;
+  m.name = "TEST";
+  frames.clear();
+  mt.send(civ::writeMemoryChannelFrame(m));
+  mt.send(civ::readMemoryChannelFrame(5));
+  mt.poll();
+  REQUIRE(frames.size() == 2);
+  CHECK(civ::isAck(frames[0]));
+  auto got = civ::parseMemoryChannelResponse(frames[1]);
+  REQUIRE(got.has_value());
+  CHECK(*got == m);
+
+  frames.clear();
+  mt.send(civ::readMemoryChannelFrame(9));  // 未写入的信道 → NAK
+  mt.poll();
+  REQUIRE(frames.size() == 1);
+  CHECK(civ::isNak(frames[0]));
+
+  frames.clear();
+  mt.send(civ::selectMemoryGroupFrame(3));
+  mt.send(civ::selectMemoryChannelFrame(7));
+  mt.poll();
+  CHECK(mt.sim().memory_group == 3);
+  CHECK(mt.sim().memory_channel == 7);
+}

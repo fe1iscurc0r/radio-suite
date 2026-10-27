@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// radio-suite · app/font_proxy_settings.h — 字体设置 + 代理设置（对齐原版两件）
+// radio-suite · ui_common/font_proxy_settings.h — 字体设置 + 代理设置（对齐原版两件）
 // 字体：原版 FontManager（默认 Microsoft YaHei，全局字体/字号，QSettings 持久）
 // 代理：原版 ProxyManager（HTTP/HTTPS/SOCKS5 → 环境变量；本仓等价物 =
 //       QNetworkProxy::setApplicationProxy，作用于 LoTW 上传等 QNAM 请求）
@@ -11,7 +11,7 @@ class QComboBox;
 class QSpinBox;
 class QLineEdit;
 
-namespace radio::app {
+namespace radio::ui {
 
 // ---- 字体 ----
 class FontSettingsDialog : public QDialog {
@@ -45,4 +45,4 @@ class ProxySettingsDialog : public QDialog {
   QLineEdit* host_ = nullptr;
   QSpinBox* port_ = nullptr;
 };
-}  // namespace radio::app
+}  // namespace radio::ui

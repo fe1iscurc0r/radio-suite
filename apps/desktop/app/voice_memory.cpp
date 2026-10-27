@@ -162,28 +162,12 @@ void VoiceMemoryDialog::onTransmit() {
   }
   const auto pcm = readWav(voiceDir() + "/" + list_->currentItem()->text() + ".wav");
   if (pcm.empty()) return;
-  if (!session_) return;
-  const uint64_t now = QDateTime::currentMSecsSinceEpoch();
-  auto& gate = session_->gate();
-  if (gate.phase() != radio::core::PttPhase::Tx) {
-    gate.requestTx(now);
-    if (!gate.confirmTx(now)) {
-      status_->setText("PTT 门禁未确认，再点一次");
-      return;
-    }
-    const uint64_t hz = session_->store().snapshot().freq_hz;
-    if (!radio::core::SafetyGate::authorizeTx(hz)) {
-      gate.requestRx(now);
-      status_->setText(QString("发射被拒：%1 MHz 不在业余频段").arg(hz / 1e6));
-      return;
-    }
+  if (!session_ || !session_->beginScriptedTx()) {
+    status_->setText("发射被门禁拒绝");
+    return;
   }
   status_->setText("发射中…（Voice Memory → MOD）");
   audio_out_->play(pcm, kRate);
-  if (gate.phase() == radio::core::PttPhase::Tx) {
-    gate.requestRx(QDateTime::currentMSecsSinceEpoch());
-    session_->pttButtonPressed();
-    session_->pttButtonPressed();
-  }
+  session_->endScriptedTx();
   status_->setText("已播完并回 RX");
 }

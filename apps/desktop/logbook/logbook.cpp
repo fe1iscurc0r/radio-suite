@@ -250,7 +250,8 @@ bool HamLogDb::insert(const Qso& q) {
 namespace {
 void adifField(QString* out, const char* name, const QString& value) {
   if (value.isEmpty()) return;
-  out->append(QString("<%1:%2>%3").arg(name).arg(value.size()).arg(value));
+  out->append(
+      QString("<%1:%2>%3").arg(name).arg(value.toUtf8().size()).arg(value));
 }
 }  // namespace
 
