@@ -10,7 +10,8 @@
 ✅ 已实现（含 mock 语义与测试）｜🚧 协议层已有码、UI 待接｜📋 列入里程碑｜🅿️ P3+ 另议
 
 > 真机线路自 2026-08 起按指示搁置：✅ 只代表**协议帧 + UI 已由 mock 与帧级测试
-> 锁定**，不代表真机端到端已验。2026-10-27 新增的四个原厂件的真机复验清单见 §K。
+> 锁定**，不代表真机端到端已验。2026-10-27 新增的四个原厂件的真机复验清单见 §K，
+> UI 重排 / 中继双频 / 亚音一族的验证口径与真机清单见 §L。
 
 ## A. 核心操作
 
@@ -22,7 +23,7 @@
 | Freq | 05/03 | ✅ | 手动输频 + 步进 + 频段/波段快捷 |
 | Mode | 06/04 | ✅ | LSB/USB/AM/CW/FM/WFM 按钮组 |
 | Fil（滤波器） | — | 🚧 | 模式回读含 filter 号；选择器 M3（Filw/Slope/Roof 同期） |
-| Dup / Dupofs | 0F/0D | ✅/🚧 | 方向循环已接；频差偏移值可回读并在 TX 行显示，设置 UI M3 |
+| Dup / Dupofs | 0F/0D | ✅ | 方向 + 频差（100 Hz BCD，≤9.9999 MHz）可写可回读；LCD 与中继对话框同时显示 RX/TX 两个频率（§L.2） |
 | RIT / RIT频率 | 21 01/02 | 🚧 | RIT/ΔTX 开关写 + 回读已接；RIT 频率步进值 M3 |
 | Dial Lock | — | 📋 M3 | |
 | VFO（A/B/等量/交换） | 07/B0/A0 | ✅ | 原厂 ini 标 0C，实机为 07 选 VFO、B0 交换、A0 等量（§K.2） |
@@ -30,7 +31,7 @@
 
 ## B. 亚音 / 编码
 
-| Tone/Tsql/Dtcs + 号码 + Dsq/Csqlno | 16 5D/1B… | 📋 M3 | 中继亚音全套（协议码在 radio_link 562-612 已验） |
+| Tone/Tsql/Dtcs + 号码 + Dsq/Csqlno | 16 5D/42/43/4B + 1B 00/01/02 | ✅ | 模拟亚音（CTCSS/TSQL）+ 数字亚音（DTCS）全套：模式、收发频率、码值、极性；EIA 50 音 / 104 个常用 DCS 码（§L.3，真机未验） |
 
 ## C. 前级 / 增益
 
@@ -119,6 +120,67 @@
    `selected_sub` 折算 A/MAIN 与 B/SUB（0x07 只写，无法回读核对，需真机人工确认）。
 6. **菜单项 0x1A 0x05 的 group/item 取值表**（IC-705 手册 A7560-8EX-1 附录），
    对话框里的 14 个预设只是常用项，真机需抽查 3–5 项读写。
+
+## L. 2026-10-27 UI 重排 + 中继/亚音（mock + 离屏 UI 验证，真机未验）
+
+用户点名项：按钮尺寸与观感、频率调法、双守听、频差双频显示、模拟亚音 / 数字亚音。
+全部走 `RadioSession` 单一出口，UI 只发命令、只读回状态。
+
+### L.1 主窗口布局（`app/MainWindow.*`）
+
+- 调谐台 `QFrame#tuneDeck`：176×176 `DialWidget`（拖拽按角度、滚轮按格），
+  四档步进按钮 + 当前步进文案（`1 Hz / 10 / 100 / 1k / 5k / 9k / 10k / 12.5k /
+  25k` 中的实际档位），▼/▲ 每格 96×40，频率输入 36px 高 + GO。
+- 按钮统一圆角 6px 与 hover / pressed / checked 三态；PTT 220×84 / 15pt，
+  连接 88×40，模式键 56×34，功能键 56×32；窗口最小 1180×860。
+- 波段行：7 个业余段 + AIR / BC-FM / BC-SW 预设；双 VFO 行：SUB 频率（等宽青色）
+  + `A 主 / B 副 / A⇄B / A=B`；功能区分两行，中继入口单独高亮。
+
+### L.2 双守听：IC-705 不支持（诚实说明）
+
+- 原厂 `IC-705.ini` 顶部即 `DUAL = 0`、`DUAL_KIND = 0`；CI-V `0x07` 只有
+  MAIN/SUB 选择，没有双接收控制；rigplane `ic705.toml` 也是单接收机模型。
+- **不做假 DUAL 开关**。主窗口「双守听？」按钮只弹说明，替代方案 = 现有
+  A/B 双 VFO（SUB 带）手动切听：`0x25/0x26` 管 SUB，`0x07` 切换，`0xB0` 交换。
+- 中继/亚音对话框 `app/repeater_dialog.*`：RX / TX 两行同时显示（DUP− 时
+  TX = RX − offset，DUP+ 时 RX + offset，simplex 时同频）；方向 `0x0F`、
+  频差 `0x0D`、CTCSS/TSQL 模式与收发频率、DTCS 码与收/发极性，底部原始回读行。
+
+### L.3 亚音协议（`core/civ.*`）
+
+| 功能 | CI-V | 载荷 |
+|---|---|---|
+| 亚音功能模式 | `16 5D` | 00 OFF / 01 TONE / 02 TSQL / 03 DTCS / 06 DTCS(T) / 07 TONE(T)+DTCS(R) / 08 DTCS(T)+TSQL(R) / 09 TONE(T)+TSQL(R) |
+| 中继音开关（CTCSS 发射） | `16 42` | 00/01 |
+| TSQL 静噪开关 | `16 43` | 00/01 |
+| DTCS 开关 | `16 4B` | 00/01 |
+| 中继音频率 | `1B 00` | `[sub][00][100Hz\|10Hz][1Hz\|0.1Hz]`，0.1 Hz 单位 |
+| TSQL 频率 | `1B 01` | 同上 |
+| DTCS 码 + 极性 | `1B 02` | `[sub][TX 极性<<4 \| RX 极性][百位][十位<<4 \| 个位]`，极性 0=Normal / 1=Reverse |
+
+- 88.5 Hz → `00 08 85`（deci-Hz 885）；回读要求 `payload[1] == 0x00`，否则视为非亚音频应答。
+- DTCS 码三位八进制（023–754）；极性字节的高低半字节归属按指南 p.21 格式推定，
+  **真机未验**（见 L.5）。
+- 下拉表：EIA 50 个标准 CTCSS 音（670–2541 deci-Hz）、104 个常用 DCS 码。
+
+### L.4 测试（全量 92/92）
+
+`[civ] offset frames use 100 Hz BCD`、`[civ] ctcss and dtcs frames match guide layout`、
+`[session] offset roundtrip and tx frequency`、`[session] ctcss and dtcs settings roundtrip`、
+`[ui] repeater dialog shows both frequencies and applies tone settings`；
+离屏 UI 测试真点 `rep_dir / rep_offset / rep_tone_mode / rep_tone_freq / rep_dtcs_*`
+按钮，断言 mock 帧与状态回读。
+
+### L.5 真机复验要点（新增，按风险排序）
+
+1. **0x1B 0x00/0x01 的 0.1 Hz BCD**：88.5 Hz → `00 08 85`；复核 254.1 Hz
+   （高位不超过 2）与 67.0 Hz 两个边界。
+2. **0x1B 0x02 极性字节**：用 023 N/N、023 R/N、023 N/R 三次写→读，
+   确认 TX 在高半字节、RX 在低半字节，还是相反。
+3. **0x16 0x5D 组合值**：0x07 / 0x08 / 0x09 是否被 IC-705 接受（不接受时 NAK 语义）。
+4. **0x0D 频差**：100 Hz 步进与 9.9999 MHz 上限；DUP± 后 LCD TX 行是否与真机面板一致。
+5. **0x0F 读回归一**：本仓把 simplex 归一为 0x00，真机 2026-08-24 实测可能仍回 0x10，
+   需确认后决定是否保留归一。
 
 ## 本仓与原厂的差距声明（诚实版）
 

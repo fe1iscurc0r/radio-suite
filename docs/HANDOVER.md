@@ -1,8 +1,9 @@
 # radio-suite 交接说明（2026-10-27 更新）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
-> 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件）+
-> 两条生态融合（hamlog / APRS）+ 引擎化准备（WO-274），87/87 测试全绿；
+> 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
+> 同日的 UI 重排与中继频差 / 模拟·数字亚音）+ 两条生态融合（hamlog / APRS）+
+> 引擎化准备（WO-274），92/92 测试全绿；
 > 真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
 > 接手人先读本文件 + `docs/WO-274-engine-switch.md` + `docs/WO-273-radio-competitive.md`。
 
@@ -24,7 +25,7 @@ radio-suite/
 ├── apps/spike/                                   # WO-274 rigplane 引擎 spike（默认不编）
 ├── libs/dsp/dsp/                                 # FFT/瀑布（双端共用）
 ├── libs/protocol/rsba1-core/                     # MIT 跟随副本（subtree 同步）
-├── tests/ (Catch2, 87 用例)  docs/  packaging/  tools/
+├── tests/ (Catch2, 92 用例)  docs/  packaging/  tools/
 ```
 
 include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀不变）。
@@ -48,14 +49,18 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | HTTP 总线 | ✅ `/api/state` `/api/spectrum` + 演示页；只有 HTTP，无 WS/控制 POST | 真实 HTTP 测试 `[bus]`（含 token/绑定门禁） |
 | 安全门禁 | ✅ PTT 二次确认 + 10min 自动回 RX + **非业余段拒绝发射**（TX 中调谐也拦） | tests `[safety]` + `[session][ptt]` 帧序列 |
 | 频谱/瀑布 | ✅ OpenGL 纹理滚屏 + 谱线（**上谱下瀑分区**）+ 半圆指针 S 表 + Po/SWR 表；**当前谱源为 SignalSynth 合成信号，不是 RF/音频/50003** | 截图 `docs/screenshots/` + `SignalSynth` 调用点 |
-| 频率/模式/开关 | ✅ 频率/模式/滤波/RIT/ΔTX/Split/ATT/NB/NR/NOTCH/VOX/PAMP/AGC/DUP + **双 VFO(SUB 带)** | 对照原厂 `IC-705.ini` 全清单；SUB 频率/模式帧级测试 `[civ]`/`[session]` |
-| 原厂件 | ✅ 调谐旋钮、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory、**CW Keyer / Set Mode / Memory Channel** | 原厂 CHM 清单逐项对照；本轮四件见 `docs/original-rsba1-feature-map.md` §K |
+| 频率/模式/开关 | ✅ 频率/模式/滤波/RIT/ΔTX/Split/ATT/NB/NR/NOTCH/VOX/PAMP/AGC/DUP + **双 VFO(SUB 带)** + **中继频差(0x0D) / CTCSS·TSQL·DTCS** | 对照原厂 `IC-705.ini` 全清单；SUB/频差/亚音帧级测试 `[civ]`/`[session]` |
+| 原厂件 | ✅ 调谐旋钮（176px 旋钮台 + 步进档）、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory、**CW Keyer / Set Mode / Memory Channel / 中继·亚音对话框** | 原厂 CHM 清单逐项对照；四件见 `docs/original-rsba1-feature-map.md` §K，UI/频差/亚音见 §L |
 | SSTV | ✅ 8 制式编解码（Robot36/72 + Martin M1/M2）+ VoX 校准头 + **编解码回环自校验** | tests `[sstv]`(31 断言) |
 | DTMF | ✅ 16 键编解码 + 回环 | tests `[dtmf]` |
 | APRS-IS | ✅ 台站聚合表 + 信标/消息上行 + 通行码 | 实测连 china.aprs2.net（308 台/7805 包） |
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | 音频 | ✅ 本机输出（AudioOut，SSTV/Voice Memory）+ 输入（AudioIn，麦克风）；≠ 已接 UDP 50003 | 本机冒烟；WASAPI 丢样问题见 §7 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
+
+> **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
+> CI-V `0x07` 只有 MAIN/SUB）。本仓不做假 DUAL 开关；主窗口「双守听？」只弹说明，
+> 替代方案 = 现有 A/B 双 VFO（SUB 带）手动切听，详见功能对照表 §L.2。
 
 ## 5. 未完成 / 待办（按优先级）
 
@@ -79,7 +84,12 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
      发射中拒绝切换，Split 发射中拒绝把 SUB 调到业余段外；
    - Set Mode：`0x1A 0x05 group item [value…]`，14 个常用项预设 + 任意项；
    - Memory Channel：`0x1A 0x00` 26 字节块读写、`0x08` 选组/选信道。
-   真机复验清单（按风险排序）见 `docs/original-rsba1-feature-map.md` §K。
+   - 中继频差：`0x0D` 100 Hz BCD（≤9.9999 MHz）可写可回读，`0x0F` 方向；
+     LCD 与 `app/repeater_dialog.*` 同时显示 RX/TX 两个频率（DUP−/DUP+ 自动算 TX）。
+   - 亚音：`0x16 0x5D/0x42/0x43/0x4B` + `0x1B 0x00/0x01/0x02`，EIA 50 音 +
+     104 个常用 DCS 码；DTCS 极性字节布局按指南推定，**真机未验**。
+   - UI 重排：176px 旋钮台 + 步进文案、统一圆角按钮尺寸、功能区分两行。
+   真机复验清单（按风险排序）见 `docs/original-rsba1-feature-map.md` §K / §L.5。
 5. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
 6. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，
    public/AGPL-3.0，CI 三平台全绿；详见 §6「GitHub 与 CI 现状」）。
@@ -90,7 +100,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 87/87
+cmd //c "D:\tmp\rs-build.bat test"        # 92/92
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -99,18 +109,22 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 87 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 92 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，以及
-  `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory 对话框按钮并断言 mock
-  与状态回读；`BUILD_GUI=OFF` 的 Linux CI 自动不建该 target）。
+  `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory/中继·亚音对话框按钮
+  并断言 mock 与状态回读；`BUILD_GUI=OFF` 的 Linux CI 自动不建该 target）。
   SSTV/Voice Memory 已统一走 `beginScriptedTx/endScriptedTx`；旧“双击收尾”经
   受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
 
-### GitHub 与 CI 现状（2026-10-26 收工）
+### GitHub 与 CI 现状（2026-10-27 更新）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），分支 `main`（默认）+ `feat/wo273-radio-competitive`。
+  **AGPL-3.0**），默认分支 `main`（当前 `cce0241`，PR #1 合并后）+
+  `feat/wo273-radio-competitive`。
+- **PR #1 已合并**（2026-10-27，一键发射 PTT 编排 + 真实集成测试）；其分支
+  `fix/scripted-tx-and-real-tests` 的远端 sha `272bc5d` 是 REST 重建对象，
+  与本地同内容 commit 的 sha 不同。
 - **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
   macOS Qt —— 2026-10-26 复核 main run `40250706139` success。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
@@ -119,13 +133,12 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   → PATCH refs/heads/<branch>）。**REST 内容必须从 `git cat-file blob <sha>`
   取原始字节并显式 `encoding=base64`，不可读 CRLF 工作树冒充 blob**。
   **token 只经环境变量**（`GH_TOKEN` / `GITHUB_TOKEN`），不写仓库或 git config。
-  远端 main 的 `apps/desktop/audio/CMakeLists.txt` 与
-  `apps/desktop/core/transport_mock.h` 两个 blob 曾是 CRLF；交付分支统一用本地
-  LF blob 建树，PR 合并后自然清偿。
+  远端 main 曾有两个 CRLF blob（`apps/desktop/audio/CMakeLists.txt`、
+  `apps/desktop/core/transport_mock.h`），PR #1 已用本地 LF blob 建树清偿。
 - ⚠️ **本地与远端末条 commit 的 sha 不同**（忽略行尾后内容等价）：因
   github.com:443 不通，最后几次用 REST API 重建了 commit 对象。接手人若直接
-  `git push` 会 non-fast-forward。先逐 blob 核对基线，再从确认后的基线开新分支
-  交付；不要为对齐 sha 丢弃未提交工作，也不要直推/强推 main。
+  `git push` 会 non-fast-forward。先逐 blob 核对基线，再从确认后的基线**另开
+  新分支**交付；不要为对齐 sha 丢弃未提交工作，也不要直推/强推 main。
 - 跨平台可移植性（CI 实证的坑）：① audio 平台后端必须三分支
   （WIN32=WASAPI / APPLE=`__MACOSX__`+CoreAudio 框架 / else=ALSA），
   非 Windows 一律编 ALSA 会让 macOS 缺 asoundlib.h；② `uint8_t arr[] = {cond ? a : b}`
@@ -148,6 +161,13 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 5. **WASAPI**：见 §6/文档。
 6. **截图 DPI**：本机 150% 缩放，截图脚本必须 `SetProcessDPIAware`，否则只截到
    窗口左上 2/3（曾因此误判 UI 缺控件）。UIA 枚举比视觉模型可靠。
+7. **亚音两套载荷别混**：`0x1B 0x00/0x01` 是频率
+   `[sub][00][100Hz|10Hz][1Hz|0.1Hz]`（0.1 Hz 单位，88.5→`00 08 85`）；
+   `0x1B 0x02` 是 `[sub][TX 极性<<4|RX 极性][百位][十位<<4|个位]`。
+   mock 曾按 `(code/100)<<4` 编码 DTCS 码，把 023 读成 230，已修——改这块先跑
+   `[civ] ctcss and dtcs …` 与 `[ui] repeater dialog …`。
+8. **`0x0F` 写后必须读回**：`setDuplex()` 只发写帧时状态永远停在 simplex；
+   该函数已补 `readDuplexFrame` + `poll()`，别再拆掉。
 
 ## 8. 工单脉络
 

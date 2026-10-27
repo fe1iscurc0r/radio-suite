@@ -1,7 +1,7 @@
 # radio-suite
 
 独立业余电台控制台：CI-V 电台控制（IC-705 等 Icom）、OpenGL 频谱瀑布、PTT 安全门禁、
-CW 键控 / 双 VFO / Set Mode / 记忆信道、QSO 日志。**独立 AGPL-3.0 项目，可被
+CW 键控 / 双 VFO / Set Mode / 记忆信道、中继频差与 CTCSS/TSQL/DTCS 亚音、QSO 日志。**独立 AGPL-3.0 项目，可被
 [scratchpad](https://github.com/fe1iscurc0r/scratchpad) 以本机总线方式集成**——两边同
 许可、代码可流动，但集成默认走 `--headless --bus` 总线，不共享状态机。
 
@@ -43,7 +43,7 @@ ctest --test-dir build --output-on-failure
 |---|---|---|---|
 | `apps/desktop/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
 | `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
-| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布、CW/Set Mode/记忆信道对话框 |
+| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（176px 旋钮调谐台）、QOpenGLWidget 瀑布、CW/Set Mode/记忆信道/中继·亚音对话框 |
 | `apps/desktop/audio` | — | M2 | RtAudio 输入 |
 | `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
 | `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |
@@ -62,6 +62,14 @@ C++ 用例与之逐字节对照。参考实现只作行为基准与 fixtures 来
   UI 只呈现；
 - 设频唯一出口走 `core/bands.cpp` 中国业余频段白名单，越界命令不出仓；
 - mock 电台同样执行白名单（带外 NAK），保证 CI 能测到门禁语义。
+
+## 已知限制
+
+- **双守听**：IC-705 硬件不支持（原厂 `IC-705.ini` 为 `DUAL = 0`），本仓不提供假
+  DUAL 开关；替代方式是 A/B 双 VFO（SUB 带）手动切听，主窗口「双守听？」按钮内有说明。
+- **亚音真机未验**：`0x1B 0x00/0x01` 的 0.1 Hz BCD 与 `0x1B 0x02` 的 DTCS 极性
+  字节按 CI-V 指南实现，mock 与帧级测试已锁定；真机线路搁置，复验清单见
+  [docs/original-rsba1-feature-map.md](docs/original-rsba1-feature-map.md) §L.5。
 
 ## 许可
 
