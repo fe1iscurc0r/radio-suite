@@ -1,8 +1,9 @@
-# radio-suite 交接说明（2026-10-26 更新）
+# radio-suite 交接说明（2026-10-27 更新）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
-> 原厂功能对齐 + 两条生态融合（hamlog / APRS）+ 引擎化准备（WO-274），
-> 69/69 测试全绿；真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
+> 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件）+
+> 两条生态融合（hamlog / APRS）+ 引擎化准备（WO-274），87/87 测试全绿；
+> 真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
 > 接手人先读本文件 + `docs/WO-274-engine-switch.md` + `docs/WO-273-radio-competitive.md`。
 
 ## 1. 仓库与位置
@@ -23,7 +24,7 @@ radio-suite/
 ├── apps/spike/                                   # WO-274 rigplane 引擎 spike（默认不编）
 ├── libs/dsp/dsp/                                 # FFT/瀑布（双端共用）
 ├── libs/protocol/rsba1-core/                     # MIT 跟随副本（subtree 同步）
-├── tests/ (Catch2, 69 用例)  docs/  packaging/  tools/
+├── tests/ (Catch2, 87 用例)  docs/  packaging/  tools/
 ```
 
 include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀不变）。
@@ -47,8 +48,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | HTTP 总线 | ✅ `/api/state` `/api/spectrum` + 演示页；只有 HTTP，无 WS/控制 POST | 真实 HTTP 测试 `[bus]`（含 token/绑定门禁） |
 | 安全门禁 | ✅ PTT 二次确认 + 10min 自动回 RX + **非业余段拒绝发射**（TX 中调谐也拦） | tests `[safety]` + `[session][ptt]` 帧序列 |
 | 频谱/瀑布 | ✅ OpenGL 纹理滚屏 + 谱线（**上谱下瀑分区**）+ 半圆指针 S 表 + Po/SWR 表；**当前谱源为 SignalSynth 合成信号，不是 RF/音频/50003** | 截图 `docs/screenshots/` + `SignalSynth` 调用点 |
-| 频率/模式/开关 | ✅ 频率/模式/滤波/RIT/ΔTX/Split/ATT/NB/NR/NOTCH/VOX/PAMP/AGC/DUP | 对照原厂 `IC-705.ini` 全清单 |
-| 原厂件 | ✅ 调谐旋钮、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory | 原厂 CHM 清单逐项对照 |
+| 频率/模式/开关 | ✅ 频率/模式/滤波/RIT/ΔTX/Split/ATT/NB/NR/NOTCH/VOX/PAMP/AGC/DUP + **双 VFO(SUB 带)** | 对照原厂 `IC-705.ini` 全清单；SUB 频率/模式帧级测试 `[civ]`/`[session]` |
+| 原厂件 | ✅ 调谐旋钮、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory、**CW Keyer / Set Mode / Memory Channel** | 原厂 CHM 清单逐项对照；本轮四件见 `docs/original-rsba1-feature-map.md` §K |
 | SSTV | ✅ 8 制式编解码（Robot36/72 + Martin M1/M2）+ VoX 校准头 + **编解码回环自校验** | tests `[sstv]`(31 断言) |
 | DTMF | ✅ 16 键编解码 + 回环 | tests `[dtmf]` |
 | APRS-IS | ✅ 台站聚合表 + 信标/消息上行 + 通行码 | 实测连 china.aprs2.net（308 台/7805 包） |
@@ -69,7 +70,16 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 2. **WO-274 阶段二 PWA**（apps/web，消费本仓总线；主路 E1′，退路 E3 Kotlin）——**待师傅点头**。
 3. **WASAPI 采集丢样**（44–57% 样本预算）——诊断与三条处置见
    `docs/notes/audio-capture-wasp-diagnosis.md`；最省事：录音上限改按样本计数。
-4. **原厂件剩余**：CW Keyer / Set Mode 深设置树 / 双 VFO(SUB 带) / Memory Channel 完整版。
+4. ~~原厂件剩余：CW Keyer / Set Mode 深设置树 / 双 VFO(SUB 带) / Memory Channel 完整版。~~
+   → **已于 2026-10-27 补齐**（mock 帧级 + UI offscreen 测试；真机未验）：
+   - CW Keyer：`0x17` 文本（≤30B/帧、ASCII 归一）、`0xFF` 停止、`0x14 0x09/0x0C`
+     侧音/键速、`0x16 0x47` Break-in；文本发射走 `beginScriptedTx/endScriptedTx`，
+     非业余频段不键控，PARIS 估算自动回 RX；
+   - 双 VFO：`0x25/0x26` 读 A/B、`0x07` 选 VFO、`0xB0` 交换、`0xA0` 等量；
+     发射中拒绝切换，Split 发射中拒绝把 SUB 调到业余段外；
+   - Set Mode：`0x1A 0x05 group item [value…]`，14 个常用项预设 + 任意项；
+   - Memory Channel：`0x1A 0x00` 26 字节块读写、`0x08` 选组/选信道。
+   真机复验清单（按风险排序）见 `docs/original-rsba1-feature-map.md` §K。
 5. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
 6. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，
    public/AGPL-3.0，CI 三平台全绿；详见 §6「GitHub 与 CI 现状」）。
@@ -80,7 +90,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 69/69
+cmd //c "D:\tmp\rs-build.bat test"        # 87/87
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -89,8 +99,10 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 69 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
-  logbook 临时 SQLite，以及直接调用生产 `scope_wire.*` 的 spike 测试。
+- 87 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+  logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，以及
+  `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory 对话框按钮并断言 mock
+  与状态回读；`BUILD_GUI=OFF` 的 Linux CI 自动不建该 target）。
   SSTV/Voice Memory 已统一走 `beginScriptedTx/endScriptedTx`；旧“双击收尾”经
   受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。

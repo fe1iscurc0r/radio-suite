@@ -1,9 +1,9 @@
 # radio-suite
 
 独立业余电台控制台：CI-V 电台控制（IC-705 等 Icom）、OpenGL 频谱瀑布、PTT 安全门禁、
-QSO 日志。**独立 AGPL-3.0 项目，可被 [scratchpad](https://github.com/fe1iscurc0r/scratchpad)
-以本机总线方式集成**——两边同许可、代码可流动，但集成默认走 `--headless --bus` 总线，
-不共享状态机。
+CW 键控 / 双 VFO / Set Mode / 记忆信道、QSO 日志。**独立 AGPL-3.0 项目，可被
+[scratchpad](https://github.com/fe1iscurc0r/scratchpad) 以本机总线方式集成**——两边同
+许可、代码可流动，但集成默认走 `--headless --bus` 总线，不共享状态机。
 
 ![status](https://img.shields.io/badge/milestone-M0%20spike-blue) ![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 
@@ -43,7 +43,7 @@ ctest --test-dir build --output-on-failure
 |---|---|---|---|
 | `apps/desktop/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
 | `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
-| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布 |
+| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口、QOpenGLWidget 瀑布、CW/Set Mode/记忆信道对话框 |
 | `apps/desktop/audio` | — | M2 | RtAudio 输入 |
 | `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
 | `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |
