@@ -17,6 +17,7 @@
 
 #include "app/cw_keyer.h"
 #include "app/memory_channel.h"
+#include "app/repeater_dialog.h"
 #include "app/session.h"
 #include "app/set_mode_dialog.h"
 #include "core/transport_mock.h"
@@ -127,4 +128,47 @@ TEST_CASE("memory channel dialog writes and reads back a channel", "[ui][memory]
 
   UiFixture::find<QPushButton>(&dlg, "mem_read")->click();
   CHECK(UiFixture::find<QLabel>(&dlg, "mem_readback")->text().contains("7.050000"));
+}
+
+TEST_CASE("repeater dialog shows both frequencies and applies tone settings", "[ui][repeater]") {
+  UiFixture f;
+  radio::app::RepeaterDialog dlg(f.session.get());
+
+  // 频差：DUP− + 600kHz → RX/TX 双频（TX = RX − 0.6）
+  UiFixture::find<QComboBox>(&dlg, "rep_dir")->setCurrentIndex(1);
+  UiFixture::find<QDoubleSpinBox>(&dlg, "rep_offset")->setValue(0.6);
+  UiFixture::find<QPushButton>(&dlg, "rep_apply")->click();
+
+  CHECK(f.transport->sim().duplex == 0x11);
+  CHECK(f.transport->sim().offset_hz == 600'000U);
+  CHECK(f.session->store().snapshot().offset_hz == 600'000U);
+  CHECK(UiFixture::find<QLabel>(&dlg, "rep_rx")->text().contains("14.270000"));
+  CHECK(UiFixture::find<QLabel>(&dlg, "rep_tx")->text().contains("13.670000"));
+
+  // 模拟亚音：CTCSS 88.5Hz 写入并回读
+  auto* tone_freq = UiFixture::find<QComboBox>(&dlg, "rep_tone_freq");
+  const int ti = tone_freq->findData(885);
+  REQUIRE(ti >= 0);
+  tone_freq->setCurrentIndex(ti);
+  UiFixture::find<QPushButton>(&dlg, "rep_tone_freq_apply")->click();
+  CHECK(f.transport->sim().tone_decihz == 885);
+  CHECK(f.session->store().snapshot().tone_decihz == 885);
+
+  // 模式：TSQL（0x5D=02）
+  auto* tone_mode = UiFixture::find<QComboBox>(&dlg, "rep_tone_mode");
+  const int mi =
+      tone_mode->findData(static_cast<int>(radio::core::civ::ToneSquelch::Tsql));
+  REQUIRE(mi >= 0);
+  tone_mode->setCurrentIndex(mi);
+  UiFixture::find<QPushButton>(&dlg, "rep_tone_apply")->click();
+  CHECK(f.transport->sim().tone_squelch == 0x02);
+
+  // 数字亚音：DTCS 023
+  auto* dtcs_code = UiFixture::find<QComboBox>(&dlg, "rep_dtcs_code");
+  const int di = dtcs_code->findData(23);
+  REQUIRE(di >= 0);
+  dtcs_code->setCurrentIndex(di);
+  UiFixture::find<QPushButton>(&dlg, "rep_dtcs_apply")->click();
+  CHECK(f.transport->sim().dtcs_code == 23);
+  CHECK(f.session->store().snapshot().dtcs_code == 23);
 }

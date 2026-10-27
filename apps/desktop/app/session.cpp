@@ -62,6 +62,14 @@ void RadioSession::pollRadio() {
   transport_->send(core::civ::readRitFrame(false, radio_addr_));
   transport_->send(core::civ::readRitFrame(true, radio_addr_));
   transport_->send(core::civ::readOffsetFrame(radio_addr_));
+  // 亚音 / 数字亚音（0x16 0x5D/0x42/0x43/0x4B + 0x1B 0x00/0x01/0x02）
+  transport_->send(core::civ::readToneSquelchFrame(radio_addr_));
+  transport_->send(core::civ::readToneSwitchFrame(core::civ::kSub16RepeaterTone, radio_addr_));
+  transport_->send(core::civ::readToneSwitchFrame(core::civ::kSub16RepeaterTsql, radio_addr_));
+  transport_->send(core::civ::readToneSwitchFrame(core::civ::kSub16Dtcs, radio_addr_));
+  transport_->send(core::civ::readToneFreqFrame(core::civ::kSubToneRepeater, radio_addr_));
+  transport_->send(core::civ::readToneFreqFrame(core::civ::kSubToneTsql, radio_addr_));
+  transport_->send(core::civ::readDtcsCodeFrame(radio_addr_));
   // 双 VFO（SUB 带）+ CW Keyer：0x25/0x26 选中/未选中两个 VFO、0x14 电平族、0x16 0x47
   transport_->send(core::civ::readVfoFreqFrame(false, radio_addr_));
   transport_->send(core::civ::readVfoFreqFrame(true, radio_addr_));
@@ -186,6 +194,29 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
   } else if (auto off = core::civ::parseOffsetResponse(*f)) {
     s.offset_hz = *off;
     changed = true;
+  } else if (auto ts = core::civ::parseToneSquelchResponse(*f)) {
+    s.tone_squelch = *ts;
+    changed = true;
+  } else if (auto rpt = core::civ::parseToneSwitchResponse(*f, core::civ::kSub16RepeaterTone)) {
+    s.repeater_tone = *rpt;
+    changed = true;
+  } else if (auto tq = core::civ::parseToneSwitchResponse(*f, core::civ::kSub16RepeaterTsql)) {
+    s.tsql = *tq;
+    changed = true;
+  } else if (auto dcs = core::civ::parseToneSwitchResponse(*f, core::civ::kSub16Dtcs)) {
+    s.dtcs_on = *dcs;
+    changed = true;
+  } else if (auto tf = core::civ::parseToneFreqResponse(*f, core::civ::kSubToneRepeater)) {
+    s.tone_decihz = *tf;
+    changed = true;
+  } else if (auto tf = core::civ::parseToneFreqResponse(*f, core::civ::kSubToneTsql)) {
+    s.tsql_decihz = *tf;
+    changed = true;
+  } else if (auto di = core::civ::parseDtcsCodeResponse(*f)) {
+    s.dtcs_code = di->code;
+    s.dtcs_rx_polarity = di->rx_polarity;
+    s.dtcs_tx_polarity = di->tx_polarity;
+    changed = true;
   } else if (core::civ::isNak(*f)) {
     qWarning() << "radio NAK — 命令被拒（频段限制或参数）";  // M3：进原始帧抽屉
   }
@@ -293,6 +324,7 @@ void RadioSession::setSw16(uint8_t sub, uint8_t value) {
 
 void RadioSession::setDuplex(uint8_t val) {
   transport_->send(core::civ::duplexFrame(val, radio_addr_));
+  transport_->send(core::civ::readDuplexFrame(radio_addr_));
   transport_->poll();
 }
 
@@ -304,6 +336,74 @@ void RadioSession::setSplit(bool on) {
 void RadioSession::setRit(bool on, bool dtx) {
   transport_->send(core::civ::ritFrame(on, dtx, radio_addr_));
   transport_->poll();
+}
+
+bool RadioSession::setOffset(uint32_t offset_hz) {
+  if (offset_hz % 100 != 0 || offset_hz > 9'999'900U) {
+    qWarning() << "setOffset rejected:" << offset_hz;
+    return false;
+  }
+  transport_->send(core::civ::offsetFrame(offset_hz, radio_addr_));
+  transport_->send(core::civ::readOffsetFrame(radio_addr_));
+  transport_->poll();
+  return true;
+}
+
+void RadioSession::setToneSquelch(core::civ::ToneSquelch type) {
+  transport_->send(
+      core::civ::toneSquelchFrame(static_cast<uint8_t>(type), radio_addr_));
+  transport_->send(core::civ::readToneSquelchFrame(radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setRepeaterTone(bool on) {
+  transport_->send(
+      core::civ::toneSwitchFrame(core::civ::kSub16RepeaterTone, on, radio_addr_));
+  transport_->send(
+      core::civ::readToneSwitchFrame(core::civ::kSub16RepeaterTone, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setRepeaterTsql(bool on) {
+  transport_->send(
+      core::civ::toneSwitchFrame(core::civ::kSub16RepeaterTsql, on, radio_addr_));
+  transport_->send(
+      core::civ::readToneSwitchFrame(core::civ::kSub16RepeaterTsql, radio_addr_));
+  transport_->poll();
+}
+
+void RadioSession::setDtcsFunction(bool on) {
+  transport_->send(
+      core::civ::toneSwitchFrame(core::civ::kSub16Dtcs, on, radio_addr_));
+  transport_->send(
+      core::civ::readToneSwitchFrame(core::civ::kSub16Dtcs, radio_addr_));
+  transport_->poll();
+}
+
+bool RadioSession::setToneFreq(uint16_t decihz, bool tsql) {
+  if (decihz > 2999) {  // 100Hz 位上限 2：最高 299.9Hz
+    qWarning() << "setToneFreq rejected:" << decihz;
+    return false;
+  }
+  const uint8_t sub = tsql ? core::civ::kSubToneTsql : core::civ::kSubToneRepeater;
+  transport_->send(core::civ::toneFreqFrame(sub, decihz, radio_addr_));
+  transport_->send(core::civ::readToneFreqFrame(sub, radio_addr_));
+  transport_->poll();
+  return true;
+}
+
+bool RadioSession::setDtcsCode(const core::civ::DtcsInfo& info) {
+  const int code = info.code;
+  if (code < 0 || code > 777 || code % 10 > 7 || (code / 10) % 10 > 7 ||
+      code / 100 > 7 || info.rx_polarity < 0 || info.rx_polarity > 1 ||
+      info.tx_polarity < 0 || info.tx_polarity > 1) {
+    qWarning() << "setDtcsCode rejected:" << code;
+    return false;
+  }
+  transport_->send(core::civ::dtcsCodeFrame(info, radio_addr_));
+  transport_->send(core::civ::readDtcsCodeFrame(radio_addr_));
+  transport_->poll();
+  return true;
 }
 
 // ---------------- 双 VFO / SUB 带 ----------------

@@ -22,6 +22,7 @@ set(APP_SRC
   cw_keyer.cpp
   set_mode_dialog.cpp
   memory_channel.cpp
+  repeater_dialog.cpp
   aprs_panel.cpp)
 
 if(Qt6HttpServer_FOUND)

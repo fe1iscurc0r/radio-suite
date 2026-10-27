@@ -37,6 +37,16 @@ class MockTransport final : public ICivTransport {
     bool rit = false;        // 0x21 0x01
     bool dtx = false;        // 0x21 0x02（ΔTX）
     uint32_t offset_hz = 600'000;  // 中继频差（0x0C/0x0D；默认 2m 惯例 600k）
+    // 亚音 / 数字亚音（0x16 0x5D/0x42/0x43/0x4B + 0x1B 0x00/0x01/0x02）
+    int tone_squelch = 0;        // 0x5D 功能模式
+    bool repeater_tone = false;  // 0x42 CTCSS 发射
+    bool tsql = false;           // 0x43
+    bool dtcs_on = false;        // 0x4B
+    uint16_t tone_decihz = 885;  // 0x1B 0x00（0.1Hz）
+    uint16_t tsql_decihz = 885;  // 0x1B 0x01
+    int dtcs_code = 23;          // 0x1B 0x02
+    int dtcs_rx_polarity = 0;
+    int dtcs_tx_polarity = 0;
     // 双 VFO：freq_hz/mode/filter 视作 MAIN(A)，以下为 SUB(B)
     uint64_t sub_freq_hz = 7'074'000;
     civ::Mode sub_mode = civ::Mode::LSB;

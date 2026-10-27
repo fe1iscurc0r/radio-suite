@@ -251,12 +251,27 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       pushResponse(0x0C, p);
       return true;
     }
-    case 0x0D: {  // 写中继频差
+    case 0x0D: {  // 写中继频差（3B BCD，100Hz 分辨率；b2 高半字节固定 0）
       if (parsed->payload.size() != 3) {
         pushResponse(civ::kNak, {});
         return true;
       }
-      pushResponse(civ::kAck, {});
+      const auto nib = [](uint8_t b, int which) {
+        return which ? (b >> 4) : (b & 0x0F);
+      };
+      const uint32_t hz =
+          nib(parsed->payload[0], 1) * 1000U + nib(parsed->payload[0], 0) * 100U +
+          nib(parsed->payload[1], 1) * 100000U +
+          nib(parsed->payload[1], 0) * 10000U +
+          nib(parsed->payload[2], 0) * 1000000U;
+      if (nib(parsed->payload[0], 1) > 9 || nib(parsed->payload[0], 0) > 9 ||
+          nib(parsed->payload[1], 1) > 9 || nib(parsed->payload[1], 0) > 9 ||
+          (parsed->payload[2] >> 4) != 0 || hz > 9'999'900U) {
+        pushResponse(civ::kNak, {});
+      } else {
+        sim_.offset_hz = hz;
+        pushResponse(civ::kAck, {});
+      }
       return true;
     }
     case civ::kCmdRit: {
@@ -276,6 +291,72 @@ bool MockTransport::send(std::span<const uint8_t> data) {
       pushResponse(ok ? civ::kAck : civ::kNak, {});
       return true;
     }
+    case civ::kCmdTone: {  // 0x1B 0x00/0x01 亚音频率；0x02 DTCS 码+极性
+      if (parsed->payload.empty()) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const uint8_t sub = parsed->payload[0];
+      if (sub > civ::kSubToneDtcs) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      if (parsed->payload.size() == 1) {  // 读
+        std::vector<uint8_t> p{sub};
+        if (sub == civ::kSubToneDtcs) {
+          const int code = sim_.dtcs_code;
+          p.push_back(static_cast<uint8_t>(((sim_.dtcs_tx_polarity & 1) << 4) |
+                                           (sim_.dtcs_rx_polarity & 1)));
+          // 与 dtcsCodeFrame 同构：b0 高半字节固定 0 + 百位，b1=十位<<4|个位
+          p.push_back(static_cast<uint8_t>((code / 100) % 10));
+          p.push_back(static_cast<uint8_t>((((code / 10) % 10) << 4) |
+                                           (code % 10)));
+        } else {
+          const uint16_t deci =
+              sub == civ::kSubToneTsql ? sim_.tsql_decihz : sim_.tone_decihz;
+          p.push_back(0x00);
+          p.push_back(static_cast<uint8_t>(((deci / 1000) << 4) |
+                                           ((deci / 100) % 10)));
+          p.push_back(static_cast<uint8_t>((((deci / 10) % 10) << 4) |
+                                           (deci % 10)));
+        }
+        pushResponse(civ::kCmdTone, p);
+        return true;
+      }
+      if (parsed->payload.size() != 4) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      if (sub == civ::kSubToneDtcs) {
+        const int pol = parsed->payload[1];
+        const int rx_pol = pol & 0x0F, tx_pol = pol >> 4;
+        const int d1 = parsed->payload[2] >> 4, d2 = parsed->payload[2] & 0x0F;
+        const int d3 = parsed->payload[3] >> 4, d4 = parsed->payload[3] & 0x0F;
+        if (rx_pol > 1 || tx_pol > 1 || d1 != 0 || d2 > 7 || d3 > 7 || d4 > 7) {
+          pushResponse(civ::kNak, {});
+          return true;
+        }
+        sim_.dtcs_code = d2 * 100 + d3 * 10 + d4;
+        sim_.dtcs_rx_polarity = rx_pol;
+        sim_.dtcs_tx_polarity = tx_pol;
+        pushResponse(civ::kAck, {});
+        return true;
+      }
+      if (parsed->payload[1] != 0x00) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const int d1 = parsed->payload[2] >> 4, d2 = parsed->payload[2] & 0x0F;
+      const int d3 = parsed->payload[3] >> 4, d4 = parsed->payload[3] & 0x0F;
+      if (d1 > 2 || d2 > 9 || d3 > 9 || d4 > 9) {
+        pushResponse(civ::kNak, {});
+        return true;
+      }
+      const auto deci = static_cast<uint16_t>(d1 * 1000 + d2 * 100 + d3 * 10 + d4);
+      (sub == civ::kSubToneTsql ? sim_.tsql_decihz : sim_.tone_decihz) = deci;
+      pushResponse(civ::kAck, {});
+      return true;
+    }
     case civ::kCmdSw16: {
       if (parsed->payload.empty()) return true;
       const uint8_t sub = parsed->payload[0];
@@ -290,6 +371,12 @@ bool MockTransport::send(std::span<const uint8_t> data) {
           case civ::kSub16NotchAuto: val = sim_.notch_auto ? 1 : 0; break;
           case civ::kSub16Vox: val = sim_.vox ? 1 : 0; break;
           case civ::kSub16BreakIn: val = sim_.break_in ? 1 : 0; break;
+          case civ::kSub16ToneSquelch:
+            val = static_cast<uint8_t>(sim_.tone_squelch);
+            break;
+          case civ::kSub16RepeaterTone: val = sim_.repeater_tone ? 1 : 0; break;
+          case civ::kSub16RepeaterTsql: val = sim_.tsql ? 1 : 0; break;
+          case civ::kSub16Dtcs: val = sim_.dtcs_on ? 1 : 0; break;
           default: return true;  // 未模拟的子命令静默
         }
         const uint8_t p[] = {sub, val};
@@ -312,6 +399,13 @@ bool MockTransport::send(std::span<const uint8_t> data) {
         case civ::kSub16NotchAuto: ok = val <= 1; if (ok) sim_.notch_auto = val != 0; break;
         case civ::kSub16Vox:  ok = val <= 1; if (ok) sim_.vox = val != 0; break;
         case civ::kSub16BreakIn: ok = val <= 1; if (ok) sim_.break_in = val != 0; break;
+        case civ::kSub16ToneSquelch:
+          ok = civ::toneSquelchFromCode(val).has_value();
+          if (ok) sim_.tone_squelch = val;
+          break;
+        case civ::kSub16RepeaterTone: ok = val <= 1; if (ok) sim_.repeater_tone = val != 0; break;
+        case civ::kSub16RepeaterTsql: ok = val <= 1; if (ok) sim_.tsql = val != 0; break;
+        case civ::kSub16Dtcs: ok = val <= 1; if (ok) sim_.dtcs_on = val != 0; break;
         default: return true;  // 未模拟的子命令静默忽略
       }
       pushResponse(ok ? civ::kAck : civ::kNak, {});

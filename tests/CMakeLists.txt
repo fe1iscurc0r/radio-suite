@@ -86,7 +86,8 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/set_mode_dialog.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/repeater_dialog.cpp")
   target_include_directories(radio_ui_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/apps/desktop")

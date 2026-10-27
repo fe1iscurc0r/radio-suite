@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 class QHBoxLayout;
+class QVBoxLayout;
 
 #include "app/WaterfallWidget.h"
 #include "app/session.h"
@@ -58,8 +59,8 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
 
  private:
   void buildUi();
-  QHBoxLayout* buildTuneRow(QWidget* central);   // 调谐行（次级）
-  QHBoxLayout* buildFuncRow(QWidget* central);   // 模式+功能开关行（次级）
+  QVBoxLayout* buildTuneBlock(QWidget* central);  // 旋钮调谐台 + 频段 + 双 VFO
+  QVBoxLayout* buildFuncBlock(QWidget* central);  // 模式/中继 + 功能开关两行
   void flashStatus(const QString& text, bool warn);
   void syncTogglesFromState(const radio::core::RadioState& s);
 
@@ -79,6 +80,8 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QPushButton* dtx_btn_ = nullptr;
   QPushButton* split_btn_ = nullptr;
   DialWidget* dial_ = nullptr;          // 主调谐旋钮（原厂 M-Tune 件）
+  QLabel* step_label_ = nullptr;        // 当前旋钮步进档
+  QPushButton* repeater_btn_ = nullptr; // 中继/亚音对话框入口（回读驱动文案）
   QComboBox* mem_slot_ = nullptr;       // 本地记忆槽（电台内存信道 M3 接）
   QLabel* tx_label_ = nullptr;          // 中继双频副显示（DUP± 时 TX=RX∓/±offset）
   QLabel* sub_label_ = nullptr;         // SUB 带（另一 VFO）频率/模式
