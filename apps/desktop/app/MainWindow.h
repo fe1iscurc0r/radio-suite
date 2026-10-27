@@ -7,6 +7,7 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QTimer>
+#include <cstdint>
 #include <memory>
 #include <vector>
 class QHBoxLayout;
@@ -27,6 +28,7 @@ class AprsPanel;
 class CwKeyerDialog;
 class SetModeDialog;
 class MemoryChannelDialog;
+class NetworkAudio;
 }
 class QLineEdit;
 class QPushButton;
@@ -40,6 +42,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
  public:
   explicit MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
                       QWidget* parent = nullptr);
+  ~MainWindow() override;
 
  private slots:
   void refreshState();    // RadioState → 标签 + 模式/功能按钮回读同步
@@ -102,6 +105,13 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QPushButton* agc_btn_ = nullptr;       // AGC 循环 F/M/S（回读驱动）
   QPushButton* dup_btn_ = nullptr;       // Dup 循环 SPLX/DUP-/DUP+（回读驱动）
   QLineEdit* freq_edit_ = nullptr;       // 手动输频（MHz）
+  QPushButton* audio_btn_ = nullptr;     // 50003 网络音频开关（mock 下禁用）
+
+  // 50003 音频链（created after buildUi；销毁顺序在 session_ 之前）
+  std::unique_ptr<radio::app::NetworkAudio> network_audio_;
+  std::vector<int16_t> rx_ring_;         // 最近 RX PCM（频谱源）
+  size_t rx_ring_pos_ = 0;
+  bool rx_have_ = false;
 
   // hamlog / APRS 融合区
   radio::app::AprsPanel* aprs_panel_ = nullptr;

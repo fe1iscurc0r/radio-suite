@@ -65,6 +65,16 @@ std::vector<uint32_t> AudioIn::inputDeviceIds() const {
   return out;
 }
 
+int AudioIn::defaultInputDevice() const {
+  try {
+    const uint32_t id = static_cast<RtAudio*>(dac_)->getDefaultInputDevice();
+    if (static_cast<RtAudio*>(dac_)->getDeviceInfo(id).inputChannels > 0)
+      return static_cast<int>(id);
+  } catch (const std::exception&) {
+  }
+  return -1;
+}
+
 bool AudioIn::start(uint32_t device_id, FrameCallback cb, std::string* error) {
   if (capturing_) return true;
   auto* rt = static_cast<RtAudio*>(dac_);

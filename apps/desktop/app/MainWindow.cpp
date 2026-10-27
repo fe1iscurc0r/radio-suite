@@ -15,15 +15,18 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 
 #include <cmath>
+#include <string>
 
 #include "app/aprs_panel.h"
 #include "app/connect_dialog.h"
 #include "app/dial_widget.h"
 #include "app/dtmf_dialog.h"
 #include "app/meter_widgets.h"
+#include "app/network_audio.h"
 #include "app/sstv_dialog.h"
 #include "app/voice_memory.h"
 
@@ -73,8 +76,27 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
   buildUi();
 
   samples_.assign(kFftSize, 0.0f);
+  rx_ring_.assign(kFftSize, 0);
   col_db_.assign(static_cast<size_t>(WaterfallWidget::kTexW), -120.0f);
   row_bytes_.assign(static_cast<size_t>(WaterfallWidget::kTexW), 0);
+
+  // 50003 音频链：RX 播放 + PTT 门禁上行 + 真实频谱 tap
+  network_audio_ = std::make_unique<radio::app::NetworkAudio>(&session_);
+  connect(&session_, &radio::app::RadioSession::pttPhaseChanged, this,
+          [this](int phase) {
+            if (network_audio_)
+              network_audio_->setTxActive(
+                  phase == static_cast<int>(radio::core::PttPhase::Tx));
+          });
+  connect(network_audio_.get(), &radio::app::NetworkAudio::statusChanged, this,
+          [this](const QString& text) { flashStatus(text, false); });
+  network_audio_->setRxTap([this](std::span<const int16_t> pcm) {
+    for (int16_t s : pcm) {
+      rx_ring_[rx_ring_pos_] = s;
+      rx_ring_pos_ = (rx_ring_pos_ + 1) % kFftSize;
+    }
+    rx_have_ = true;
+  });
 
   // 演示谱：7.5kHz 强音（慢漂移）+ 15kHz 弱音 + 21kHz 中音（快漂移）+ 噪底
   using Tone = radio::dsp::SignalSynth::Tone;
@@ -108,6 +130,11 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
   session_.start();
   refreshState();
   refreshPtt();
+}
+
+MainWindow::~MainWindow() {
+  // 先停音频（会发状态信号，此时成员仍存活），再让成员逆序析构
+  if (network_audio_) network_audio_->stop();
 }
 
 void MainWindow::buildUi() {
@@ -656,6 +683,36 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
   mem_recall->setMinimumSize(48, 32);
   connect(mem_recall, &QPushButton::clicked, this, &MainWindow::onMemRecall);
   funcs->addWidget(mem_recall);
+
+  // 网络音频（RS-BA1 50003）：RX→扬声器、麦克风→PTT 上行
+  funcs->addSpacing(12);
+  audio_btn_ = new QPushButton("网络音频", central);
+  audio_btn_->setCheckable(true);
+  audio_btn_->setMinimumSize(96, 32);
+  const bool has_audio = session_.audioLink() != nullptr;
+  audio_btn_->setEnabled(has_audio);
+  audio_btn_->setToolTip(
+      has_audio
+          ? "RS-BA1 50003：RX 下行→扬声器；麦克风→PTT 上行（默认设备，48kHz s16le）"
+          : "当前链路无 50003 音频（mock / Python 桥）；用 --radio <IP> 连真机后可用");
+  audio_btn_->setStyleSheet(
+      "QPushButton { background:#12333a; border-color:#2e7d8a; color:#8fe; }"
+      "QPushButton:checked { background:#00acc1; color:#06131a;"
+      " font-weight:bold; border-color:#4dd0e1; }");
+  connect(audio_btn_, &QPushButton::toggled, this, [this](bool on) {
+    if (on) {
+      std::string err;
+      if (!network_audio_ || !network_audio_->start(&err)) {
+        QSignalBlocker guard(audio_btn_);
+        audio_btn_->setChecked(false);
+        flashStatus(
+            QString("网络音频未开：%1").arg(QString::fromStdString(err)), true);
+      }
+    } else if (network_audio_) {
+      network_audio_->stop();
+    }
+  });
+  funcs->addWidget(audio_btn_);
   funcs->addStretch(1);
   block->addLayout(funcs);
   return block;
@@ -837,7 +894,14 @@ void MainWindow::onMemRecall() {
 }
 
 void MainWindow::onBenchTick() {
-  synth_.fill(samples_.data());
+  // 网络音频开启且已收到下行：频谱直接用真实 RX PCM；否则回落到合成谱
+  const bool live = network_audio_ && network_audio_->active() && rx_have_;
+  if (live) {
+    for (size_t i = 0; i < kFftSize; ++i)
+      samples_[i] = rx_ring_[(rx_ring_pos_ + i) % kFftSize] / 32768.0f;
+  } else {
+    synth_.fill(samples_.data());
+  }
   analyzer_.process(samples_.data(), samples_.size());
 
   // 1025 bins → 1024 显示列（相邻对取最大，保尖峰）

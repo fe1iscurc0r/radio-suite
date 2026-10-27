@@ -209,8 +209,10 @@ bool Rsba1UdpTransport::open(std::string* error) {
   if (aud_->waitForConnected(3000) &&
       handshake(*aud_, aud_local_, aud_remote_, "audio", nullptr)) {
     audio_tx_.setSids(aud_local_, aud_remote_);
+    audio_ready_ = true;
     log("audio: 双通路就绪（RX 重排 + TX 打包，48kHz s16le/20ms）");
   } else {
+    audio_ready_ = false;
     log("audio: 握手未完成（音频不可用，PTT 语音将无声）");
   }
 
@@ -233,10 +235,13 @@ bool Rsba1UdpTransport::send(std::span<const uint8_t> frame) {
   return n == static_cast<qint64>(pkt.size());
 }
 
-bool Rsba1UdpTransport::sendAudioFrame(std::span<const uint8_t> pcm20ms) {
-  if (state_ != State::Connected || !aud_) return false;
+bool Rsba1UdpTransport::sendTxAudio(std::span<const int16_t> pcm) {
+  if (state_ != State::Connected || !aud_ || !audio_ready_) return false;
+  if (pcm.size() != kNetAudioSamplesPerFrame) return false;
+  const auto bytes = std::span<const uint8_t>(
+      reinterpret_cast<const uint8_t*>(pcm.data()), pcm.size() * sizeof(int16_t));
   audio_tx_.setSids(aud_local_, aud_remote_);
-  for (const auto& pkt : audio_tx_.packFrame(pcm20ms))
+  for (const auto& pkt : audio_tx_.packFrame(bytes))
     aud_->write(reinterpret_cast<const char*>(pkt.data()),
                 static_cast<qint64>(pkt.size()));
   return true;
@@ -258,10 +263,9 @@ size_t Rsba1UdpTransport::poll() {
         // 50003：音频下行（kappanhang 语义：识别→seq 重排→PCM 上抛）
         auto ev = audio_rx_.feed(data);
         if (ev.delivered && audio_cb_ && ev.pcm.size() % 2 == 0) {
-          std::span<const int16_t> pcm(
-              reinterpret_cast<const int16_t*>(ev.pcm.data()),
-              ev.pcm.size() / 2);
-          audio_cb_(pcm);
+          audio_scratch_.resize(ev.pcm.size() / 2);
+          std::memcpy(audio_scratch_.data(), ev.pcm.data(), ev.pcm.size());
+          audio_cb_(audio_scratch_);
         }
       }
     }
@@ -359,6 +363,8 @@ void Rsba1UdpTransport::close() {
   }
   aud_ = ser_ = ctrl_ = nullptr;
   state_ = State::Idle;
+  audio_ready_ = false;
+  audio_cb_ = nullptr;
   ser_tx_buf_.clear();
 }
 

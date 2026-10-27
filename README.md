@@ -1,7 +1,8 @@
 # radio-suite
 
 独立业余电台控制台：CI-V 电台控制（IC-705 等 Icom）、OpenGL 频谱瀑布、PTT 安全门禁、
-CW 键控 / 双 VFO / Set Mode / 记忆信道、中继频差与 CTCSS/TSQL/DTCS 亚音、QSO 日志。**独立 AGPL-3.0 项目，可被
+CW 键控 / 双 VFO / Set Mode / 记忆信道、中继频差与 CTCSS/TSQL/DTCS 亚音、
+**RS-BA1 50003 网络语音（RX 播放 + PTT 门禁的麦克风上行）**、QSO 日志。**独立 AGPL-3.0 项目，可被
 [scratchpad](https://github.com/fe1iscurc0r/scratchpad) 以本机总线方式集成**——两边同
 许可、代码可流动，但集成默认走 `--headless --bus` 总线，不共享状态机。
 
@@ -43,8 +44,8 @@ ctest --test-dir build --output-on-failure
 |---|---|---|---|
 | `apps/desktop/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
 | `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、EMA/峰值保持/噪声底、合成信号 |
-| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（紧凑旋钮台，S 表/Po·SWR 同排）、QOpenGLWidget 瀑布、CW/Set Mode/记忆信道/中继·亚音对话框 |
-| `apps/desktop/audio` | — | M2 | RtAudio 输入 |
+| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（紧凑旋钮台，S 表/Po·SWR 同排）、QOpenGLWidget 瀑布（网络音频开启时用真实 RX PCM）、CW/Set Mode/记忆信道/中继·亚音对话框、网络音频开关 |
+| `apps/desktop/audio` | — | M2 | RtAudio 输入/输出 + 50003 流式播放（AudioSink） |
 | `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
 | `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |
 
@@ -70,6 +71,9 @@ C++ 用例与之逐字节对照。参考实现只作行为基准与 fixtures 来
 - **亚音真机未验**：`0x1B 0x00/0x01` 的 0.1 Hz BCD 与 `0x1B 0x02` 的 DTCS 极性
   字节按 CI-V 指南实现，mock 与帧级测试已锁定；真机线路搁置，复验清单见
   [docs/original-rsba1-feature-map.md](docs/original-rsba1-feature-map.md) §L.5。
+- **50003 音频真机未验**：RX 播放、PTT 门禁的麦克风上行、半双工静音与真实频谱
+  已接线并有门禁单测；但未在 IC-705 上实际通话。设备固定用系统默认输入/输出，
+  暂无设备选择 UI；音频抖动/丢包统计也尚未上界面。复验清单见功能对照表 §L.6。
 
 ## 许可
 

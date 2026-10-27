@@ -11,6 +11,7 @@ set(CMAKE_AUTOMOC ON)
 set(APP_SRC
   main.cpp
   session.cpp
+  network_audio.cpp
   MainWindow.cpp
   WaterfallWidget.cpp
   meter_widgets.cpp

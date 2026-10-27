@@ -12,6 +12,7 @@ add_executable(radio_tests
   test_sstv.cpp
   test_dtmf.cpp
   test_audio_stream.cpp
+  test_audio_bridge.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
@@ -23,7 +24,8 @@ target_link_libraries(radio_tests PRIVATE
 
 target_include_directories(radio_tests PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
-  "${CMAKE_SOURCE_DIR}")
+  "${CMAKE_SOURCE_DIR}"
+  "${CMAKE_SOURCE_DIR}/apps/desktop")
 target_compile_definitions(radio_tests PRIVATE
   RADIO_SUITE_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
