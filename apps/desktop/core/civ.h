@@ -76,6 +76,15 @@ inline constexpr uint8_t kSub16NotchAuto = 0x41; // Auto Notch 0/1
 inline constexpr uint8_t kSub16Moni = 0x45;      // MONI 监听 0/1
 inline constexpr uint8_t kSub16Vox = 0x46;       // VOX 声控 0/1
 inline constexpr uint8_t kSub16NotchMan = 0x48;  // Manual Notch 0/1
+// 亚音族（IC-705 CI-V 指南 p.3/p.21）：0x5D 功能模式；0x42/0x43/0x4B 三个开关
+inline constexpr uint8_t kSub16ToneSquelch = 0x5D;   // 亚音功能模式（见 ToneSquelch）
+inline constexpr uint8_t kSub16RepeaterTone = 0x42;  // 中继音（CTCSS 发射）0/1
+inline constexpr uint8_t kSub16RepeaterTsql = 0x43;  // TSQL 亚音静噪 0/1
+inline constexpr uint8_t kSub16Dtcs = 0x4B;          // DTCS 数字亚音 0/1
+inline constexpr uint8_t kCmdTone = 0x1B;            // 亚音频率 / DTCS 码
+inline constexpr uint8_t kSubToneRepeater = 0x00;    // 0x1B 0x00 中继音频率
+inline constexpr uint8_t kSubToneTsql = 0x01;        // 0x1B 0x01 TSQL 频率
+inline constexpr uint8_t kSubToneDtcs = 0x02;        // 0x1B 0x02 DTCS 码 + 极性
 inline constexpr uint8_t kCmdDuplex = 0x0F;     // 频差方向：写 0x10/0x11/0x12，读回 simplex 归一为 0x00（真机 2026-08-24 实测不归一）
 inline constexpr uint8_t kCmdSplit = 0x0F;      // Split 同字节另一值域：写 0x00=OFF/0x01=ON（radio_link.py:873）
 inline constexpr uint8_t kCmdRit = 0x21;        // RIT/ΔTX 族：子命令 0x01=RIT、0x02=ΔTX
@@ -174,6 +183,67 @@ std::vector<uint8_t> readOffsetFrame(uint8_t to = kIc705Addr,
 std::vector<uint8_t> offsetFrame(uint32_t offset_hz,
                                  uint8_t to = kIc705Addr,
                                  uint8_t from = kDefaultControllerAddr);
+
+// ---- 亚音 / 数字亚音（0x16 0x5D / 0x42 / 0x43 / 0x4B；0x1B 0x00 / 0x01 / 0x02）----
+// 0x16 0x5D 功能模式枚举（指南 p.3）。TONE=模拟亚音发射，TSQL=模拟亚音静噪，
+// DTCS=数字亚音；带 (T)/(R) 的组合值表示收发方向不同。
+enum class ToneSquelch : uint8_t {
+  Off = 0x00,
+  Tone = 0x01,
+  Tsql = 0x02,
+  Dtcs = 0x03,
+  DtcsT = 0x06,
+  ToneTDtcsR = 0x07,
+  DtcsTTsqlR = 0x08,
+  ToneTTsqlR = 0x09,
+};
+const char* toneSquelchName(ToneSquelch t);
+std::optional<ToneSquelch> toneSquelchFromCode(uint8_t code);
+
+std::vector<uint8_t> toneSquelchFrame(uint8_t type,
+                                      uint8_t to = kIc705Addr,
+                                      uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readToneSquelchFrame(uint8_t to = kIc705Addr,
+                                          uint8_t from = kDefaultControllerAddr);
+// 0x16 0x42 中继音 / 0x43 TSQL / 0x4B DTCS：读/写 00/01
+std::vector<uint8_t> toneSwitchFrame(uint8_t sub, bool on,
+                                     uint8_t to = kIc705Addr,
+                                     uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readToneSwitchFrame(uint8_t sub,
+                                         uint8_t to = kIc705Addr,
+                                         uint8_t from = kDefaultControllerAddr);
+std::optional<int> parseToneSquelchResponse(const CivFrame& f);
+std::optional<bool> parseToneSwitchResponse(const CivFrame& f, uint8_t sub);
+
+// 0x1B 0x00/0x01：亚音频率，deci-Hz（0.1Hz 单位，885=88.5Hz）
+// 数据 3 字节：[0x00 固定][100Hz|10Hz][1Hz|0.1Hz]（指南 p.21；88.5→00 08 85）
+std::vector<uint8_t> toneFreqFrame(uint8_t sub, uint16_t decihz,
+                                   uint8_t to = kIc705Addr,
+                                   uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readToneFreqFrame(uint8_t sub,
+                                       uint8_t to = kIc705Addr,
+                                       uint8_t from = kDefaultControllerAddr);
+std::optional<uint16_t> parseToneFreqResponse(const CivFrame& f, uint8_t sub);
+
+// 0x1B 0x02：DTCS 码（三位八进制数字 023..754）+ 收发极性
+// 数据 3 字节：[高半字节 TX 极性 | 低半字节 RX 极性][码 BCD 高][码 BCD 低]
+// 023 常规极性 → 00 00 23；极性字节序按指南 p.21 格式推定，真机未验证。
+struct DtcsInfo {
+  int code = 23;
+  int rx_polarity = 0;  // 0=Normal 1=Reverse
+  int tx_polarity = 0;
+  bool operator==(const DtcsInfo&) const = default;
+};
+std::vector<uint8_t> dtcsCodeFrame(const DtcsInfo& info,
+                                   uint8_t to = kIc705Addr,
+                                   uint8_t from = kDefaultControllerAddr);
+std::vector<uint8_t> readDtcsCodeFrame(uint8_t to = kIc705Addr,
+                                       uint8_t from = kDefaultControllerAddr);
+std::optional<DtcsInfo> parseDtcsCodeResponse(const CivFrame& f);
+
+// 标准 CTCSS（EIA 50 音）与常用 DCS 码表（deci-Hz / 三位码值），UI 下拉数据源
+std::span<const uint16_t> ctcssTonesDecihz();
+std::span<const uint16_t> dtcsCodes();
 
 // ---- 双 VFO / SUB 带（0x25/0x26/0x07/0xB0/0xA0；指南 p.3/p.15）----
 std::vector<uint8_t> readVfoFreqFrame(bool unselected,

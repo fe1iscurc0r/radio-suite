@@ -223,3 +223,60 @@ TEST_CASE("session menu and memory reads update state", "[session][menu][memory]
   f.session->selectMemoryChannel(7);
   CHECK(f.session->store().snapshot().memory_index == 7);
 }
+
+TEST_CASE("session offset roundtrip and tx frequency", "[session][offset]") {
+  MockSessionFixture f;
+  using namespace radio::core;
+
+  REQUIRE(f.session->setOffset(600'000));
+  auto s = f.session->store().snapshot();
+  CHECK(s.offset_hz == 600'000U);
+
+  // 100Hz 分辨率与 9.9999MHz 上限
+  CHECK_FALSE(f.session->setOffset(600'001));
+  CHECK_FALSE(f.session->setOffset(10'000'000));
+  CHECK(f.session->store().snapshot().offset_hz == 600'000U);
+
+  f.session->setDuplex(0x11);
+  s = f.session->store().snapshot();
+  CHECK(s.duplex_raw == 0x11);
+  CHECK(radio::core::effectiveTxHz(s) == s.freq_hz - 600'000);  // DUP−
+
+  f.session->setDuplex(0x12);
+  s = f.session->store().snapshot();
+  CHECK(radio::core::effectiveTxHz(s) == s.freq_hz + 600'000);  // DUP+
+
+  f.session->setDuplex(0x10);
+  s = f.session->store().snapshot();
+  CHECK(radio::core::effectiveTxHz(s) == s.freq_hz);  // simplex：收发同频
+}
+
+TEST_CASE("session ctcss and dtcs settings roundtrip", "[session][tone]") {
+  MockSessionFixture f;
+  using namespace radio::core;
+
+  f.session->setToneSquelch(civ::ToneSquelch::Tsql);
+  f.session->setToneFreq(885, false);   // 88.5Hz 中继音
+  f.session->setToneFreq(1000, true);   // 100.0Hz TSQL
+  f.session->setRepeaterTone(true);
+  f.session->setRepeaterTsql(true);
+  f.session->setDtcsFunction(true);
+
+  civ::DtcsInfo d;
+  d.code = 23;
+  d.rx_polarity = 1;
+  REQUIRE(f.session->setDtcsCode(d));
+  CHECK_FALSE(f.session->setDtcsCode(civ::DtcsInfo{778, 0, 0}));  // 超三位八进制
+  CHECK_FALSE(f.session->setToneFreq(3000, false));               // > 299.9Hz
+
+  const auto s = f.session->store().snapshot();
+  CHECK(s.tone_squelch == static_cast<int>(civ::ToneSquelch::Tsql));
+  CHECK(s.tone_decihz == 885);
+  CHECK(s.tsql_decihz == 1000);
+  CHECK(s.repeater_tone);
+  CHECK(s.tsql);
+  CHECK(s.dtcs_on);
+  CHECK(s.dtcs_code == 23);
+  CHECK(s.dtcs_rx_polarity == 1);
+  CHECK(s.dtcs_tx_polarity == 0);
+}

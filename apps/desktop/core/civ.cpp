@@ -318,6 +318,153 @@ std::optional<uint32_t> parseOffsetResponse(const CivFrame& f) {
          nib(f.payload[2], 0) * 1000000ULL;
 }
 
+// ---------------- 亚音 / 数字亚音 ----------------
+
+const char* toneSquelchName(ToneSquelch t) {
+  switch (t) {
+    case ToneSquelch::Off:       return "OFF";
+    case ToneSquelch::Tone:      return "TONE";
+    case ToneSquelch::Tsql:      return "TSQL";
+    case ToneSquelch::Dtcs:      return "DTCS";
+    case ToneSquelch::DtcsT:     return "DTCS(T)";
+    case ToneSquelch::ToneTDtcsR: return "TONE(T)/DTCS(R)";
+    case ToneSquelch::DtcsTTsqlR: return "DTCS(T)/TSQL(R)";
+    case ToneSquelch::ToneTTsqlR: return "TONE(T)/TSQL(R)";
+  }
+  return "?";
+}
+
+std::optional<ToneSquelch> toneSquelchFromCode(uint8_t code) {
+  switch (code) {
+    case 0x00: return ToneSquelch::Off;
+    case 0x01: return ToneSquelch::Tone;
+    case 0x02: return ToneSquelch::Tsql;
+    case 0x03: return ToneSquelch::Dtcs;
+    case 0x06: return ToneSquelch::DtcsT;
+    case 0x07: return ToneSquelch::ToneTDtcsR;
+    case 0x08: return ToneSquelch::DtcsTTsqlR;
+    case 0x09: return ToneSquelch::ToneTTsqlR;
+    default:   return std::nullopt;
+  }
+}
+
+std::vector<uint8_t> toneSquelchFrame(uint8_t type, uint8_t to, uint8_t from) {
+  return sw16SetFrame(kSub16ToneSquelch, type, to, from);
+}
+
+std::vector<uint8_t> readToneSquelchFrame(uint8_t to, uint8_t from) {
+  return sw16ReadFrame(kSub16ToneSquelch, to, from);
+}
+
+std::vector<uint8_t> toneSwitchFrame(uint8_t sub, bool on, uint8_t to,
+                                     uint8_t from) {
+  return sw16SetFrame(sub, static_cast<uint8_t>(on ? 0x01 : 0x00), to, from);
+}
+
+std::vector<uint8_t> readToneSwitchFrame(uint8_t sub, uint8_t to, uint8_t from) {
+  return sw16ReadFrame(sub, to, from);
+}
+
+std::optional<int> parseToneSquelchResponse(const CivFrame& f) {
+  return parseSw16Response(f, kSub16ToneSquelch);
+}
+
+std::optional<bool> parseToneSwitchResponse(const CivFrame& f, uint8_t sub) {
+  const auto v = parseSw16Response(f, sub);
+  if (!v) return std::nullopt;
+  return *v != 0;
+}
+
+std::vector<uint8_t> toneFreqFrame(uint8_t sub, uint16_t decihz, uint8_t to,
+                                   uint8_t from) {
+  if (decihz > 2999) decihz = 2999;  // 100Hz 位上限 2（指南 p.21）；门禁在上层
+  const auto b0 = static_cast<uint8_t>(((decihz / 1000) << 4) |
+                                       ((decihz / 100) % 10));
+  const auto b1 = static_cast<uint8_t>((((decihz / 10) % 10) << 4) |
+                                       (decihz % 10));
+  const uint8_t body[] = {kCmdTone, sub, 0x00, b0, b1};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readToneFreqFrame(uint8_t sub, uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdTone, sub};
+  return buildFrame(to, from, body);
+}
+
+std::optional<uint16_t> parseToneFreqResponse(const CivFrame& f, uint8_t sub) {
+  // payload = [sub][固定 0][100Hz|10Hz][1Hz|0.1Hz]（指南 p.21）
+  if (f.cmd != kCmdTone || f.payload.size() != 4 || f.payload[0] != sub ||
+      f.payload[1] != 0x00)
+    return std::nullopt;
+  const auto nib = [](uint8_t b, int which) {
+    return which ? (b >> 4) : (b & 0x0F);
+  };
+  const int digits[4] = {nib(f.payload[2], 1), nib(f.payload[2], 0),
+                         nib(f.payload[3], 1), nib(f.payload[3], 0)};
+  for (int d : digits)
+    if (d > 9) return std::nullopt;
+  return static_cast<uint16_t>(digits[0] * 1000 + digits[1] * 100 +
+                               digits[2] * 10 + digits[3]);
+}
+
+std::vector<uint8_t> dtcsCodeFrame(const DtcsInfo& info, uint8_t to,
+                                   uint8_t from) {
+  int code = info.code;
+  if (code < 0) code = 0;
+  if (code > 777) code = 777;  // 三位八进制数字上限
+  const auto pol = static_cast<uint8_t>(((info.tx_polarity & 0x01) << 4) |
+                                        (info.rx_polarity & 0x01));
+  const uint8_t body[] = {kCmdTone, kSubToneDtcs, pol, bcdByte(code / 100),
+                          bcdByte(code % 100)};
+  return buildFrame(to, from, body);
+}
+
+std::vector<uint8_t> readDtcsCodeFrame(uint8_t to, uint8_t from) {
+  const uint8_t body[] = {kCmdTone, kSubToneDtcs};
+  return buildFrame(to, from, body);
+}
+
+std::optional<DtcsInfo> parseDtcsCodeResponse(const CivFrame& f) {
+  if (f.cmd != kCmdTone || f.payload.size() != 4 ||
+      f.payload[0] != kSubToneDtcs)
+    return std::nullopt;
+  const int tx_pol = f.payload[1] >> 4;
+  const int rx_pol = f.payload[1] & 0x0F;
+  const int hi = f.payload[2] >> 4, hi_lo = f.payload[2] & 0x0F;
+  const int lo_hi = f.payload[3] >> 4, lo = f.payload[3] & 0x0F;
+  if (tx_pol > 1 || rx_pol > 1) return std::nullopt;
+  // 4 个 BCD 位：[0][d1][d2][d3]，首位固定 0（码 023..754）
+  if (hi != 0 || hi_lo > 7 || lo_hi > 7 || lo > 7) return std::nullopt;
+  return DtcsInfo{hi_lo * 100 + lo_hi * 10 + lo, rx_pol, tx_pol};
+}
+
+std::span<const uint16_t> ctcssTonesDecihz() {
+  // EIA 标准 50 音（0.1Hz 单位；67.0 ~ 254.1Hz）
+  static constexpr uint16_t kTones[] = {
+      670,  693,  719,  744,  770,  797,  825,  854,  885,  915,
+      948,  974,  1000, 1035, 1072, 1109, 1148, 1188, 1230, 1273,
+      1318, 1365, 1413, 1462, 1514, 1567, 1598, 1622, 1655, 1679,
+      1713, 1738, 1773, 1799, 1835, 1862, 1899, 1928, 1966, 1995,
+      2035, 2065, 2107, 2181, 2257, 2291, 2336, 2418, 2503, 2541};
+  return kTones;
+}
+
+std::span<const uint16_t> dtcsCodes() {
+  // 常用 DCS 码（三位八进制书写，数值 23..754；非穷举，避免冷门码不可选）
+  static constexpr uint16_t kCodes[] = {
+      23,  25,  26,  31,  32,  36,  43,  47,  51,  53,  54,  65,  71,
+      72,  73,  74,  114, 115, 116, 122, 125, 131, 132, 134, 143, 145,
+      152, 155, 156, 162, 165, 172, 174, 205, 212, 223, 225, 226, 243,
+      244, 245, 246, 251, 252, 255, 261, 263, 265, 266, 271, 274, 306,
+      311, 315, 325, 331, 332, 343, 345, 346, 351, 356, 364, 365, 371,
+      411, 412, 413, 423, 431, 432, 445, 446, 452, 454, 455, 462, 464,
+      465, 466, 503, 506, 516, 523, 526, 532, 546, 565, 606, 612, 624,
+      627, 631, 632, 654, 662, 664, 703, 712, 723, 731, 732, 734, 743,
+      754};
+  return kCodes;
+}
+
+
 // ---------------- 双 VFO / SUB 带 ----------------
 
 static uint8_t vfoSub(bool unselected) {

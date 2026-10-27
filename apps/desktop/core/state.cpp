@@ -3,6 +3,14 @@
 
 namespace radio::core {
 
+uint64_t effectiveTxHz(const RadioState& s) {
+  const int64_t rx = static_cast<int64_t>(s.freq_hz);
+  const int64_t off = static_cast<int64_t>(s.offset_hz);
+  if (s.duplex_raw == 0x11 && rx >= off) return static_cast<uint64_t>(rx - off);
+  if (s.duplex_raw == 0x12) return static_cast<uint64_t>(rx + off);
+  return s.freq_hz;
+}
+
 void RadioStateStore::update(const RadioState& s) {
   std::map<uint64_t, Subscriber> to_notify;
   {

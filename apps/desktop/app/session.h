@@ -43,6 +43,15 @@ class RadioSession : public QObject {
   void setDuplex(uint8_t val);      // 0x0F：0x10 simplex/0x11 dup-/0x12 dup+（⚠️ M1 需叠加频偏后的 TX 段校验）
   void setSplit(bool on);           // 0x0F 0x00/0x01（⚠️ 发射频=另一 VFO，合规自查）
   void setRit(bool on, bool dtx);   // 0x21 0x01/0x02
+  bool setOffset(uint32_t offset_hz);  // 0x0D（100Hz 整数倍，≤9.9999MHz）
+
+  // ---- 亚音 / 数字亚音（0x16 0x5D/0x42/0x43/0x4B + 0x1B 0x00/0x01/0x02）----
+  void setToneSquelch(core::civ::ToneSquelch type);  // 0x16 0x5D
+  void setRepeaterTone(bool on);                     // 0x16 0x42
+  void setRepeaterTsql(bool on);                     // 0x16 0x43
+  void setDtcsFunction(bool on);                     // 0x16 0x4B
+  bool setToneFreq(uint16_t decihz, bool tsql);      // 0x1B 0x00/0x01（0.1Hz）
+  bool setDtcsCode(const core::civ::DtcsInfo& info);  // 0x1B 0x02
 
   // ---- 双 VFO / SUB 带（发射中拒绝切换类命令：TX 频率可能被瞬间搬走）----
   bool selectVfo(bool sub);                    // 0x07

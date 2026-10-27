@@ -5,6 +5,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -330,4 +331,80 @@ TEST_CASE("civ: memory channel encode/decode", "[civ][memory]") {
   short_resp.cmd = 0x1A;
   short_resp.payload = {0x00, 0x00, 0x05, 0x00};
   CHECK_FALSE(civ::parseMemoryChannelResponse(short_resp).has_value());
+}
+
+TEST_CASE("civ: offset frames use 100 Hz BCD", "[civ][offset]") {
+  CHECK(toHex(civ::readOffsetFrame(0xA4, 0xE0)) == "fefea4e00cfd");
+  // 2m 惯例 600 kHz → 00 60 00（指南 p.3）
+  CHECK(toHex(civ::offsetFrame(600'000, 0xA4, 0xE0)) == "fefea4e00d006000fd");
+  CHECK(toHex(civ::offsetFrame(9'999'900, 0xA4, 0xE0)) ==
+        "fefea4e00d999909fd");
+
+  civ::CivFrame f;
+  f.cmd = 0x0C;
+  f.payload = {0x00, 0x60, 0x00};
+  REQUIRE(civ::parseOffsetResponse(f).has_value());
+  CHECK(*civ::parseOffsetResponse(f) == 600'000U);
+
+  f.payload = {0x99, 0x99, 0x09};
+  CHECK(*civ::parseOffsetResponse(f) == 9'999'900U);
+
+  civ::CivFrame bad;
+  bad.cmd = 0x0C;
+  bad.payload = {0x00, 0x60};
+  CHECK_FALSE(civ::parseOffsetResponse(bad).has_value());
+}
+
+TEST_CASE("civ: ctcss and dtcs frames match guide layout", "[civ][tone]") {
+  using namespace civ;
+
+  // 0x16 0x5D：TSQL=02；独立开关 0x42/0x43/0x4B
+  CHECK(toHex(toneSquelchFrame(static_cast<uint8_t>(ToneSquelch::Tsql), 0xA4,
+                               0xE0)) == "fefea4e0165d02fd");
+  CHECK(toHex(toneSwitchFrame(kSub16RepeaterTone, true, 0xA4, 0xE0)) ==
+        "fefea4e0164201fd");
+  CHECK(toHex(readToneSwitchFrame(kSub16Dtcs, 0xA4, 0xE0)) == "fefea4e0164bfd");
+
+  // 0x1B 0x00/0x01：0.1Hz 单位，88.5Hz → 00 08 85
+  CHECK(toHex(toneFreqFrame(kSubToneRepeater, 885, 0xA4, 0xE0)) ==
+        "fefea4e01b00000885fd");
+  CHECK(toHex(readToneFreqFrame(kSubToneTsql, 0xA4, 0xE0)) ==
+        "fefea4e01b01fd");
+
+  CivFrame freq;
+  freq.cmd = kCmdTone;
+  freq.payload = {kSubToneRepeater, 0x00, 0x08, 0x85};
+  CHECK(*parseToneFreqResponse(freq, kSubToneRepeater) == 885);
+  CHECK_FALSE(parseToneFreqResponse(freq, kSubToneTsql).has_value());
+
+  // 0x1B 0x02：极性字节 + 两位 BCD；023 normal → 00 00 23
+  DtcsInfo info;
+  info.code = 23;
+  CHECK(toHex(dtcsCodeFrame(info, 0xA4, 0xE0)) == "fefea4e01b02000023fd");
+  info.rx_polarity = 1;
+  CHECK(toHex(dtcsCodeFrame(info, 0xA4, 0xE0)) == "fefea4e01b02010023fd");
+  info.rx_polarity = 0;
+  info.tx_polarity = 1;
+  CHECK(toHex(dtcsCodeFrame(info, 0xA4, 0xE0)) == "fefea4e01b02100023fd");
+
+  CivFrame dcs;
+  dcs.cmd = kCmdTone;
+  dcs.payload = {kSubToneDtcs, 0x10, 0x00, 0x23};  // TX reverse
+  auto got = parseDtcsCodeResponse(dcs);
+  REQUIRE(got.has_value());
+  CHECK(got->code == 23);
+  CHECK(got->rx_polarity == 0);
+  CHECK(got->tx_polarity == 1);
+
+  dcs.payload = {kSubToneDtcs, 0x00, 0x07, 0x54};  // 754
+  CHECK(parseDtcsCodeResponse(dcs)->code == 754);
+
+  dcs.payload = {kSubToneDtcs, 0x00, 0x00, 0x83};  // 个位 8 不是八进制
+  CHECK_FALSE(parseDtcsCodeResponse(dcs).has_value());
+
+  // 标准表锚点：88.5Hz 与 023 必在
+  const auto tones = ctcssTonesDecihz();
+  CHECK(std::find(tones.begin(), tones.end(), 885) != tones.end());
+  const auto codes = dtcsCodes();
+  CHECK(std::find(codes.begin(), codes.end(), 23) != codes.end());
 }
