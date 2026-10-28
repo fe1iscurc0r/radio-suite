@@ -27,6 +27,8 @@ class AudioIn {
   std::vector<std::string> deviceNames() const;
   // 有输入通道的设备 ID 列表（与 deviceNames 顺序一致）——WASAPI ID 非连续
   std::vector<uint32_t> inputDeviceIds() const;
+  // 系统默认输入设备 ID；-1 = 无可用设备
+  int defaultInputDevice() const;
 
   // 开始采集；每凑满 20ms 触发一次 cb（采集线程内回调——消费方自行排队）
   bool start(uint32_t device_id, FrameCallback cb, std::string* error = nullptr);

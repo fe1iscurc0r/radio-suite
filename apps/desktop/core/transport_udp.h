@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "core/audio_link.h"
 #include "core/audio_stream.h"
 #include "core/rsba1_proto.h"
 #include "core/transport.h"
@@ -24,10 +25,7 @@ class QUdpSocket;
 
 namespace radio::core {
 
-// 音频回调（RX PCM 到达时触发；传输层不含播放器——RtAudio 在 app 层）
-using AudioCallback = std::function<void(std::span<const int16_t>)>;
-
-class Rsba1UdpTransport final : public ICivTransport {
+class Rsba1UdpTransport final : public ICivTransport, public IAudioLink {
  public:
   struct Config {
     std::string host;         // 电台 IP（RS-BA1 Server Function）
@@ -51,6 +49,11 @@ class Rsba1UdpTransport final : public ICivTransport {
   // 诊断：最近一次建链各阶段日志（UI 状态栏呈现）
   const std::string& lastLog() const { return log_; }
 
+  // ---- IAudioLink（50003；app 层负责 PTT 门禁与设备播放）----
+  bool audioReady() const override { return audio_ready_; }
+  void setRxAudioCallback(RxCallback cb) override { audio_cb_ = std::move(cb); }
+  bool sendTxAudio(std::span<const int16_t> pcm) override;
+
  private:
   enum class State { Idle, CtrlHandshake, Login, SerialHandshake, Connected, Failed };
 
@@ -60,16 +63,13 @@ class Rsba1UdpTransport final : public ICivTransport {
   std::vector<uint8_t> waitPacket(QUdpSocket& sock, int timeout_ms,
                                   bool (*pred)(const std::vector<uint8_t>&),
                                   const char* what);
-  // 音频双通路（50003；kappanhang 语义，MIT 移植件 audio_stream.*）：
-  //   RX：电台下行包喂 AudioRxBuffer → 16bit PCM 经 audio_callback 上抛
-  //   TX：sendAudioFrame(1920B PCM) 打包经 aud_ 发出（PTT 中才有效由调用方编排）
-  void setAudioCallback(AudioCallback cb) { audio_cb_ = std::move(cb); }
-  bool sendAudioFrame(std::span<const uint8_t> pcm20ms);
 
  private:
-  AudioCallback audio_cb_;
+  IAudioLink::RxCallback audio_cb_;
   rsba1::AudioRxBuffer audio_rx_;
   rsba1::AudioTxPacker audio_tx_;
+  bool audio_ready_ = false;
+  std::vector<int16_t> audio_scratch_;  // 回调 span 的对齐缓冲（UDP 载荷按字节到达）
 
  public:  // 原有接口区（保持可读）
   void dispatchCtrl(std::vector<uint8_t> data);

@@ -11,6 +11,7 @@
 #include <span>
 #include <string_view>
 
+#include "core/audio_link.h"
 #include "core/civ.h"
 #include "core/safety.h"
 #include "core/state.h"
@@ -30,6 +31,12 @@ class RadioSession : public QObject {
 
   core::RadioStateStore& store() { return store_; }
   const core::SafetyGate& gate() const { return gate_; }
+
+  // 50003 音频能力（mock/桥为 nullptr）；pump 供音频高频轮询复用传输排空
+  core::IAudioLink* audioLink() {
+    return dynamic_cast<core::IAudioLink*>(transport_.get());
+  }
+  void pump() { transport_->poll(); }
 
   // ---- UI/总线命令（唯一出口，禁止绕过）----
   void pttButtonPressed();          // PTT 键按下：Rx→待确认→确认进入 Tx→再按回 Rx
