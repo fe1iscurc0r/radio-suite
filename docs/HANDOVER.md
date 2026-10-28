@@ -1,10 +1,10 @@
-# radio-suite 交接说明（2026-10-27 更新）
+# radio-suite 交接说明（2026-10-28 更新）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
-> 同日的 UI 重排与中继频差 / 模拟·数字亚音）+ 两条生态融合（hamlog / APRS）+
+> 同日的 UI 重排与中继频差 / 模拟·数字亚音）+ 两条生态融合（hamlog / APRS 工作台）+
 > 50003 网络语音链（RX 播放 / PTT 门禁 TX / 真实频谱）+ 引擎化准备（WO-274），
-> 98/98 测试全绿；
+> 120/120 测试全绿；
 > 真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
 > 接手人先读本文件 + `docs/WO-274-engine-switch.md` + `docs/WO-273-radio-competitive.md`。
 
@@ -26,7 +26,7 @@ radio-suite/
 ├── apps/spike/                                   # WO-274 rigplane 引擎 spike（默认不编）
 ├── libs/dsp/dsp/                                 # FFT/瀑布（双端共用）
 ├── libs/protocol/rsba1-core/                     # MIT 跟随副本（subtree 同步）
-├── tests/ (Catch2, 98 用例)  docs/  packaging/  tools/
+├── tests/ (Catch2, 120 用例)  docs/  packaging/  tools/
 ```
 
 include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀不变）。
@@ -54,7 +54,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | 原厂件 | ✅ 调谐旋钮（132px 旋钮台，与 S 表/Po·SWR 同排）、记忆槽、Connect Setting、SSTV(8 制式)、DTMF、Voice Memory、**CW Keyer / Set Mode / Memory Channel / 中继·亚音对话框** | 原厂 CHM 清单逐项对照；四件见 `docs/original-rsba1-feature-map.md` §K，UI/频差/亚音见 §L |
 | SSTV | ✅ 8 制式编解码（Robot36/72 + Martin M1/M2）+ VoX 校准头 + **编解码回环自校验** | tests `[sstv]`(31 断言) |
 | DTMF | ✅ 16 键编解码 + 回环 | tests `[dtmf]` |
-| APRS-IS | ✅ 台站聚合表 + 信标/消息上行 + 通行码 | 实测连 china.aprs2.net（308 台/7805 包） |
+| APRS | ✅ 核心库（纯 std）：TNC2、三种坐标（未压缩/压缩/Mic-E）、对象·气象·遥测、消息 + ACK/REJ + 重发、第三方解包、12 类过滤器、通行码；**工作台 UI**（OSM 地图 + 台站表 + 消息窗）；APRS-IS 连接（china/rotate 轮换、指数退避）；**KISS TCP/串口**（Dire Wolf / LoRa APRS 网关）+ Bell 202 AFSK 1200 Bd 走 50003；**iGate 双向**（RF→IS 打 qAR、IS→RF 仅消息/对象并去重）；独立 SQLite 持久化（`%APPDATA%/radio-suite/aprs.db`） | tests `[aprs]` 18 + `[aprs_persist]` + offscreen `[aprs_ui]` 3；APRS-IS 实测 china.aprs2.net（308 台/7805 包）；**RF / LoRa / AFSK 真机未验** |
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | 音频 | ✅ 本机输出（AudioOut，SSTV/Voice Memory）+ 输入（AudioIn）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行**；设备用系统默认输入/输出 | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
@@ -96,8 +96,13 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
    RX 播放 / PTT 门禁麦克风上行 / 半双工静音 / 真实 RX PCM 频谱四条都要过一遍。
    设备固定取系统默认输入/输出，无设备选择 UI；抖动/丢包计数未上界面。
    复验清单见 `docs/original-rsba1-feature-map.md` §L.6。
-6. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
-7. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，
+6. **APRS 真机复验**（代码/单测已齐，但**未上真机**）：① KISS 串口接 TNC /
+   Dire Wolf 收发 AX.25；② LoRa APRS 网关（KISS over TCP）收发；③ 50003 AFSK
+   1200 Bd 实际空口回环（含音频延迟/PTT 尾）；④ iGate 双向在真实 APRS-IS 上
+   观察 qAR 与去重。已知边界：LoRa 只按 KISS 网关形态支持，无原生 LoRa 硬件
+   抽象；地图瓦片需网络（测试用 `RADIO_SUITE_APRS_TILES=off` 关闭）。
+7. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
+8. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，
    public/AGPL-3.0，CI 三平台全绿；详见 §6「GitHub 与 CI 现状」）。
 
 ## 6. 构建与验证（本机环境）
@@ -106,7 +111,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 98/98
+cmd //c "D:\tmp\rs-build.bat test"        # 120/120
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -115,7 +120,7 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 98 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 120 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，以及
   `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory/中继·亚音对话框按钮

@@ -39,6 +39,9 @@ class NetworkAudio : public QObject {
   // PTT 相位驱动（Tx 才允许麦克风上行；切相位时清空积压）
   void setTxActive(bool on);
 
+  // 生成音频（AFSK 等）按 20 ms 块进同一门禁队列；需处于 Tx 相位
+  void queueTxPcm(std::span<const int16_t> pcm) { bridge_.pushMic(pcm); }
+
   // RX PCM 副本（频谱源）；回调在 GUI 线程
   void setRxTap(std::function<void(std::span<const int16_t>)> cb) {
     rx_tap_ = std::move(cb);
