@@ -29,9 +29,11 @@
 #include "app/network_audio.h"
 #include "app/sstv_dialog.h"
 #include "app/voice_memory.h"
+#include "aprs/aprs.h"
 
 #include <QComboBox>
 #include <QListWidget>
+#include <QRegularExpression>
 #include <QSettings>
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
@@ -96,7 +98,21 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
       rx_ring_pos_ = (rx_ring_pos_ + 1) % kFftSize;
     }
     rx_have_ = true;
+    if (aprs_panel_) aprs_panel_->feedRxPcm(pcm);
   });
+
+  // APRS：AFSK 走 50003 音频；RF 发射沿用一键发射的 PTT 编排
+  aprs_panel_->setNetworkAudio(network_audio_.get());
+  aprs_panel_->setTxController(
+      [this] {
+        if (!session_.beginScriptedTx()) return false;
+        if (network_audio_) network_audio_->setTxActive(true);
+        return true;
+      },
+      [this] {
+        session_.endScriptedTx();
+        if (network_audio_) network_audio_->setTxActive(false);
+      });
 
   // 演示谱：7.5kHz 强音（慢漂移）+ 15kHz 弱音 + 21kHz 中音（快漂移）+ 噪底
   using Tone = radio::dsp::SignalSynth::Tone;
@@ -265,7 +281,11 @@ void MainWindow::buildUi() {
   auto* side = new QVBoxLayout();
 
   // APRS 面板先建（下面 hamlog 块要用它 setLoginCall）
-  aprs_panel_ = new radio::app::AprsPanel(central);
+  // 独立窗口：地图 + 台站表 + 消息需要横向空间，右列放不下
+  aprs_panel_ = new radio::app::AprsPanel(nullptr);
+  aprs_panel_->setWindowFlag(Qt::Window);
+  aprs_panel_->setWindowTitle("APRS 工作台 — radio-suite");
+  aprs_panel_->resize(1080, 720);
   aprs_panel_->hide();
   connect(aprs_panel_, &radio::app::AprsPanel::statusMessage, this,
           [this](const QString& m) { flashStatus(m, false); });
@@ -283,7 +303,7 @@ void MainWindow::buildUi() {
     return b;
   };
   aprs_big_btn_ = mk_big("APRS\n台流", QColor(0x00, 0x69, 0x7c));
-  aprs_big_btn_->setToolTip("APRS-IS 客户端：台站聚合表 + 信标/消息上行");
+  aprs_big_btn_->setToolTip("APRS 工作台：地图/台站/消息/过滤器/RF+iGate");
   sstv_big_btn_ = mk_big("SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
   sstv_big_btn_->setToolTip("慢扫描电视：图片→Robot36 音频（发送/接收解码）");
   dtmf_big_btn_ = mk_big("DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
@@ -343,6 +363,31 @@ void MainWindow::buildUi() {
     side->addWidget(adif_btn);
     connect(adif_btn, &QPushButton::clicked, this, &MainWindow::onExportAdif);
     aprs_panel_->setLoginCall(hamlog_.myCallsign());
+    {
+      bool has = false;
+      radio::aprs::LatLon pos;
+      const QString grid = hamlog_.getSetting("my_grid");
+      if (!grid.trimmed().isEmpty()) {
+        bool ok = false;
+        pos = radio::aprs::maidenheadToLatLon(grid.trimmed().toStdString(), &ok);
+        has = ok;
+      }
+      if (!has) {
+        const QString qth = hamlog_.getSetting("my_qth");
+        const QStringList parts =
+            qth.split(QRegularExpression("[,;\\s]+"), Qt::SkipEmptyParts);
+        if (parts.size() >= 2) {
+          bool ok1 = false, ok2 = false;
+          const double lat = parts[0].toDouble(&ok1);
+          const double lon = parts[1].toDouble(&ok2);
+          if (ok1 && ok2) {
+            pos = radio::aprs::LatLon{lat, lon};
+            has = pos.valid();
+          }
+        }
+      }
+      aprs_panel_->setMyPosition(has, pos.lat, pos.lon);
+    }
   }
 #endif
 
@@ -350,9 +395,12 @@ void MainWindow::buildUi() {
   aprs_big_btn_->setCheckable(true);
   connect(aprs_big_btn_, &QPushButton::toggled, this, [this](bool on) {
     aprs_panel_->setVisible(on);
-    if (on && !aprs_panel_->isConnected()) aprs_panel_->toggleConnect();
+    if (on) {
+      aprs_panel_->raise();
+      aprs_panel_->activateWindow();
+      if (!aprs_panel_->isConnected()) aprs_panel_->toggleConnect();
+    }
   });
-  side->addWidget(aprs_panel_);
   side->addStretch(1);
   body->addLayout(side);
   root->addLayout(body, 1);

@@ -13,11 +13,13 @@ add_executable(radio_tests
   test_dtmf.cpp
   test_audio_stream.cpp
   test_audio_bridge.cpp
+  test_aprs.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
 target_link_libraries(radio_tests PRIVATE
   radio::core
+  radio::aprs
   radio::dsp
   Qt6::Core
   Catch2::Catch2WithMain)
@@ -65,6 +67,46 @@ if(Qt6HttpServer_FOUND)
     Catch2::Catch2WithMain)
   set_target_properties(radio_bus_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_bus_tests)
+endif()
+
+if(BUILD_GUI AND TARGET radio::aprs_db)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Network Sql)
+  find_package(Qt6 QUIET COMPONENTS SerialPort)
+  add_executable(radio_aprs_ui_tests
+    test_aprs_ui.cpp
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_panel.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_map.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_messages_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_rf.cpp")
+  target_link_libraries(radio_aprs_ui_tests PRIVATE
+    radio::aprs_db
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::Sql
+    Catch2::Catch2WithMain)
+  if(Qt6SerialPort_FOUND)
+    target_link_libraries(radio_aprs_ui_tests PRIVATE Qt6::SerialPort)
+    target_compile_definitions(radio_aprs_ui_tests
+      PRIVATE RADIO_SUITE_HAVE_SERIALPORT=1)
+  endif()
+  target_include_directories(radio_aprs_ui_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/desktop")
+  set_target_properties(radio_aprs_ui_tests PROPERTIES AUTOMOC ON)
+  catch_discover_tests(radio_aprs_ui_tests)
+endif()
+
+if(TARGET radio::aprs_db)
+  find_package(Qt6 REQUIRED COMPONENTS Sql)
+  add_executable(radio_aprs_db_tests test_aprs_persist.cpp)
+  target_link_libraries(radio_aprs_db_tests PRIVATE
+    radio::aprs_db
+    Qt6::Sql
+    Catch2::Catch2WithMain)
+  target_include_directories(radio_aprs_db_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/desktop")
+  catch_discover_tests(radio_aprs_db_tests)
 endif()
 
 if(TARGET radio::logbook)
