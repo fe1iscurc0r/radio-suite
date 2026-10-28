@@ -21,7 +21,7 @@ struct CaptureCtx {
   std::mutex mu;
 };
 
-int captureCallback(void* out, void* in, unsigned int nFrames, double,
+int captureCallback(void* /*out*/, void* in, unsigned int nFrames, double,
                     RtAudioStreamStatus status, void* user) {
   auto* ctx = static_cast<CaptureCtx*>(user);
   if (status != 0 || in == nullptr) return 0;
@@ -85,12 +85,17 @@ bool AudioIn::start(uint32_t device_id, FrameCallback cb, std::string* error) {
   p.nChannels = 1;
   p.firstChannel = 0;
   unsigned int buffer_frames = 480;  // 10ms 粒度，余料累积到 20ms 帧
-  try {
-    rt->openStream(nullptr, &p, RTAUDIO_SINT16, kTxCaptureRate, &buffer_frames,
-                   &captureCallback, ctx);
-    rt->startStream();
-  } catch (const std::exception& e) {
-    if (error) *error = e.what();
+  // RtAudio v6 用返回码报错（不抛异常）。忽略返回码会让麦克风静默失败，
+  // 上层仍显示"网络音频 ON"却没有上行——必须在这里拦住。
+  if (rt->openStream(nullptr, &p, RTAUDIO_SINT16, kTxCaptureRate, &buffer_frames,
+                     &captureCallback, ctx) != RTAUDIO_NO_ERROR) {
+    if (error) *error = "麦克风打开失败：" + rt->getErrorText();
+    delete ctx;
+    return false;
+  }
+  if (rt->startStream() != RTAUDIO_NO_ERROR) {
+    if (error) *error = "麦克风启动失败：" + rt->getErrorText();
+    rt->closeStream();
     delete ctx;
     return false;
   }

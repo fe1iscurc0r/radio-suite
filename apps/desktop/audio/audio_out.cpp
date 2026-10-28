@@ -20,7 +20,7 @@ struct PlayCtx {
   std::mutex mu;
 };
 
-int rtCallback(void* out, void* in, unsigned int nFrames, double,
+int rtCallback(void* out, void* /*in*/, unsigned int nFrames, double,
                RtAudioStreamStatus, void* user) {
   auto* ctx = static_cast<PlayCtx*>(user);
   auto* dst = static_cast<int16_t*>(out);
@@ -171,17 +171,20 @@ bool AudioSink::start(uint32_t device_id, uint32_t sample_rate,
   {
     std::lock_guard<std::mutex> lock(st.mu);
     st.queue.clear();
+    st.dropped = 0;
+    st.underruns = 0;
+    st.running = true;
   }
-  st.dropped = 0;
-  st.underruns = 0;
-  st.running = true;
   return true;
 }
 
 void AudioSink::stop() {
   auto& st = impl_->state;
-  if (!st.running) return;
-  st.running = false;
+  {
+    std::lock_guard<std::mutex> lock(st.mu);
+    if (!st.running) return;
+    st.running = false;
+  }
   if (impl_->rt.isStreamOpen()) {
     if (impl_->rt.isStreamRunning()) impl_->rt.stopStream();
     impl_->rt.closeStream();
@@ -189,7 +192,10 @@ void AudioSink::stop() {
   flush();
 }
 
-bool AudioSink::running() const { return impl_->state.running; }
+bool AudioSink::running() const {
+  std::lock_guard<std::mutex> lock(impl_->state.mu);
+  return impl_->state.running;
+}
 
 void AudioSink::push(std::span<const int16_t> pcm) {
   if (pcm.empty()) return;
@@ -215,8 +221,14 @@ size_t AudioSink::queuedSamples() const {
   return impl_->state.queue.size();
 }
 
-size_t AudioSink::droppedSamples() const { return impl_->state.dropped; }
+size_t AudioSink::droppedSamples() const {
+  std::lock_guard<std::mutex> lock(impl_->state.mu);
+  return impl_->state.dropped;
+}
 
-size_t AudioSink::underruns() const { return impl_->state.underruns; }
+size_t AudioSink::underruns() const {
+  std::lock_guard<std::mutex> lock(impl_->state.mu);
+  return impl_->state.underruns;
+}
 
 }  // namespace radio::audio
