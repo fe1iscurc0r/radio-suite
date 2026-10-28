@@ -28,7 +28,9 @@ set(APP_SRC
   aprs_panel.cpp
   aprs_map.cpp
   aprs_messages_dialog.cpp
-  aprs_rf.cpp)
+  aprs_rf.cpp
+  wsjtx_client.cpp
+  wsjtx_panel.cpp)
 
 if(Qt6HttpServer_FOUND)
   list(APPEND APP_SRC ../bus/bus_server.cpp ../bus/rigctld_server.cpp)
@@ -44,6 +46,7 @@ target_link_libraries(radio-suite PRIVATE
   radio::dsp
   radio::audio
   radio::aprs
+  radio::wsjtx
   radio::ui_common)
 if(TARGET radio::aprs_db)
   target_link_libraries(radio-suite PRIVATE radio::aprs_db)

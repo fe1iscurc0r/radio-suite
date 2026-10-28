@@ -25,6 +25,7 @@ class QVBoxLayout;
 class QListWidget;
 namespace radio::app {
 class AprsPanel;
+class WsjtxPanel;
 class CwKeyerDialog;
 class SetModeDialog;
 class MemoryChannelDialog;
@@ -78,6 +79,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QLabel* status_label_ = nullptr;
   QPushButton* ptt_btn_ = nullptr;
   QPushButton* aprs_big_btn_ = nullptr; // 右侧大按键（显眼件）
+  QPushButton* wsjtx_big_btn_ = nullptr;  // WSJT-X UDP 接入
   QPushButton* sstv_big_btn_ = nullptr;
   QPushButton* rit_btn_ = nullptr;      // RIT / ΔTX / Split（原厂件，回读驱动）
   QPushButton* dtx_btn_ = nullptr;
@@ -113,8 +115,9 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   size_t rx_ring_pos_ = 0;
   bool rx_have_ = false;
 
-  // hamlog / APRS 融合区
+  // hamlog / APRS / WSJT-X 融合区
   radio::app::AprsPanel* aprs_panel_ = nullptr;
+  radio::app::WsjtxPanel* wsjtx_panel_ = nullptr;
   QLineEdit* qso_call_edit_ = nullptr;   // QSO 对方呼号
   QListWidget* qso_list_ = nullptr;      // 最近 QSO（HamLog 库实时视图）
 #ifdef RADIO_SUITE_HAVE_LOGBOOK

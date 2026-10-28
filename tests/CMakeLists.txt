@@ -14,12 +14,14 @@ add_executable(radio_tests
   test_audio_stream.cpp
   test_audio_bridge.cpp
   test_aprs.cpp
+  test_wsjtx.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
 target_link_libraries(radio_tests PRIVATE
   radio::core
   radio::aprs
+  radio::wsjtx
   radio::dsp
   Qt6::Core
   Catch2::Catch2WithMain)
@@ -94,6 +96,24 @@ if(BUILD_GUI AND TARGET radio::aprs_db)
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   set_target_properties(radio_aprs_ui_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_aprs_ui_tests)
+endif()
+
+if(BUILD_GUI)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+  add_executable(radio_wsjtx_ui_tests
+    test_wsjtx_ui.cpp
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_client.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp")
+  target_link_libraries(radio_wsjtx_ui_tests PRIVATE
+    radio::wsjtx
+    Qt6::Widgets
+    Qt6::Network
+    Catch2::Catch2WithMain)
+  target_include_directories(radio_wsjtx_ui_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/desktop")
+  set_target_properties(radio_wsjtx_ui_tests PROPERTIES AUTOMOC ON)
+  catch_discover_tests(radio_wsjtx_ui_tests)
 endif()
 
 if(TARGET radio::aprs_db)
