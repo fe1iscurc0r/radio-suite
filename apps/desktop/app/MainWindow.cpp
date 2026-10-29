@@ -29,6 +29,7 @@
 #include "app/network_audio.h"
 #include "app/sstv_dialog.h"
 #include "app/voice_memory.h"
+#include "app/wsjtx_panel.h"
 #include "aprs/aprs.h"
 
 #include <QComboBox>
@@ -290,6 +291,15 @@ void MainWindow::buildUi() {
   connect(aprs_panel_, &radio::app::AprsPanel::statusMessage, this,
           [this](const QString& m) { flashStatus(m, false); });
 
+  // WSJT-X 工作台：解码/QSO/WSPR 表 + Reply/Halt/FreeText 控制，独立窗口
+  wsjtx_panel_ = new radio::app::WsjtxPanel(nullptr);
+  wsjtx_panel_->setWindowFlag(Qt::Window);
+  wsjtx_panel_->setWindowTitle("WSJT-X 接入 — radio-suite");
+  wsjtx_panel_->resize(1000, 640);
+  wsjtx_panel_->hide();
+  connect(wsjtx_panel_, &radio::app::WsjtxPanel::statusMessage, this,
+          [this](const QString& m, bool err) { flashStatus(m, err); });
+
   auto mk_big = [central](const QString& text, const QColor& c) {
     auto* b = new QPushButton(text, central);
     b->setMinimumHeight(64);
@@ -304,6 +314,8 @@ void MainWindow::buildUi() {
   };
   aprs_big_btn_ = mk_big("APRS\n台流", QColor(0x00, 0x69, 0x7c));
   aprs_big_btn_->setToolTip("APRS 工作台：地图/台站/消息/过滤器/RF+iGate");
+  wsjtx_big_btn_ = mk_big("WSJT-X\n接入", QColor(0x1a, 0x23, 0x7e));
+  wsjtx_big_btn_->setToolTip("WSJT-X UDP：解码/QSO/WSPR + Reply/Halt/FreeText");
   sstv_big_btn_ = mk_big("SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
   sstv_big_btn_->setToolTip("慢扫描电视：图片→Robot36 音频（发送/接收解码）");
   dtmf_big_btn_ = mk_big("DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
@@ -317,6 +329,7 @@ void MainWindow::buildUi() {
   auto* memch_big_btn_ = mk_big("MEM\n信道", QColor(0x00, 0x69, 0x5c));
   memch_big_btn_->setToolTip("记忆信道：0x1A 0x00 内容读写 + 0x08 组/信道选择（原厂件）");
   side->addWidget(aprs_big_btn_);
+  side->addWidget(wsjtx_big_btn_);
   side->addWidget(sstv_big_btn_);
   side->addWidget(dtmf_big_btn_);
   side->addWidget(voice_big_btn_);
@@ -387,6 +400,7 @@ void MainWindow::buildUi() {
         }
       }
       aprs_panel_->setMyPosition(has, pos.lat, pos.lon);
+      wsjtx_panel_->setMyGrid(grid.trimmed());
     }
   }
 #endif
@@ -399,6 +413,16 @@ void MainWindow::buildUi() {
       aprs_panel_->raise();
       aprs_panel_->activateWindow();
       if (!aprs_panel_->isConnected()) aprs_panel_->toggleConnect();
+    }
+  });
+
+  wsjtx_big_btn_->setCheckable(true);
+  connect(wsjtx_big_btn_, &QPushButton::toggled, this, [this](bool on) {
+    wsjtx_panel_->setVisible(on);
+    if (on) {
+      wsjtx_panel_->raise();
+      wsjtx_panel_->activateWindow();
+      if (!wsjtx_panel_->isListening()) wsjtx_panel_->startListening();
     }
   });
   side->addStretch(1);
