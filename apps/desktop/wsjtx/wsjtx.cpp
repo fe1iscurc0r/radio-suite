@@ -114,9 +114,11 @@ class Writer {
 
   void boolean(bool v) { u8(v ? 1 : 0); }
 
+  // WSJT-X 用 QDataStream 写 QString：32 位长度是**字节数**（= UTF-16 码元数×2），
+  // 后面才是 UTF-16BE 数据。写成码元数会让对端把 "W\0S\0J\0" 当成整串。
   void str(std::string_view s) {
     const auto units = utf16FromUtf8(s);
-    u32(static_cast<uint32_t>(units.size()));
+    u32(static_cast<uint32_t>(units.size() * 2));
     for (uint16_t unit : units) {
       u8(static_cast<uint8_t>(unit >> 8));
       u8(static_cast<uint8_t>(unit & 0xFF));
@@ -174,12 +176,13 @@ class Reader {
   bool boolean() { return u8() != 0; }
 
   std::string str() {
-    const uint32_t units = u32();
-    if (!ok_ || units == 0xFFFFFFFFu) return {};
-    if (units > remaining() / 2) {
+    const uint32_t bytes = u32();
+    if (!ok_ || bytes == 0xFFFFFFFFu) return {};
+    if ((bytes % 2) != 0 || bytes > remaining()) {
       ok_ = false;
       return {};
     }
+    const uint32_t units = bytes / 2;
     std::vector<uint16_t> u;
     u.reserve(units);
     for (uint32_t i = 0; i < units; ++i) {

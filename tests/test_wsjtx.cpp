@@ -136,8 +136,57 @@ TEST_CASE("wsjtx: decode and reply roundtrip", "[wsjtx]") {
   CHECK(neg->delta_frequency == -1500);
 }
 
-TEST_CASE("wsjtx: qso logged datetime roundtrip", "[wsjtx]") {
-  QsoLogged q;
+TEST_CASE("wsjtx: string prefix counts bytes, matching QDataStream", "[wsjtx]") {
+  // WSJT-X 的 QString 走 QDataStream：长度前缀是字节数（"WSJT-X" = 6 码元 = 0x0C 字节）。
+  // 写成码元数会让对端只认出 "W\0S\0J\0"，本端也解不了真实对端的包。
+  const auto wire = encode(makeHeartbeat("WSJT-X", "2.7.0", "abc123"));
+  REQUIRE(wire.size() > 16);
+  CHECK(wire[12] == 0x00);
+  CHECK(wire[13] == 0x00);
+  CHECK(wire[14] == 0x00);
+  CHECK(wire[15] == 0x0c);
+}
+
+TEST_CASE("wsjtx: decodes a packet in real QDataStream wire format", "[wsjtx]") {
+  // 由本机 Qt 6.8 QDataStream 按 WSJT-X schema 3 的 Decode 布局生成的字节：
+  // magic / schema / type / id / is_new / time / snr / delta_time / delta_freq /
+  // mode / message / low_confidence / off_air
+  static const char* kHex =
+      "adbccbda00000003000000020000000c00570053004a0054002d005801"
+      "02b32980fffffff43fb999999999999a000006c7000000060046005400"
+      "380000001c00430051002000420047003500470058004f00200050004d"
+      "003000310000";
+  std::vector<uint8_t> wire;
+  const auto hex_val = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return c - 'A' + 10;
+  };
+  for (size_t i = 0; kHex[i] && kHex[i + 1]; i += 2) {
+    wire.push_back(static_cast<uint8_t>(hex_val(kHex[i]) * 16 + hex_val(kHex[i + 1])));
+  }
+  REQUIRE(wire.size() == 93);
+
+  Message m;
+  std::string err;
+  REQUIRE(decode(wire, &m, &err));
+  CHECK(err.empty());
+  CHECK(m.type == MessageType::Decode);
+  CHECK(m.id == "WSJT-X");
+  const auto* d = std::get_if<Decode>(&m.body);
+  REQUIRE(d != nullptr);
+  CHECK(d->is_new);
+  CHECK(d->time_ms == 45'296'000);
+  CHECK(d->snr == -12);
+  CHECK(d->delta_time == 0.1);
+  CHECK(d->delta_frequency == 1735);
+  CHECK(d->mode == "FT8");
+  CHECK(d->message == "CQ BG5GXO PM01");
+  CHECK_FALSE(d->low_confidence);
+  CHECK_FALSE(d->off_air);
+}
+
+TEST_CASE("wsjtx: qso logged datetime roundtrip", "[wsjtx]") {  QsoLogged q;
   q.date_time_off = DateTime::fromUtcMs(1'700'000'000'000);
   q.dx_call = "BG5GXO";
   q.dx_grid = "PM01";
@@ -314,12 +363,12 @@ TEST_CASE("wsjtx: utf8 strings use utf16 wire format", "[wsjtx]") {
   REQUIRE(f != nullptr);
   CHECK(f->text == text);
 
-  // "A测" = 2 个 UTF-16 码元，长度字段必须是 2（不是 UTF-8 字节数 4）
+  // "A测" = 2 个 UTF-16 码元 = 4 字节，QDataStream 的长度字段是字节数（不是 UTF-8 字节数 5）
   const auto wire = encode(makeFreeText("X", "A测", false));
   // header: magic(4)+schema(4)+type(4)+id("X": 4+2)=18；FreeText 文本长度在偏移 18
   REQUIRE(wire.size() > 22);
   CHECK(wire[18] == 0);
   CHECK(wire[19] == 0);
   CHECK(wire[20] == 0);
-  CHECK(wire[21] == 2);
+  CHECK(wire[21] == 4);
 }
