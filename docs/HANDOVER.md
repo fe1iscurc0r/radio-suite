@@ -149,7 +149,9 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   Status+Decode 后，客户端/14.074000 MHz/解码行全部命中；注入 QSO_LOGGED 后状态栏出现
   「WSJT-X QSO 已写入 HamLog：BG5GXO 14.0740 MHz FT8」且最近 QSO 列表新增该行（全程用
   临时 `APPDATA` + Log.db 副本，真库 sha256 前后一致）；另用本机 Qt 6.8.3 探针实测
-  QDateTime 序列化为 13 字节，与 `Writer::dateTime` 完全一致。
+  QDateTime 序列化为 13 字节，与 `Writer::dateTime` 完全一致；APRS/WSJT-X 面板独立窗口
+  实窗巡检发现地图底部纬度刻度与经度刻度/OSM 版权行三行叠字，已改为版权右上角、底行
+  只留经度且按标签宽度隔一枚画；WSJT-X 组播加入失败时补「改用单播」提示。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
 
 ### GitHub 与 CI 现状（2026-10-29 更新）

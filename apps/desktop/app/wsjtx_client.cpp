@@ -42,8 +42,12 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
     return false;
   }
   if (address.isMulticast() && !socket_->joinMulticastGroup(address)) {
+    // 多网卡/VPN 机器上系统常返回 "Unknown error"，补一句可执行建议。
     if (error)
-      *error = QString("加入组播失败（%1）：%2").arg(group_).arg(socket_->errorString());
+      *error = QString("加入组播失败（%1）：%2（可在设置里改用单播地址，"
+                       "如本机 127.0.0.1）")
+                   .arg(group_)
+                   .arg(socket_->errorString());
     stop();
     return false;
   }
