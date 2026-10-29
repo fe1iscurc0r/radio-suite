@@ -148,7 +148,9 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
   **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
-  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）。
+  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
+  `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
+  → #6/#7 **均未合并**，合并需逐次授权。
 - **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
   WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
