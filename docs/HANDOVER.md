@@ -138,17 +138,14 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
 
-### GitHub 与 CI 现状（2026-10-27 更新）
+### GitHub 与 CI 现状（2026-10-29 更新）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），默认分支 `main`（当前 `854bf42`，PR #2 合并后）+
-  `feat/rsba1-audio-chain`（50003 音频链，待评审）。
-- **PR #1 已合并**（2026-10-27，一键发射 PTT 编排 + 真实集成测试）；其分支
-  `fix/scripted-tx-and-real-tests` 的远端 sha `272bc5d` 是 REST 重建对象，
-  与本地同内容 commit 的 sha 不同。
-- **PR #2 已合并**（2026-10-27，旋钮调谐台 + 中继频差双频 + 亚音），merge
-  commit `854bf42`，分支 `feat/ui-tone-repeater`；合并前 CI run `40464364408`
-  三平台 success，合并后 main run `40465738233` 三平台 success。
+  **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
+  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）。
+- **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
+  （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
+  WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
 - **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
   macOS Qt。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
