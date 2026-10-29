@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/meter_widgets.h"
 
+#include <QFontMetricsF>
 #include <QPainter>
 #include <QPainterPath>
 #include <cmath>
@@ -76,7 +77,7 @@ void SMeterWidget::paintEvent(QPaintEvent*) {
                       c.y() - std::sin(ang * M_PI / 180) * r * 0.70f);
       p.setPen(QColor(190, 198, 208));
       p.setFont(QFont("Consolas", 8));
-      p.drawText(QRectF(t.x() - 20, t.y() - 8, 40, 14),
+      p.drawText(QRectF(t.x() - 17, t.y() - 7, 34, 14),
                  Qt::AlignCenter, label);
     }
   }
@@ -89,15 +90,21 @@ void SMeterWidget::paintEvent(QPaintEvent*) {
   p.setBrush(QColor(220, 190, 90));
   p.drawEllipse(c, 4, 4);
 
-  // 读数：与刻度同一套标定（S9 以下给小数 S，S9 以上给 S9+dB）
+  // 读数：与刻度同一套标定（S9 以下给小数 S，S9 以上给 S9+dB）；表针会从读数位置穿过，
+  // 所以先垫一块与表盘同色的圆角底衬，保证文字不被针切成两半。
   const QString reading =
       dbm_ <= radio::app::kSmeterS9Dbm
           ? QString("S%1").arg(radio::app::smeterUnits(dbm_), 0, 'f', 1)
           : QString("S9+%1").arg(dbm_ - radio::app::kSmeterS9Dbm, 0, 'f', 0);
+  const QString readout = QString("%1  %2 dBm").arg(reading).arg(dbm_, 0, 'f', 0);
+  p.setFont(QFont("Consolas", 9, QFont::Bold));
+  const qreal tw = QFontMetricsF(p.font()).horizontalAdvance(readout) + 10;
+  const QRectF back(c.x() - tw / 2, c.y() - r * 0.34 - 8, tw, 16);
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(12, 14, 18, 240));
+  p.drawRoundedRect(back, 5, 5);
   p.setPen(QColor(150, 230, 170));
-  p.setFont(QFont("Consolas", 11, QFont::Bold));
-  p.drawText(QRectF(c.x() - 90, c.y() - r * 0.34, 180, 20), Qt::AlignCenter,
-             QString("%1  %2 dBm").arg(reading).arg(dbm_, 0, 'f', 0));
+  p.drawText(back, Qt::AlignCenter, readout);
 }
 
 PoSwrWidget::PoSwrWidget(QWidget* parent) : QFrame(parent) {
