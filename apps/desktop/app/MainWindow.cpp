@@ -18,6 +18,7 @@
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -1008,10 +1009,18 @@ void MainWindow::onBenchTick() {
   }
   analyzer_.process(samples_.data(), samples_.size());
 
-  // 1025 bins → 1024 显示列（相邻对取最大，保尖峰）
+  // 1025 bins → 1024 显示列：按列区间取最大（保尖峰）。
+  // 注意 kFftSize=2048 只有 1025 个 bin——曾按 db[i*2] 取对，越界读 1KB，
+  // 导致瀑布/谱线右半屏显示为常量色块。
   const auto& db = analyzer_.powerDb();
-  for (size_t i = 0; i < col_db_.size(); ++i)
-    col_db_[i] = std::max(db[i * 2], db[i * 2 + 1]);
+  const size_t bins = db.size();
+  for (size_t i = 0; i < col_db_.size(); ++i) {
+    const size_t b0 = i * bins / col_db_.size();
+    const size_t b1 = std::min(bins, (i + 1) * bins / col_db_.size());
+    float v = db[b0];
+    for (size_t b = b0 + 1; b < b1; ++b) v = std::max(v, db[b]);
+    col_db_[i] = v;
+  }
 
   wf_proc_.process(col_db_.data(), col_db_.size(), row_bytes_.data());
   waterfall_->pushRow(row_bytes_.data(), static_cast<int>(row_bytes_.size()));
