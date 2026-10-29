@@ -273,6 +273,10 @@ void MainWindow::buildUi() {
     wb_btn->setToolTip("C++ 重构的全表浏览/搜索/统计/ADIF 窗口（同一 Log.db）");
     connect(wb_btn, &QPushButton::clicked, this, [this] {
       auto* wb = new radio::logbook::HamLogWorkbench(this);
+      // 带 parent 的 QWidget 默认是子控件：不加 Qt::Window 会内嵌在主窗口左上角
+      // 盖住频谱/PTT，且没有标题栏、无法移动。
+      wb->setWindowFlag(Qt::Window);
+      wb->setWindowTitle("HamLog 工作台 — radio-suite");
       wb->setAttribute(Qt::WA_DeleteOnClose);
       wb->resize(860, 520);
       wb->show();
