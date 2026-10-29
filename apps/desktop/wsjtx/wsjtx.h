@@ -43,8 +43,9 @@ enum class MessageType : uint32_t {
 
 const char* messageTypeName(MessageType type);
 
-// Qt5 QDataStream 的 QDateTime：UTC 为 spec=1；spec=0 按 UTC 解释
-// （WSJT-X 的 QSO 时间实际按 UTC 发送）。
+// QDataStream 的 QDateTime：13 字节（julian_day u64 + msecs u32 + spec u8，
+// spec=2 时再跟 offset i32）。Qt 5 与 Qt 6.8 实测线格式一致；UTC 为 spec=1，
+// spec=0 按 UTC 解释（WSJT-X 的 QSO 时间实际按 UTC 发送）。
 struct DateTime {
   int64_t julian_day = 0;
   uint32_t msecs = 0;

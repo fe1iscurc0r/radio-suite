@@ -146,7 +146,10 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   发现并修复右半屏越界读（1025 bin 误按 i*2 取对）与 S 表读数被表针压字；
   Voice Memory 4s wav 在真实 WASAPI 默认输出上播放 4.5s、门禁发射 4.3s 自动回 RX，
   播放期间 UIA 查询延迟稳定 5–7 ms（GUI 不冻结）；WSJT-X 面板注入 QDataStream 线格式
-  Status+Decode 后，客户端/14.074000 MHz/解码行全部命中。
+  Status+Decode 后，客户端/14.074000 MHz/解码行全部命中；注入 QSO_LOGGED 后状态栏出现
+  「WSJT-X QSO 已写入 HamLog：BG5GXO 14.0740 MHz FT8」且最近 QSO 列表新增该行（全程用
+  临时 `APPDATA` + Log.db 副本，真库 sha256 前后一致）；另用本机 Qt 6.8.3 探针实测
+  QDateTime 序列化为 13 字节，与 `Writer::dateTime` 完全一致。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
 
 ### GitHub 与 CI 现状（2026-10-29 更新）
