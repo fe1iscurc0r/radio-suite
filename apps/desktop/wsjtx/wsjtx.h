@@ -90,7 +90,7 @@ struct Decode {
   uint32_t time_ms = 0;  // 当日毫秒（QTime）
   int32_t snr = 0;
   double delta_time = 0.0;
-  uint32_t delta_frequency = 0;
+  int32_t delta_frequency = 0;  // 协议为有符号 qint32
   std::string mode;
   std::string message;
   bool low_confidence = false;
@@ -105,7 +105,7 @@ struct Reply {
   uint32_t time_ms = 0;
   int32_t snr = 0;
   double delta_time = 0.0;
-  uint32_t delta_frequency = 0;
+  int32_t delta_frequency = 0;  // 协议为有符号 qint32
   std::string mode;
   std::string message;
   bool low_confidence = false;

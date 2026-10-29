@@ -125,6 +125,15 @@ TEST_CASE("wsjtx: decode and reply roundtrip", "[wsjtx]") {
   CHECK(reply->mode == "FT8");
   CHECK(reply->message == "CQ BG5GXO PM01");
   CHECK(reply->modifiers == 0x02);
+
+  // 协议字段是有符号 qint32：负偏移（低于刻度频率）必须原样往返
+  d.delta_frequency = -1500;
+  const auto neg_wire = encode(Message{MessageType::Decode, "WSJT-X", d});
+  Message nm;
+  REQUIRE(decode(neg_wire, &nm));
+  const auto* neg = std::get_if<Decode>(&nm.body);
+  REQUIRE(neg != nullptr);
+  CHECK(neg->delta_frequency == -1500);
 }
 
 TEST_CASE("wsjtx: qso logged datetime roundtrip", "[wsjtx]") {

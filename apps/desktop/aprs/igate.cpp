@@ -58,6 +58,11 @@ bool mayGateToRf(const Packet& p, const IgatePolicy& policy) {
   if (!policy.is_to_rf || policy.callsign.empty()) return false;
   if (!isIsPacket(p)) return false;
   if (p.kind == PacketKind::ThirdParty && !policy.gate_third_party) return false;
+  // IS→RF 只放消息/对象/条目：位置/气象/遥测属于当地 RF 台站该自己发的流量，
+  // 全网转发会把外地台站灌进本地频率（New-N iGate 实践，与交接文档口径一致）。
+  if (p.kind != PacketKind::Message && p.kind != PacketKind::Object &&
+      p.kind != PacketKind::Item)
+    return false;
   if (p.raw_info.empty()) return false;
   return true;
 }

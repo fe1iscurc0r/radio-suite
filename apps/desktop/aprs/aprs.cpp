@@ -136,12 +136,22 @@ bool parseCompressedPos(std::string_view body, Packet* p) {
   p->compressed = true;
   p->has_position = true;
 
-  const char c = body[10];
-  if (c != ' ') {
-    // 压缩类型 c + 后续两字节携带高度/射程，s 位兼作 N/S
-    if (p->pos.lat < 0) p->pos.lat = -p->pos.lat;
-    const int alt_char = static_cast<unsigned char>(body[12]) - 33;
-    if (alt_char >= 0) p->altitude_ft = static_cast<double>(alt_char) * 32.0 - 10000.0;
+  // csT（APRS101 §9.3）：c=压缩类型，s/T 三个 base-91 字符携带高度或航向/航速。
+  // 注意：压缩纬度本身用 90 - value/380926 表示（南半球为负），不能再按 N/S 取反，
+  // 否则南半球气象台站会被镜像到北半球。
+  if (body[10] != ' ') {
+    const int c = static_cast<unsigned char>(body[10]) - 33;
+    const int s = static_cast<unsigned char>(body[11]) - 33;
+    const int t = static_cast<unsigned char>(body[12]) - 33;
+    if (c < 0 || s < 0 || t < 0) return false;
+    if ((t & 0x18) == 0x10) {
+      // 高度：英尺，1.002^((c)*91+s)（direwolf / aprslib 同式）
+      p->altitude_ft = std::pow(1.002, static_cast<double>(c * 91 + s));
+    } else if (body[10] != '{' && c <= 90) {
+      // 航向/航速（气象台的 c/s 是风向风速，同样的换算）
+      p->course_deg = (c == 0) ? 360.0 : static_cast<double>(c) * 4.0;
+      p->speed_kt = std::pow(1.08, static_cast<double>(s)) - 1.0;
+    }
   }
   const size_t used = 13;
   p->comment = std::string(trim(body.substr(used)));

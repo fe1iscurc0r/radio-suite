@@ -41,6 +41,7 @@ class VoiceMemoryDialog : public QDialog {
   QPushButton* play_btn_ = nullptr;
   QPushButton* tx_btn_ = nullptr;
   bool recording_ = false;
+  bool tx_active_ = false;  // 后台播放中（PTT 已键，播完/析构回 RX）
   QString rec_path_;
   std::vector<int16_t> rec_pcm_;
   radio::app::RadioSession* session_ = nullptr;

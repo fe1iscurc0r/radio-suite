@@ -156,8 +156,11 @@ void WaterfallWidget::paintGL() {
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, tex_);
   wf_prog_.setUniformValue("uTex", 0);
-  wf_prog_.setUniformValue("uRowOff", static_cast<float>(next_row_) /
-                                         static_cast<float>(kTexH));
+  // 瀑布只占纹理高度的 0.65（y=0.30..1.0）：偏移要减去这段，
+  // 否则最新一行落在可见区之外，画面固定滞后 ~0.35 屏（约 6 秒 @15fps）。
+  wf_prog_.setUniformValue(
+      "uRowOff",
+      static_cast<float>(next_row_ - 1) / static_cast<float>(kTexH) - 0.65f);
   const float quad[] = {-1, -1, 1, -1, 1, 0.30f, -1, -1, 1, 0.30f, -1, 0.30f};
   glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
   glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);

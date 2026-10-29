@@ -4,6 +4,7 @@
 // 采集与发射的联动由调用方编排（PTT 门禁在 session/safety，此处只产帧）。
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <span>
@@ -34,11 +35,14 @@ class AudioIn {
   bool start(uint32_t device_id, FrameCallback cb, std::string* error = nullptr);
   void stop();
   bool capturing() const { return capturing_; }
+  // 采集溢出次数（本块仍上抛，仅用于诊断丢样）
+  size_t overflows() const { return overflows_.load(std::memory_order_relaxed); }
 
  private:
   void* dac_ = nullptr;   // RtAudio*（PIMPL，避免头文件传染）
   bool capturing_ = false;
   void* ctx_ = nullptr;   // CaptureCtx
+  std::atomic<size_t> overflows_{0};
 };
 
 }  // namespace radio::audio

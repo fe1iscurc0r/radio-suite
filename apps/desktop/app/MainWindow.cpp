@@ -84,6 +84,8 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
   rx_ring_.assign(kFftSize, 0);
   col_db_.assign(static_cast<size_t>(WaterfallWidget::kTexW), -120.0f);
   row_bytes_.assign(static_cast<size_t>(WaterfallWidget::kTexW), 0);
+  // 4 帧 Welch 功率平均：噪底抖动约减半，单音幅度不变（时间常数 ~0.26s）
+  analyzer_.setAveragingFrames(4);
 
   // 50003 音频链：RX 播放 + PTT 门禁上行 + 真实频谱 tap
   network_audio_ = std::make_unique<radio::app::NetworkAudio>(&session_);

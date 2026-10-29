@@ -267,7 +267,7 @@ void writeBody<Decode>(Writer& w, MessageType, const Decode& d) {
   w.u32(d.time_ms);
   w.i32(d.snr);
   w.f64(d.delta_time);
-  w.u32(d.delta_frequency);
+  w.i32(d.delta_frequency);
   w.str(d.mode);
   w.str(d.message);
   w.boolean(d.low_confidence);
@@ -284,7 +284,7 @@ void writeBody<Reply>(Writer& w, MessageType, const Reply& r) {
   w.u32(r.time_ms);
   w.i32(r.snr);
   w.f64(r.delta_time);
-  w.u32(r.delta_frequency);
+  w.i32(r.delta_frequency);
   w.str(r.mode);
   w.str(r.message);
   w.boolean(r.low_confidence);
@@ -414,7 +414,7 @@ bool readBody(Reader& r, MessageType type, uint32_t schema, Body* out) {
       d.time_ms = r.u32();
       d.snr = r.i32();
       d.delta_time = r.f64();
-      d.delta_frequency = r.u32();
+      d.delta_frequency = r.i32();
       d.mode = r.str();
       d.message = r.str();
       d.low_confidence = r.boolean();
@@ -433,7 +433,7 @@ bool readBody(Reader& r, MessageType type, uint32_t schema, Body* out) {
       p.time_ms = r.u32();
       p.snr = r.i32();
       p.delta_time = r.f64();
-      p.delta_frequency = r.u32();
+      p.delta_frequency = r.i32();
       p.mode = r.str();
       p.message = r.str();
       p.low_confidence = r.boolean();
