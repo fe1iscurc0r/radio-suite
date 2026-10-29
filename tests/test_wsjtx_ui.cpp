@@ -11,6 +11,7 @@
 #include <functional>
 
 #include "app/wsjtx_client.h"
+#include "app/wsjtx_logbook.h"
 #include "app/wsjtx_panel.h"
 
 namespace {
@@ -186,4 +187,84 @@ TEST_CASE("wsjtx: panel renders decodes, qso, wspr and adif", "[wsjtx][ui]") {
 
   panel.stopListening();
   CHECK_FALSE(panel.isListening());
+}
+
+TEST_CASE("wsjtx: decode activation fills call, grid and absolute frequency",
+          "[wsjtx][ui]") {
+  uiApp();
+  radio::app::WsjtxPanel panel;
+
+  radio::wsjtx::Status status;
+  status.dial_frequency = 14'074'000;
+  status.mode = "FT8";
+  panel.applyStatus(status, "WSJT-X");
+
+  QString got_call, got_grid, got_mode;
+  quint64 got_hz = 0;
+  int fired = 0;
+  QObject::connect(&panel, &radio::app::WsjtxPanel::decodeActivated,
+                   [&](const QString& call, const QString& grid, quint64 hz,
+                       const QString& mode) {
+                     ++fired;
+                     got_call = call;
+                     got_grid = grid;
+                     got_hz = hz;
+                     got_mode = mode;
+                   });
+
+  radio::wsjtx::Decode cq;
+  cq.mode = "FT8";
+  cq.delta_frequency = 1200;
+  cq.message = "CQ DX BG5GXO PM01";
+  panel.addDecode(cq, "WSJT-X");
+  CHECK(panel.activateDecode(0));
+  CHECK(fired == 1);
+  CHECK(got_call == "BG5GXO");
+  CHECK(got_grid == "PM01");
+  CHECK(got_hz == 14'074'000u + 1200u);
+  CHECK(got_mode == "FT8");
+
+  radio::wsjtx::Decode directed;
+  directed.mode = "FT8";
+  directed.delta_frequency = 500;
+  directed.message = "N0CALL BG5GXO -12";
+  panel.addDecode(directed, "WSJT-X");
+  CHECK(panel.activateDecode(0));
+  CHECK(fired == 2);
+  CHECK(got_call == "BG5GXO");
+  CHECK(got_grid.isEmpty());
+  CHECK(got_hz == 14'074'000u + 500u);
+
+  radio::wsjtx::Decode noise;
+  noise.message = "TU 73";
+  panel.addDecode(noise, "WSJT-X");
+  CHECK_FALSE(panel.activateDecode(0));
+  CHECK(fired == 2);
+  CHECK_FALSE(panel.activateDecode(99));
+  CHECK(fired == 2);
+}
+
+TEST_CASE("wsjtx: logged qso maps onto the HamLog schema", "[wsjtx][ui]") {
+  radio::wsjtx::QsoLogged logged;
+  logged.date_time_off = radio::wsjtx::DateTime::fromUtcMs(1'700'000'000'000);
+  logged.dx_call = "bg5gxo";
+  logged.dx_grid = "PM01aa";
+  logged.tx_frequency = 14'074'000;
+  logged.mode = "FT8";
+  logged.report_sent = "-10";
+  logged.report_received = "-12";
+  logged.operator_call = "N0CALL";
+
+  const auto qso = radio::app::qsoFromWsjtx(logged);
+  CHECK(qso.callsign == "BG5GXO");
+  CHECK(qso.freq_mhz == 14.074);
+  CHECK(qso.year == 2023);
+  CHECK(qso.month == 11);
+  CHECK(qso.day == 14);
+  CHECK(qso.time_hhmm == "2213");
+  CHECK(qso.mode == "FT8");
+  CHECK(qso.rst_sent == "-10");
+  CHECK(qso.rst_rcvd == "-12");
+  CHECK(qso.device == "WSJT-X");
+  CHECK(qso.remarks == QString("网格 PM01aa"));
 }

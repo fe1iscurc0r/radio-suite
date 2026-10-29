@@ -41,8 +41,13 @@ class WsjtxPanel : public QWidget {
   void addWspr(const radio::wsjtx::WsprDecode& decode);
   void setAdif(const QString& adif);
 
+  // 解码表激活（双击/测试共用）：解析呼号与网格，带上绝对频率发给主窗口
+  bool activateDecode(int row);
+
  signals:
   void statusMessage(const QString& message, bool error);
+  void decodeActivated(const QString& call, const QString& grid,
+                       quint64 frequency_hz, const QString& mode);
 
  protected:
   void showEvent(QShowEvent* event) override;
@@ -74,6 +79,7 @@ class WsjtxPanel : public QWidget {
   QLineEdit* grid_edit_ = nullptr;
 
   std::vector<radio::wsjtx::Decode> decodes_cache_;
+  quint64 last_dial_hz_ = 0;
   QString last_client_ = "?";
   bool auto_started_ = false;
 };

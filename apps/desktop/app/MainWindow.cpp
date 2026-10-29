@@ -38,6 +38,8 @@
 #include <QSettings>
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
+#include "app/wsjtx_client.h"
+#include "app/wsjtx_logbook.h"
 #include "logbook/hamlog_workbench.h"
 #endif
 
@@ -299,6 +301,17 @@ void MainWindow::buildUi() {
   wsjtx_panel_->hide();
   connect(wsjtx_panel_, &radio::app::WsjtxPanel::statusMessage, this,
           [this](const QString& m, bool err) { flashStatus(m, err); });
+  connect(wsjtx_panel_, &radio::app::WsjtxPanel::decodeActivated, this,
+          [this](const QString& call, const QString& grid, quint64 hz,
+                 const QString& mode) {
+            if (qso_call_edit_) qso_call_edit_->setText(call);
+            QString text = QString("WSJT-X 解码：%1").arg(call);
+            if (hz != 0)
+              text += QString(" · %1 MHz").arg(hz / 1e6, 0, 'f', 6);
+            if (!mode.isEmpty()) text += " · " + mode;
+            if (!grid.isEmpty()) text += " · " + grid;
+            flashStatus(text, false);
+          });
 
   auto mk_big = [central](const QString& text, const QColor& c) {
     auto* b = new QPushButton(text, central);
@@ -402,6 +415,23 @@ void MainWindow::buildUi() {
       aprs_panel_->setMyPosition(has, pos.lat, pos.lon);
       wsjtx_panel_->setMyGrid(grid.trimmed());
     }
+
+    // WSJT-X 记完 QSO 直接落 HamLog（与手记 QSO 同一张 log 表）
+    connect(wsjtx_panel_->client(), &radio::app::WsjtxClient::qsoLogged, this,
+            [this](const radio::wsjtx::QsoLogged& logged, const QString&) {
+              const auto record = radio::app::qsoFromWsjtx(logged);
+              if (!hamlog_.insert(record)) {
+                flashStatus("WSJT-X QSO 写入 HamLog 失败：" + hamlog_.lastError(),
+                            true);
+                return;
+              }
+              flashStatus(QString("WSJT-X QSO 已写入 HamLog：%1 %2 MHz %3")
+                              .arg(record.callsign)
+                              .arg(record.freq_mhz, 0, 'f', 4)
+                              .arg(record.mode),
+                          false);
+              refreshQsoList();
+            });
   }
 #endif
 
