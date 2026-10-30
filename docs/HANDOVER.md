@@ -162,7 +162,9 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   只留经度且按标签宽度隔一枚画；WSJT-X 组播加入失败时补「改用单播」提示；
   「HamLog 工作台…」原来 new 成主窗口的子控件（内嵌左上角盖住频谱/PTT、无标题栏），
   已改为 `Qt::Window` 独立窗口并设标题。
-- 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
+- 部署目录 `packaging/out-win/`：`cmd //c "build\msvc_build.bat deploy_win"`
+  会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
+  `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
 
 ### GitHub 与 CI 现状（2026-10-29 更新）
 

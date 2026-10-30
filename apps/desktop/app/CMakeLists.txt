@@ -69,4 +69,24 @@ if(TARGET radio::logbook)
   find_package(Qt6 REQUIRED COMPONENTS Widgets)
 endif()
 
+# Windows 运行部署：刷新 packaging/out-win（exe + Qt DLL/插件），双击即可运行
+if(WIN32)
+  get_target_property(_radio_qmake Qt6::qmake IMPORTED_LOCATION)
+  get_filename_component(_radio_qt_bin "${_radio_qmake}" DIRECTORY)
+  find_program(RADIO_WINDEPLOYQT windeployqt HINTS "${_radio_qt_bin}")
+  if(RADIO_WINDEPLOYQT)
+    set(RADIO_DEPLOY_DIR "${CMAKE_SOURCE_DIR}/packaging/out-win")
+    add_custom_target(deploy_win
+      COMMAND "${CMAKE_COMMAND}" -E make_directory "${RADIO_DEPLOY_DIR}"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+              "$<TARGET_FILE:radio-suite>" "${RADIO_DEPLOY_DIR}/"
+      COMMAND "${RADIO_WINDEPLOYQT}" --no-translations
+              --dir "${RADIO_DEPLOY_DIR}" "$<TARGET_FILE:radio-suite>"
+      DEPENDS radio-suite
+      COMMENT "windeployqt: 刷新 packaging/out-win（Qt DLL/插件 + exe）")
+  else()
+    message(STATUS "radio-suite: 未找到 windeployqt，跳过 deploy_win")
+  endif()
+endif()
+
 # Windows: 便于 cmd/PowerShell 观察日志，M0 先保留控制台子系统；打包期(M5)再切 WIN32
