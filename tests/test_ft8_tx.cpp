@@ -95,5 +95,23 @@ TEST_CASE("ft8 tx: rendered slot decodes back through the local rx chain",
   REQUIRE(hit != nullptr);
   CHECK(hit->df_hz == Approx(1500.0f).margin(25.0f));
   CHECK(hit->snr_db > 0.0f);
+  // 波形必须贴着槽顶点起键：DT 明显为正说明发射会晚起飞（尾部压进下一槽）
+  CHECK(hit->dt_s == Approx(0.0f).margin(0.2f));
   CHECK(dec.droppedSlots() == 0);
+}
+
+TEST_CASE("ft8 tx: reported DF tracks the tone offset", "[ft8][tx]") {
+  // DF 不只是表上好看：双击解码行按「刻度 + DF」QSY，报偏了就把电台调歪
+  const std::string kText = "CQ BG5GXO PM01";
+  for (const float f0 : {500.0f, 1000.0f, 1500.0f, 2000.0f}) {
+    const auto audio = synthesize(encodeTones(kText), f0);
+    const auto msgs = decode(audio.data(), audio.size());
+    const DecodedMessage* hit = nullptr;
+    for (const auto& m : msgs)
+      if (m.text == kText) hit = &m;
+    INFO("f0=" << f0 << " · messages=" << msgs.size() << " · df="
+               << (hit == nullptr ? -1.0f : hit->df_hz));
+    REQUIRE(hit != nullptr);
+    CHECK(hit->df_hz == Approx(f0).margin(25.0f));
+  }
 }
