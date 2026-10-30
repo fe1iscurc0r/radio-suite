@@ -46,9 +46,10 @@ ctest --test-dir build --output-on-failure
 |---|---|---|---|
 | `apps/desktop/core` | `radio_core` | M0/M1 | CI-V 编解码、频段白名单、PTT 门禁、状态单源、transport：mock + **UDP 真机链（RS-BA1 V2，`--radio`）** |
 | `libs/dsp` | `radio_dsp` | M0/M2 | pocketfft FFT、周期 Hann + Welch 功率平均（4 帧，噪底抖动减半）、EMA/峰值保持/噪声底、合成信号 |
-| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（紧凑旋钮台，S 表/Po·SWR 同排，**S 表按 IARU 分段标定**）、QOpenGLWidget 瀑布（网络音频开启时用真实 RX PCM）、CW/Set Mode/记忆信道/中继·亚音对话框、网络音频开关、**APRS 工作台窗口**（OSM 地图 + 台站表 + 消息）、**WSJT-X 接入窗口**（解码 / QSO / WSPR / ADIF + 控制，QSO 自动写入 HamLog） |
+| `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（紧凑旋钮台，S 表/Po·SWR 同排，**S 表按 IARU 分段标定**）、QOpenGLWidget 瀑布（网络音频开启时用真实 RX PCM）、CW/Set Mode/记忆信道/中继·亚音对话框、网络音频开关、**APRS 工作台窗口**（OSM 地图 + 台站表 + 消息）、**WSJT-X 接入窗口**（解码 / QSO / WSPR / ADIF + 控制，QSO 自动写入 HamLog）、**FT8 本机解码窗口**（时隙进度 + 解码表，双击回填呼号/网格并按刻度+DF 定频） |
 | `apps/desktop/aprs` | `radio_aprs` / `radio_aprs_db` | M4 | APRS 核心（纯 std：TNC2/坐标/对象/气象/遥测/消息 ACK/过滤/通行码）+ AX.25/KISS/Bell202 AFSK + iGate；可选 SQLite 快照（Qt6::Sql） |
 | `apps/desktop/wsjtx` | `radio_wsjtx` | M4 | WSJT-X UDP 协议（schema 3，纯 std 编解码）：心跳 / 状态 / 解码 / QSO / WSPR / ADIF / 客户端事件 + 控制报文（Reply/HaltTx/FreeText/Replay/Location/Clear）；面板双击解码回填主窗口呼号，QSO Logged 映射后写入 HamLog |
+| `apps/desktop/ft8` | `radio_ft8` | M4 | 本机 FT8（不依赖 WSJT-X 进程）：vendored `ft8_lib` 之上的纯 std 编解码封装 + 15 s UTC 槽解码器（48k s16 → 12k 抽取、后台线程解码），可被 app/Android 复用；UI = 主窗「FT8 本机」面板，吃 50003 下行 RX PCM |
 | `apps/desktop/audio` | — | M2 | RtAudio 输入/输出 + 50003 流式播放（AudioSink） |
 | `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
 | `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |

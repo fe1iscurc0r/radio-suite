@@ -61,7 +61,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置；**`delta_frequency` 按上游为有符号 qint32**）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格；**QSO Logged 自动写 HamLog 库**（device=WSJT-X、备注网格）；**双击解码回填主窗口呼号**并按 `dial + ΔF` 显示绝对频率 | tests `[wsjtx]` 11 + offscreen `[wsjtx_ui]` 4（UDP 回环 + 面板渲染 + 激活解析含负频差 + HamLog 映射 + **QDataStream 字节长度前缀互通**：用本机 Qt 6.8 序列化出的 93 字节 Decode 包做金样本）；**消息体已按 QDataStream 字节长度前缀修正**，本机 127.0.0.1:2237 注入真线格式字节可完整进面板（客户端/14.074000 MHz/解码行全中）；**未与真实 WSJT-X / JTDX 进程联调**；自动写库未在真实 HamLog 库上复验 |
 | 音频 | ✅ 本机输出（AudioOut，**后台线程异步播放**，SSTV 36–115 s / Voice Memory 60 s 不冻 GUI；默认输出设备按 WASAPI ID 取）+ 输入（AudioIn，溢出计数不丢缓冲）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行** | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
-| FT8 | ✅ **本地编解码已入库**（vendored `ft8_lib`，MIT + kiss-fft BSD）：`radio::ft8::decode/encodeTones/synthesize`，纯 std、不依赖 Qt，可被 app/Android 复用 | tests `[ft8]` 3 用例 84 断言：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；**未接 UI、未接真实空中信号** |
+| FT8 | ✅ **本机解码全链路**（不依赖 WSJT-X 进程）：vendored `ft8_lib`（MIT + kiss-fft BSD）+ `radio::ft8::decode/encodeTones/synthesize`（纯 std、不依赖 Qt，可被 app/Android 复用）+ `radio::ft8::SlotDecoder`（48k s16 → 12k 抽取、按 15 s UTC 边界切槽、后台线程解码、解码跟不上宁可丢槽不积压）+ **FT8 面板**（主窗「FT8 本机」按钮开独立窗口：时隙进度条 / 时间·SNR·DT·DF·文本五列表 / 双击行回填呼号·网格并按 `dial + DF` 定频，与 WSJT-X 面板共用 `app/decode_target.h` 解析）；RX 源 = 50003 下行 tap（与 APRS AFSK 同一路） | tests `[ft8]` 3 + `[ft8][slot]` 4 + offscreen `[ft8 panel]` 2：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；UTC 对齐边界算术、48k→12k 端到端（合成一槽 PCM 喂进去能解出 `CQ BG5GXO PM01` 且槽号/丢弃计数正确）、stop 丢半槽、对齐等待期仍计采样；面板注入行 → 表格 + 激活目标、PCM→解码器→面板全链路。**实窗已验**：按钮/面板/状态栏/进度条渲染，无音频时状态如实显示「等待 50003 下行音频」；**真实空中信号未验**（无 IC-705，mock 链路不产 50003 音频） |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -105,6 +105,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
    麦克风溢出（`app/audio_stats.*`，链路计数走 `IAudioLink::rxStats`）。
    2026-10-30 已补本机环回（假电台三信道：握手/CI-V 双向/TX 线格式/RX 重排与
    丢包放行/拆除五件套），**协议与编排已可回归，真机时钟/抖动/音频设备仍待复验**。
+   FT8 本机解码（§4 FT8 行）吃的是同一路 50003 下行 PCM，真机复验时顺带过：连解
+   两个时隙、与 WSJT-X 面板收同一信号交叉比 SNR/DT/DF、看丢弃计数是否为 0。
    复验清单见 `docs/original-rsba1-feature-map.md` §L.6 与
    `docs/research/rsba1-audio-upstream-2026-10-30.md` §6。
 6. **APRS 真机复验**（代码/单测已齐，但**未上真机**）：① KISS 串口接 TNC /
@@ -142,13 +144,15 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 149 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 158 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，DSP 单音/泄漏/Welch 平均与
   S 表 IARU 映射，RS-BA1 本机环回（假电台三信道 + 100 ms 音频重排窗，见
-  `docs/research/rsba1-audio-upstream-2026-10-30.md`），以及
+  `docs/research/rsba1-audio-upstream-2026-10-30.md`），FT8 槽解码器（UTC 对齐 /
+  48k→12k 抽取 / 合成信号端到端），以及
   `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory/中继·亚音对话框按钮
-  并断言 mock 与状态回读；`BUILD_GUI=OFF` 的 Linux CI 自动不建该 target）。
+  并断言 mock 与状态回读）与 `radio_ft8_ui_tests`（面板注入行 → 激活目标、
+  PCM → 解码 → 表格端到端；`BUILD_GUI=OFF` 的 Linux CI 自动不建这些 target）。
   SSTV/Voice Memory 已统一走 `beginScriptedTx/endScriptedTx`；旧“双击收尾”经
   受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
 - 2026-10-29 实窗验证（全程不接电台）：mock 启动截屏核对频谱/瀑布全宽、最新行在顶部；
@@ -163,6 +167,13 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   只留经度且按标签宽度隔一枚画；WSJT-X 组播加入失败时补「改用单播」提示；
   「HamLog 工作台…」原来 new 成主窗口的子控件（内嵌左上角盖住频谱/PTT、无标题栏），
   已改为 `Qt::Window` 独立窗口并设标题。
+- 2026-10-30 实窗验证（FT8 本机解码，全程不接电台）：主窗右侧按钮列加「FT8 本机」后
+  9 个按钮仍不越界（1105×768 截屏核对）；点开面板确认标题栏 / 停止解码·清空 /
+  时隙进度条 / 五列解码表 / 底部提示行渲染正常。面板在 mock 链路下如实显示
+  「等待 50003 下行音频」（原来会谎报「采集中」——`SlotDecoder::fedSamples()`
+  区分「对齐等待」与「真没音频」）；顺带发现并修复 §7 第 10 条（开着面板关主窗，
+  进程不退出）。解码正确性由 `[ft8][slot]` / `[ft8 panel]` 端到端用例承担，
+  实窗只验 UI 与状态口径。
 - 部署目录 `packaging/out-win/`：`cmd //c "build\msvc_build.bat deploy_win"`
   会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
   `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
@@ -279,6 +290,12 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
    `decode.c` 的 `s2[]`）、无 `stpcpy`（补 `third_party/ft8_lib/common/compat_msvc.c`）、
    `M_PI` 要自己定义（`_USE_MATH_DEFINES` 不可靠）。升级 `ft8_lib` 前先看
    `third_party/ft8_lib/VENDORED.md` 的补丁清单。
+10. **无父顶层面板会拖住进程**：APRS / WSJT-X / FT8 面板都是 `new XxxPanel(nullptr)`
+    的独立顶层窗口，Qt 只在「最后一个可见顶层窗口关闭」时退出——开着任意面板关掉主窗，
+    窗口全没了但事件循环还在跑（FT8 面板还会留一个活解码线程）。`MainWindow::closeEvent`
+    已统一处理（先 `ft8_panel_->stopDecoding()`，再 hide 其它可见顶层窗口）。
+    2026-10-30 实窗验证：修复前主窗关闭后 `radio-suite.exe` 仍在任务列表；修复后进程退出。
+    再加同类面板时不必改这里，但**新建带线程的面板要先停线程**。
 
 ## 8. 工单脉络
 

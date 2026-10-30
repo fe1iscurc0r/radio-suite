@@ -6,6 +6,8 @@
 #include "app/repeater_dialog.h"
 #include "app/set_mode_dialog.h"
 
+#include <QApplication>
+#include <QCloseEvent>
 #include <QDateTime>
 #include <QDialog>
 #include <QFile>
@@ -33,6 +35,7 @@
 #include "app/connect_dialog.h"
 #include "app/dial_widget.h"
 #include "app/dtmf_dialog.h"
+#include "app/ft8_panel.h"
 #include "app/meter_widgets.h"
 #include "app/network_audio.h"
 #include "app/sstv_dialog.h"
@@ -129,6 +132,7 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
     }
     rx_have_ = true;
     if (aprs_panel_) aprs_panel_->feedRxPcm(pcm);
+    if (ft8_panel_) ft8_panel_->feedRxPcm(pcm);
   });
 
   // APRS：AFSK 走 50003 音频；RF 发射沿用一键发射的 PTT 编排
@@ -181,6 +185,18 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
 MainWindow::~MainWindow() {
   // 先停音频（会发状态信号，此时成员仍存活），再让成员逆序析构
   if (network_audio_) network_audio_->stop();
+  // 面板是独立顶层窗口（父为空），析构前先停解码线程
+  if (ft8_panel_) ft8_panel_->stopDecoding();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+  // APRS / WSJT-X / FT8 面板是无父顶层窗口：只要还有一个可见，Qt 就不退出，
+  // 于是「关掉主窗」变成进程留在原地、FT8 解码线程继续跑。
+  if (ft8_panel_) ft8_panel_->stopDecoding();
+  for (QWidget* w : QApplication::topLevelWidgets()) {
+    if (w != this && w->isVisible()) w->hide();
+  }
+  QMainWindow::closeEvent(event);
 }
 
 void MainWindow::buildUi() {
@@ -344,6 +360,25 @@ void MainWindow::buildUi() {
             flashStatus(text, false);
           });
 
+  // FT8 本机解码台：同一份 RX PCM 自己解，不依赖 WSJT-X 进程
+  ft8_panel_ = new radio::app::Ft8Panel(nullptr);
+  ft8_panel_->setWindowFlag(Qt::Window);
+  ft8_panel_->setWindowTitle("FT8 本机解码 — radio-suite");
+  ft8_panel_->resize(900, 560);
+  ft8_panel_->hide();
+  connect(ft8_panel_, &radio::app::Ft8Panel::statusMessage, this,
+          [this](const QString& m, bool err) { flashStatus(m, err); });
+  connect(ft8_panel_, &radio::app::Ft8Panel::decodeActivated, this,
+          [this](const QString& call, const QString& grid, quint64 hz,
+                 const QString&) {
+            if (qso_call_edit_) qso_call_edit_->setText(call);
+            QString text = QString("FT8 解码：%1").arg(call);
+            if (hz != 0)
+              text += QString(" · %1 MHz").arg(hz / 1e6, 0, 'f', 6);
+            if (!grid.isEmpty()) text += " · " + grid;
+            flashStatus(text, false);
+          });
+
   auto mk_big = [central](const QString& text, const QColor& c) {
     auto* b = new QPushButton(text, central);
     b->setMinimumHeight(64);
@@ -360,6 +395,8 @@ void MainWindow::buildUi() {
   aprs_big_btn_->setToolTip("APRS 工作台：地图/台站/消息/过滤器/RF+iGate");
   wsjtx_big_btn_ = mk_big("WSJT-X\n接入", QColor(0x1a, 0x23, 0x7e));
   wsjtx_big_btn_->setToolTip("WSJT-X UDP：解码/QSO/WSPR + Reply/Halt/FreeText");
+  ft8_big_btn_ = mk_big("FT8\n本机", QColor(0x10, 0x51, 0x6b));
+  ft8_big_btn_->setToolTip("FT8 本机解码：50003 下行音频直接解，不需要 WSJT-X");
   sstv_big_btn_ = mk_big("SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
   sstv_big_btn_->setToolTip("慢扫描电视：图片→Robot36 音频（发送/接收解码）");
   dtmf_big_btn_ = mk_big("DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
@@ -374,6 +411,7 @@ void MainWindow::buildUi() {
   memch_big_btn_->setToolTip("记忆信道：0x1A 0x00 内容读写 + 0x08 组/信道选择（原厂件）");
   side->addWidget(aprs_big_btn_);
   side->addWidget(wsjtx_big_btn_);
+  side->addWidget(ft8_big_btn_);
   side->addWidget(sstv_big_btn_);
   side->addWidget(dtmf_big_btn_);
   side->addWidget(voice_big_btn_);
@@ -484,6 +522,18 @@ void MainWindow::buildUi() {
       wsjtx_panel_->raise();
       wsjtx_panel_->activateWindow();
       if (!wsjtx_panel_->isListening()) wsjtx_panel_->startListening();
+    }
+  });
+
+  ft8_big_btn_->setCheckable(true);
+  connect(ft8_big_btn_, &QPushButton::toggled, this, [this](bool on) {
+    ft8_panel_->setVisible(on);
+    if (on) {
+      ft8_panel_->raise();
+      ft8_panel_->activateWindow();
+      if (!ft8_panel_->decoding()) ft8_panel_->startDecoding();
+    } else {
+      ft8_panel_->stopDecoding();
     }
   });
   side->addStretch(1);
@@ -902,6 +952,7 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
 
 void MainWindow::refreshState() {
   const auto s = session_.store().snapshot();
+  if (ft8_panel_) ft8_panel_->setDialHz(s.freq_hz);
   freq_label_->setText(formatFreq(s.freq_hz));
   mode_label_->setText(QString("%1/%2").arg(radio::core::civ::modeName(s.mode)).arg(s.filter));
   smeter_->setDbm(s.smeter_dbm);
