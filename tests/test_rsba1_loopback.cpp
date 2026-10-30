@@ -210,11 +210,19 @@ TEST_CASE("loopback: RX audio order, reorder window and loss release",
   REQUIRE(lb.pumpUntil([&] { return chunk_head.size() == 1; }, 1000));
   CHECK(chunk_head[0] == 0x1818);
 
-  // 迟到重传包：不再投递
+  // 迟到重传包：只计数丢弃，不再投递（必须 pump 一次才会被识别）
   chunk_head.clear();
   sendChunk(17, 0x17, kPart2);
-  std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  REQUIRE(lb.pumpUntil(
+      [&] { return lb.transport->rxStats().dropped >= 1; }, 500));
   CHECK(chunk_head.empty());
+
+  // 诊断计数：15/16/17 判丢；迟到 17 记丢弃；上抛块数与投递一致
+  const auto rs = lb.transport->rxStats();
+  CHECK(rs.lost >= 3);
+  CHECK(rs.dropped >= 1);
+  CHECK(rs.chunks == 2 + 3 + 1);
+  CHECK(rs.pending == 0);
 }
 
 TEST_CASE("loopback: close sends the teardown sequence", "[rsba1][loopback]") {

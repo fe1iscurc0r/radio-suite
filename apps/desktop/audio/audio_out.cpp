@@ -103,9 +103,13 @@ int AudioOut::defaultOutputDevice() const {
 }
 
 std::vector<std::string> AudioOut::deviceNames() const {
+  // 只列有输出通道的设备（原实现把输入设备也列进来了，下标/ID 与播放目标错位）
   std::vector<std::string> out;
-  for (uint32_t i = 0; i < impl_->rt.getDeviceCount(); ++i)
-    out.push_back(impl_->rt.getDeviceInfo(i).name);
+  auto& rt = impl_->rt;
+  for (uint32_t id : rt.getDeviceIds()) {
+    const auto info = rt.getDeviceInfo(id);
+    if (info.outputChannels > 0) out.push_back(info.name);
+  }
   return out;
 }
 
@@ -210,6 +214,24 @@ int AudioSink::defaultOutputDevice() const {
   } catch (const std::exception&) {
   }
   return -1;
+}
+
+std::vector<uint32_t> AudioSink::outputDeviceIds() const {
+  std::vector<uint32_t> out;
+  auto& rt = impl_->rt;
+  for (uint32_t id : rt.getDeviceIds())
+    if (rt.getDeviceInfo(id).outputChannels > 0) out.push_back(id);
+  return out;
+}
+
+std::vector<std::string> AudioSink::outputDeviceNames() const {
+  std::vector<std::string> out;
+  auto& rt = impl_->rt;
+  for (uint32_t id : rt.getDeviceIds()) {
+    const auto info = rt.getDeviceInfo(id);
+    if (info.outputChannels > 0) out.push_back(info.name);
+  }
+  return out;
 }
 
 bool AudioSink::start(uint32_t device_id, uint32_t sample_rate,
