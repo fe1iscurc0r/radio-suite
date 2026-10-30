@@ -249,6 +249,12 @@ bool Rsba1UdpTransport::sendTxAudio(std::span<const int16_t> pcm) {
 
 size_t Rsba1UdpTransport::poll() {
   if (state_ != State::Connected) return 0;
+  const auto deliver = [this](const rsba1::AudioRxBuffer::Chunk& c) {
+    if (!audio_cb_ || c.pcm.size() % 2 != 0) return;
+    audio_scratch_.resize(c.pcm.size() / 2);
+    std::memcpy(audio_scratch_.data(), c.pcm.data(), c.pcm.size());
+    audio_cb_(audio_scratch_);
+  };
   std::vector<uint8_t> buf(0x1000);
   for (QUdpSocket* sock : {ser_, ctrl_, aud_}) {
     if (!sock) continue;
@@ -260,16 +266,14 @@ size_t Rsba1UdpTransport::poll() {
       if (sock == ser_) dispatchSerial(std::move(data));
       else if (sock == ctrl_) dispatchCtrl(std::move(data));
       else {
-        // 50003：音频下行（kappanhang 语义：识别→seq 重排→PCM 上抛）
-        auto ev = audio_rx_.feed(data);
-        if (ev.delivered && audio_cb_ && ev.pcm.size() % 2 == 0) {
-          audio_scratch_.resize(ev.pcm.size() / 2);
-          std::memcpy(audio_scratch_.data(), ev.pcm.data(), ev.pcm.size());
-          audio_cb_(audio_scratch_);
-        }
+        // 50003：音频下行（kappanhang 语义：识别→100ms 重排→PCM 上抛）
+        auto push = audio_rx_.feed(data, nowMs());
+        for (const auto& c : push.ready) deliver(c);
       }
     }
   }
+  // 缺口重排窗到期：放行被后续包卡住的缓存（真丢包时才走到这里）
+  for (const auto& c : audio_rx_.flush(nowMs())) deliver(c);
   // 控制信道周期再鉴权（阈值 90s，取 60s 周期）
   if (last_reauth_ms_ != 0 && nowMs() - last_reauth_ms_ > 60'000) {
     auto auth = rsba1::buildAuthRequest(0x05, ctrl_local_, ctrl_remote_,
