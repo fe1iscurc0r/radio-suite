@@ -2,7 +2,19 @@
 #include "app/WaterfallWidget.h"
 
 #include <QColor>
+#include <QSurfaceFormat>
 #include <cstring>
+
+// GLES2 头文件没有 R8/RED 常量（GLES3 与桌面 GL 才有）：按上下文能力选纹理格式
+#ifndef GL_R8
+#define GL_R8 0x8229
+#endif
+#ifndef GL_RED
+#define GL_RED 0x1903
+#endif
+#ifndef GL_LUMINANCE
+#define GL_LUMINANCE 0x1909
+#endif
 
 namespace {
 
@@ -15,7 +27,11 @@ void main() {
 }
 )GLSL";
 
+// GLES 的片元着色器没有默认 float 精度，不声明会直接编译失败（桌面 GL 无此要求）
 const char* kWaterfallFrag = R"GLSL(
+#ifdef GL_ES
+precision mediump float;
+#endif
 uniform sampler2D uTex;
 uniform float uRowOff;   // 环形纹理：屏幕底边对应的归一化行号
 varying vec2 vUv;
@@ -36,6 +52,9 @@ void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
 )GLSL";
 
 const char* kLineFrag = R"GLSL(
+#ifdef GL_ES
+precision mediump float;
+#endif
 uniform vec4 uColor;
 void main() { gl_FragColor = uColor; }
 )GLSL";
@@ -102,17 +121,23 @@ void WaterfallWidget::initializeGL() {
     return;
   }
 
-  // R8 环形纹理
+  // R8 环形纹理（GLES2 上下文退回 LUMINANCE：那边没有 R8 纹理/GL_RED）
+  const QSurfaceFormat fmt = context() ? context()->format() : QSurfaceFormat();
+  const bool es2 = fmt.renderableType() == QSurfaceFormat::OpenGLES &&
+                   fmt.majorVersion() < 3;
+  tex_internal_ = es2 ? GL_LUMINANCE : GL_R8;
+  tex_format_ = es2 ? GL_LUMINANCE : GL_RED;
+
   glGenTextures(1, &tex_);
   glBindTexture(GL_TEXTURE_2D, tex_);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, kTexW, kTexH, 0, GL_RED,
-               GL_UNSIGNED_BYTE, nullptr);
+  glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(tex_internal_), kTexW,
+               kTexH, 0, tex_format_, GL_UNSIGNED_BYTE, nullptr);
   // 预填充底色行（噪底亮度），避免启动后前 ~17s（256 行 @15fps）下半屏全黑
   {
     std::vector<uint8_t> pre(static_cast<size_t>(kTexW), 26);
     for (int r = 0; r < kTexH; ++r)
-      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, r, kTexW, 1, GL_RED, GL_UNSIGNED_BYTE,
-                      pre.data());
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, r, kTexW, 1, tex_format_,
+                      GL_UNSIGNED_BYTE, pre.data());
   }
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -144,7 +169,7 @@ void WaterfallWidget::paintGL() {
 
   if (row_pending_) {
     glBindTexture(GL_TEXTURE_2D, tex_);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, next_row_, kTexW, 1, GL_RED,
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, next_row_, kTexW, 1, tex_format_,
                     GL_UNSIGNED_BYTE, row_.data());
     next_row_ = (next_row_ + 1) % kTexH;
     row_pending_ = false;

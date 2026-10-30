@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// radio-suite · audio/audio_out.h — 音频输出（RtAudio/WASAPI）：SSTV/DTMF/Voice Memory
+// radio-suite · audio/audio_out.h — 音频输出（桌面 RtAudio/WASAPI·ALSA·CoreAudio / Android AAudio）：SSTV/DTMF/Voice Memory
 // 播放 = "录音盒放录音"的最后一公里；发射联动由调用方（session 的 PTT 门禁）编排。
 #pragma once
 
