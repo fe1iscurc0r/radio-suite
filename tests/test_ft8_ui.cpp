@@ -82,6 +82,26 @@ TEST_CASE("ft8 panel: injected slot fills the table and activates a target",
   REQUIRE_FALSE(panel.activateDecode(1));
 }
 
+TEST_CASE("ft8 panel: decode table keeps only the newest rows", "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  panel.setDialHz(14'074'000);
+  for (int i = 0; i < 600; ++i)
+    panel.appendResult(slotWith("CQ BG5GXO PM01", 1000.0f + static_cast<float>(i)));
+  REQUIRE(panel.decodeRowCount() == 500);
+
+  // 淘汰的是最老的，且行元数据必须跟着表一起前移（否则激活的是另一行）
+  quint64 hz = 0;
+  QObject::connect(&panel, &radio::app::Ft8Panel::decodeActivated,
+                   [&](const QString&, const QString&, quint64 f, const QString&) {
+                     hz = f;
+                   });
+  REQUIRE(panel.activateDecode(0));
+  REQUIRE(hz == 14'074'000ull + 1100ull);
+  REQUIRE(panel.activateDecode(499));
+  REQUIRE(hz == 14'074'000ull + 1599ull);
+}
+
 TEST_CASE("ft8 panel: rx pcm flows through slot decoder into the table",
           "[ft8][ui]") {
   uiApp();

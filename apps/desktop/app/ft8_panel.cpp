@@ -19,6 +19,8 @@
 namespace radio::app {
 namespace {
 
+constexpr int kMaxRows = 500;  // 与 WSJT-X 面板解码表同量级
+
 QString snrText(float snr) { return QString::number(snr, 'f', 0); }
 QString dtText(float dt) { return QString::number(dt, 'f', 1); }
 QString dfText(float df) { return QString::number(df, 'f', 0); }
@@ -165,6 +167,11 @@ void Ft8Panel::appendResult(const radio::ft8::SlotResult& result) {
                             .arg(slot.toString("hh:mm:ss"))
                             .arg(result.messages.size())
                             .arg(result.decode_ms, 0, 'f', 0));
+  // 常开控制台：FT8 每 15 s 一槽、单槽可达几十条，不设上限几小时就上万行
+  while (table_->rowCount() > kMaxRows) {
+    table_->removeRow(0);
+    rows_.erase(rows_.begin());
+  }
 }
 
 int Ft8Panel::decodeRowCount() const { return table_->rowCount(); }

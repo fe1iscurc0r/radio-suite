@@ -61,7 +61,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置；**`delta_frequency` 按上游为有符号 qint32**）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格；**QSO Logged 自动写 HamLog 库**（device=WSJT-X、备注网格）；**双击解码回填主窗口呼号**并按 `dial + ΔF` 显示绝对频率 | tests `[wsjtx]` 11 + offscreen `[wsjtx_ui]` 4（UDP 回环 + 面板渲染 + 激活解析含负频差 + HamLog 映射 + **QDataStream 字节长度前缀互通**：用本机 Qt 6.8 序列化出的 93 字节 Decode 包做金样本）；**消息体已按 QDataStream 字节长度前缀修正**，本机 127.0.0.1:2237 注入真线格式字节可完整进面板（客户端/14.074000 MHz/解码行全中）；**未与真实 WSJT-X / JTDX 进程联调**；自动写库未在真实 HamLog 库上复验 |
 | 音频 | ✅ 本机输出（AudioOut，**后台线程异步播放**，SSTV 36–115 s / Voice Memory 60 s 不冻 GUI；默认输出设备按 WASAPI ID 取）+ 输入（AudioIn，溢出计数不丢缓冲）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行** | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
-| FT8 | ✅ **本机解码全链路**（不依赖 WSJT-X 进程）：vendored `ft8_lib`（MIT + kiss-fft BSD）+ `radio::ft8::decode/encodeTones/synthesize`（纯 std、不依赖 Qt，可被 app/Android 复用）+ `radio::ft8::SlotDecoder`（48k s16 → 12k 抽取、按 15 s UTC 边界切槽、后台线程解码、解码跟不上宁可丢槽不积压）+ **FT8 面板**（主窗「FT8 本机」按钮开独立窗口：时隙进度条 / 时间·SNR·DT·DF·文本五列表 / 双击行回填呼号·网格并按 `dial + DF` 定频，与 WSJT-X 面板共用 `app/decode_target.h` 解析）；RX 源 = 50003 下行 tap（与 APRS AFSK 同一路） | tests `[ft8]` 3 + `[ft8][slot]` 4 + offscreen `[ft8 panel]` 2：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；UTC 对齐边界算术、48k→12k 端到端（合成一槽 PCM 喂进去能解出 `CQ BG5GXO PM01` 且槽号/丢弃计数正确）、stop 丢半槽、对齐等待期仍计采样；面板注入行 → 表格 + 激活目标、PCM→解码器→面板全链路。**实窗已验**：按钮/面板/状态栏/进度条渲染，无音频时状态如实显示「等待 50003 下行音频」；**真实空中信号未验**（无 IC-705，mock 链路不产 50003 音频） |
+| FT8 | ✅ **本机解码全链路**（不依赖 WSJT-X 进程）：vendored `ft8_lib`（MIT + kiss-fft BSD）+ `radio::ft8::decode/encodeTones/synthesize`（纯 std、不依赖 Qt，可被 app/Android 复用）+ `radio::ft8::SlotDecoder`（48k s16 → 12k 抽取、按 15 s UTC 边界切槽、后台线程解码、解码跟不上宁可丢槽不积压）+ **FT8 面板**（主窗「FT8 本机」按钮开独立窗口：时隙进度条 / 时间·SNR·DT·DF·文本五列表 / 双击行回填呼号·网格并按 `dial + DF` 定频，与 WSJT-X 面板共用 `app/decode_target.h` 解析）；RX 源 = 50003 下行 tap（与 APRS AFSK 同一路） | tests `[ft8]` 3 + `[ft8][slot]` 4 + offscreen `[ft8 panel]` 3：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；UTC 对齐边界算术、48k→12k 端到端（合成一槽 PCM 喂进去能解出 `CQ BG5GXO PM01` 且槽号/丢弃计数正确）、stop 丢半槽、对齐等待期仍计采样；面板注入行 → 表格 + 激活目标、PCM→解码器→面板全链路、解码表 500 行封顶（淘汰最老且行元数据同步前移，常开不涨）。**实窗已验**：按钮/面板/状态栏/进度条渲染，无音频时状态如实显示「等待 50003 下行音频」；**真实空中信号未验**（无 IC-705，mock 链路不产 50003 音频） |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -144,7 +144,7 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 158 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 159 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，DSP 单音/泄漏/Welch 平均与
   S 表 IARU 映射，RS-BA1 本机环回（假电台三信道 + 100 ms 音频重排窗，见
