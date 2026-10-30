@@ -242,6 +242,34 @@ TEST_CASE("wsjtx: decode activation fills call, grid and absolute frequency",
   CHECK(fired == 2);
   CHECK_FALSE(panel.activateDecode(99));
   CHECK(fired == 2);
+
+  // CQ 修饰词不限于 DX/TEST：POTA/SOTA/QRP 等（均不含数字）都该跳过
+  radio::wsjtx::Decode pota;
+  pota.mode = "FT8";
+  pota.delta_frequency = 300;
+  pota.message = "CQ POTA BG5GXO PM01RF";
+  panel.addDecode(pota, "WSJT-X");
+  CHECK(panel.activateDecode(0));
+  CHECK(fired == 3);
+  CHECK(got_call == "BG5GXO");
+  CHECK(got_grid == "PM01RF");
+  CHECK(got_hz == 14'074'000u + 300u);
+
+  // RR73/RRR 是协议码不是呼号
+  radio::wsjtx::Decode rr73;
+  rr73.message = "BG5GXO RR73";
+  panel.addDecode(rr73, "WSJT-X");
+  CHECK_FALSE(panel.activateDecode(0));
+  CHECK(fired == 3);
+
+  // 负的 delta_frequency（低于刻度）也要落到绝对频率上
+  radio::wsjtx::Decode negative;
+  negative.mode = "FT8";
+  negative.delta_frequency = -400;
+  negative.message = "CQ BG5GXO PM01";
+  panel.addDecode(negative, "WSJT-X");
+  CHECK(panel.activateDecode(0));
+  CHECK(got_hz == 14'074'000u - 400u);
 }
 
 TEST_CASE("wsjtx: logged qso maps onto the HamLog schema", "[wsjtx][ui]") {

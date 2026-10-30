@@ -113,7 +113,10 @@ AprsPanel::AprsPanel(QWidget* parent) : QWidget(parent) {
   tick->start();
 }
 
-AprsPanel::~AprsPanel() { saveNow(); }
+AprsPanel::~AprsPanel() {
+  abortAfskTx();  // 关闭面板时若正在发 AFSK，先回 RX
+  saveNow();
+}
 
 void AprsPanel::buildUi() {
   auto* root = new QVBoxLayout(this);
@@ -246,6 +249,7 @@ void AprsPanel::setMyPosition(bool has, double lat, double lon) {
 }
 
 void AprsPanel::setNetworkAudio(NetworkAudio* audio) {
+  if (audio == nullptr) abortAfskTx();  // 音频链断开前先收尾
   audio_ = audio;
   afsk_rx_ = aprs::AfskDemodulator(
       aprs::AfskConfig{core::kNetAudioRate, 1200.0, 1200.0, 2200.0});
@@ -500,7 +504,11 @@ void AprsPanel::startAfskTx(std::vector<float> audio) {
 }
 
 void AprsPanel::pumpAfskTx() {
-  if (audio_ == nullptr || !tx_active_) {
+  if (audio_ == nullptr) {
+    abortAfskTx();  // 音频链被拆：不能把 PTT 留在键上
+    return;
+  }
+  if (!tx_active_) {
     afsk_timer_->stop();
     return;
   }
@@ -513,6 +521,13 @@ void AprsPanel::pumpAfskTx() {
     return;
   }
   afsk_timer_->stop();
+  tx_active_ = false;
+  if (tx_end_) tx_end_();
+}
+
+void AprsPanel::abortAfskTx() {
+  if (afsk_timer_ != nullptr) afsk_timer_->stop();
+  if (!tx_active_) return;
   tx_active_ = false;
   if (tx_end_) tx_end_();
 }
@@ -805,8 +820,7 @@ void AprsPanel::openRfSettings() {
 
 void AprsPanel::applyRfSettings() {
   if (kiss_ != nullptr) kiss_->disconnectLink();
-  if (afsk_timer_ != nullptr) afsk_timer_->stop();
-  tx_active_ = false;
+  abortAfskTx();  // 切 RF 通路/关音频时先回 RX，避免 PTT 悬空
   switch (rf_mode_) {
     case RfMode::Off:
       appendLog("RF 通路关闭");

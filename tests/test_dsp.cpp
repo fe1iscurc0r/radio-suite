@@ -7,6 +7,7 @@
 #include <cmath>
 #include <vector>
 
+#include "app/smeter_scale.h"
 #include "dsp/fft.h"
 #include "dsp/synth.h"
 #include "dsp/waterfall_frame.h"
@@ -100,4 +101,72 @@ TEST_CASE("dsp: synth silence is only bounded noise", "[dsp]") {
   for (float v : buf) peak = std::max(peak, std::abs(v));
   CHECK(peak <= 4e-3f);
   CHECK(peak > 0.0f);
+}
+
+namespace {
+constexpr double kPiDsp = 3.14159265358979323846;
+
+// bin 对准的单音（无泄漏），幅度 amp：功率精确落在 kBin 上，便于算 dB。
+void fillBinTone(std::vector<float>& buf, size_t bin, double amp) {
+  const size_t n = buf.size();
+  for (size_t i = 0; i < n; ++i)
+    buf[i] = static_cast<float>(
+        amp * std::cos(2.0 * kPiDsp * static_cast<double>(bin * i) /
+                       static_cast<double>(n)));
+}
+}  // namespace
+
+TEST_CASE("dsp: power averaging converges without shifting tone level",
+          "[dsp]") {
+  constexpr size_t N = 256;
+  constexpr size_t kBin = 32;
+  std::vector<float> loud(N), quiet(N);
+  fillBinTone(loud, kBin, 1.0);
+  fillBinTone(quiet, kBin, 1.0 / std::sqrt(2.0));  // 功率减半 = -3.01 dB
+
+  SpectrumAnalyzer plain(N, 1'000.0);
+  plain.process(loud.data(), N);
+  const float loud_db = plain.powerDb()[kBin];
+
+  SpectrumAnalyzer an(N, 1'000.0);
+  an.setAveragingFrames(2);
+  CHECK(an.averagingFrames() == 2);
+  an.process(loud.data(), N);
+  // 首帧直接作种子：平均态不夹带历史，显示与未平均一致
+  CHECK(an.powerDb()[kBin] == Approx(loud_db).margin(1e-3));
+
+  // 递归平均（α=1/2）收敛到半功率，而不是继续下沉
+  for (int i = 0; i < 12; ++i) an.process(quiet.data(), N);
+  CHECK(loud_db - an.powerDb()[kBin] == Approx(3.0103).margin(0.02));
+
+  // 关掉平均立刻回到单帧口径（setAveragingFrames 会清种子）
+  an.setAveragingFrames(1);
+  an.process(quiet.data(), N);
+  CHECK(an.powerDb()[kBin] == Approx(loud_db - 3.0103).margin(0.02));
+}
+
+TEST_CASE("dsp: smeter mapping matches IARU scale", "[dsp]") {
+  using namespace radio::app;
+  CHECK(smeterDbmToNorm(kSmeterS9Dbm) == Approx(kSmeterS9Norm).margin(1e-6));
+  CHECK(smeterDbmToNorm(kSmeterS1Dbm) == Approx(0.0f).margin(1e-6));
+  CHECK(smeterDbmToNorm(kSmeterPlus60Dbm) == Approx(1.0f).margin(1e-6));
+  // S9 以上 60 dB 占后 1/3 弧：10 dB 只占总量 (10/60)×(1/3)
+  CHECK(smeterDbmToNorm(-63.0f) ==
+        Approx(kSmeterS9Norm + (10.0f / 60.0f) * (1.0f - kSmeterS9Norm))
+            .margin(1e-6));
+
+  CHECK(smeterUnits(-91.0f) == Approx(6.0f).margin(1e-6));
+  CHECK(smeterUnits(-127.0f) == Approx(0.0f).margin(1e-6));  // 钳到 S0
+  CHECK(smeterUnits(-13.0f) == Approx(9.0f).margin(1e-6));   // 钳到 S9
+
+  for (float dbm : {-121.0f, -109.0f, -85.0f, -73.0f, -43.0f, -13.0f})
+    CHECK(smeterNormToDbm(smeterDbmToNorm(dbm)) == Approx(dbm).margin(1e-4));
+
+  // 单调不减：dBm 升高时表针不回头
+  float prev = -1.0f;
+  for (float dbm = -130.0f; dbm <= 0.0f; dbm += 0.5f) {
+    const float norm = smeterDbmToNorm(dbm);
+    CHECK(norm >= prev);
+    prev = norm;
+  }
 }

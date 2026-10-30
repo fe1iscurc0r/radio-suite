@@ -14,9 +14,9 @@
 namespace radio::audio {
 namespace {
 struct PlayCtx {
-  const int16_t* data;
-  size_t total;
-  size_t pos;
+  const int16_t* data = nullptr;
+  size_t total = 0;
+  size_t pos = 0;
   std::mutex mu;
 };
 
@@ -33,63 +33,135 @@ int rtCallback(void* out, void* /*in*/, unsigned int nFrames, double,
 }
 }  // namespace
 
-AudioOut::AudioOut() : dac_(new RtAudio()) {}
+struct AudioOut::Impl {
+  RtAudio rt;
+  PlayCtx ctx;
+  std::vector<int16_t> pcm;  // playAsync 持有音频副本
+  std::thread worker;
+  std::atomic<bool> playing{false};
+};
 
-AudioOut::~AudioOut() {
-  stop();
-  delete static_cast<RtAudio*>(dac_);
-}
+namespace {
 
-std::vector<std::string> AudioOut::deviceNames() const {
-  std::vector<std::string> out;
-  auto* rt = static_cast<RtAudio*>(dac_);
-  for (uint32_t i = 0; i < rt->getDeviceCount(); ++i)
-    out.push_back(rt->getDeviceInfo(i).name);
-  return out;
-}
-
-bool AudioOut::play(const std::vector<int16_t>& pcm, uint32_t sample_rate,
-                    uint32_t device_id, std::string* error) {
-  auto* rt = static_cast<RtAudio*>(dac_);
+// 阻塞播放的公共实现；调用者保证不与另一个播放重叠。
+bool playBlocking(RtAudio& rt, PlayCtx& ctx, const std::vector<int16_t>& pcm,
+                  uint32_t sample_rate, uint32_t device_id,
+                  std::atomic<bool>& playing, std::string* error) {
   if (pcm.empty()) return true;
   // 新版 RtAudio：错误用返回码（RtAudioErrorType），不再抛异常
-  if (rt->isStreamOpen()) rt->closeStream();
+  if (rt.isStreamOpen()) rt.closeStream();
   RtAudio::StreamParameters p;
   p.deviceId = device_id;
   p.nChannels = 1;
   p.firstChannel = 0;
   RtAudio::StreamOptions opt;
   opt.flags = RTAUDIO_SCHEDULE_REALTIME;
-  static PlayCtx ctx;
-  ctx.data = pcm.data();
-  ctx.total = pcm.size();
-  ctx.pos = 0;
+  {
+    std::lock_guard<std::mutex> lock(ctx.mu);
+    ctx.data = pcm.data();
+    ctx.total = pcm.size();
+    ctx.pos = 0;
+  }
   unsigned int buffer_frames = 512;
-  if (rt->openStream(&p, nullptr, RTAUDIO_SINT16, sample_rate, &buffer_frames,
-                     &rtCallback, &ctx, &opt) != RTAUDIO_NO_ERROR) {
+  if (rt.openStream(&p, nullptr, RTAUDIO_SINT16, sample_rate, &buffer_frames,
+                    &rtCallback, &ctx, &opt) != RTAUDIO_NO_ERROR) {
     if (error) *error = "openStream 失败（设备被占/无输出设备）";
+    playing = false;
     return false;
   }
-  if (rt->startStream() != RTAUDIO_NO_ERROR) {
-    rt->closeStream();
+  if (rt.startStream() != RTAUDIO_NO_ERROR) {
+    rt.closeStream();
     if (error) *error = "startStream 失败";
+    playing = false;
     return false;
   }
-  playing_ = true;
+  playing = true;
   // 阻塞到播完（SSTV 36s/72s/Martin M1 115s 均可接受；stop 可中断）
-  while (playing_ && ctx.pos < ctx.total) {
+  while (playing.load() && ctx.pos < ctx.total) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
-  if (rt->isStreamOpen() && rt->isStreamRunning()) rt->stopStream();
-  rt->closeStream();
-  playing_ = false;
+  if (rt.isStreamOpen() && rt.isStreamRunning()) rt.stopStream();
+  rt.closeStream();
+  playing = false;
+  return true;
+}
+
+}  // namespace
+
+AudioOut::AudioOut() : impl_(std::make_unique<Impl>()) {}
+
+AudioOut::~AudioOut() { wait(); }
+
+int AudioOut::defaultOutputDevice() const {
+  try {
+    const uint32_t id = impl_->rt.getDefaultOutputDevice();
+    if (impl_->rt.getDeviceInfo(id).outputChannels > 0)
+      return static_cast<int>(id);
+  } catch (const std::exception&) {
+  }
+  return -1;
+}
+
+std::vector<std::string> AudioOut::deviceNames() const {
+  std::vector<std::string> out;
+  for (uint32_t i = 0; i < impl_->rt.getDeviceCount(); ++i)
+    out.push_back(impl_->rt.getDeviceInfo(i).name);
+  return out;
+}
+
+bool AudioOut::play(const std::vector<int16_t>& pcm, uint32_t sample_rate,
+                    uint32_t device_id, std::string* error) {
+  if (impl_->worker.joinable()) {
+    if (impl_->playing.load()) {
+      if (error) *error = "后台播放进行中";
+      return false;
+    }
+    impl_->worker.join();  // 上一段已播完，回收线程
+  }
+  return playBlocking(impl_->rt, impl_->ctx, pcm, sample_rate, device_id,
+                      impl_->playing, error);
+}
+
+bool AudioOut::playAsync(std::vector<int16_t> pcm, uint32_t sample_rate,
+                         uint32_t device_id,
+                         std::function<void(bool, std::string)> done) {
+  if (impl_->worker.joinable()) {
+    if (impl_->playing.load()) return false;
+    impl_->worker.join();  // 上一段已播完，回收线程
+  }
+  if (pcm.empty()) {
+    if (done) done(true, std::string());
+    return true;
+  }
+  impl_->pcm = std::move(pcm);
+  // 先占位再起线程：否则下一段调用可能落在"已起线程/尚未开流"的窗口里，
+  // join 会把 GUI 线程卡到整段播完。
+  impl_->playing = true;
+  impl_->worker = std::thread([this, sample_rate, device_id,
+                               done = std::move(done)]() mutable {
+    std::string err;
+    const bool ok = playBlocking(impl_->rt, impl_->ctx, impl_->pcm,
+                                 sample_rate, device_id, impl_->playing, &err);
+    if (done) done(ok, err);
+  });
   return true;
 }
 
 void AudioOut::stop() {
-  if (!playing_) return;
-  playing_ = false;  // 回调线程自行收尾
+  // 回调线程/播放线程自行收尾（最多 50ms 轮询间隔）
+  impl_->playing = false;
 }
+
+void AudioOut::wait() {
+  stop();
+  if (impl_->worker.joinable()) impl_->worker.join();
+  if (impl_->rt.isStreamOpen()) {
+    if (impl_->rt.isStreamRunning()) impl_->rt.stopStream();
+    impl_->rt.closeStream();
+  }
+}
+
+bool AudioOut::playing() const { return impl_->playing.load(); }
 
 // ---------------- AudioSink：50003 下行语音常开输出 ----------------
 

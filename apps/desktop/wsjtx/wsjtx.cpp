@@ -114,9 +114,11 @@ class Writer {
 
   void boolean(bool v) { u8(v ? 1 : 0); }
 
+  // WSJT-X 用 QDataStream 写 QString：32 位长度是**字节数**（= UTF-16 码元数×2），
+  // 后面才是 UTF-16BE 数据。写成码元数会让对端把 "W\0S\0J\0" 当成整串。
   void str(std::string_view s) {
     const auto units = utf16FromUtf8(s);
-    u32(static_cast<uint32_t>(units.size()));
+    u32(static_cast<uint32_t>(units.size() * 2));
     for (uint16_t unit : units) {
       u8(static_cast<uint8_t>(unit >> 8));
       u8(static_cast<uint8_t>(unit & 0xFF));
@@ -174,12 +176,13 @@ class Reader {
   bool boolean() { return u8() != 0; }
 
   std::string str() {
-    const uint32_t units = u32();
-    if (!ok_ || units == 0xFFFFFFFFu) return {};
-    if (units > remaining() / 2) {
+    const uint32_t bytes = u32();
+    if (!ok_ || bytes == 0xFFFFFFFFu) return {};
+    if ((bytes % 2) != 0 || bytes > remaining()) {
       ok_ = false;
       return {};
     }
+    const uint32_t units = bytes / 2;
     std::vector<uint16_t> u;
     u.reserve(units);
     for (uint32_t i = 0; i < units; ++i) {
@@ -267,7 +270,7 @@ void writeBody<Decode>(Writer& w, MessageType, const Decode& d) {
   w.u32(d.time_ms);
   w.i32(d.snr);
   w.f64(d.delta_time);
-  w.u32(d.delta_frequency);
+  w.i32(d.delta_frequency);
   w.str(d.mode);
   w.str(d.message);
   w.boolean(d.low_confidence);
@@ -284,7 +287,7 @@ void writeBody<Reply>(Writer& w, MessageType, const Reply& r) {
   w.u32(r.time_ms);
   w.i32(r.snr);
   w.f64(r.delta_time);
-  w.u32(r.delta_frequency);
+  w.i32(r.delta_frequency);
   w.str(r.mode);
   w.str(r.message);
   w.boolean(r.low_confidence);
@@ -414,7 +417,7 @@ bool readBody(Reader& r, MessageType type, uint32_t schema, Body* out) {
       d.time_ms = r.u32();
       d.snr = r.i32();
       d.delta_time = r.f64();
-      d.delta_frequency = r.u32();
+      d.delta_frequency = r.i32();
       d.mode = r.str();
       d.message = r.str();
       d.low_confidence = r.boolean();
@@ -433,7 +436,7 @@ bool readBody(Reader& r, MessageType type, uint32_t schema, Body* out) {
       p.time_ms = r.u32();
       p.snr = r.i32();
       p.delta_time = r.f64();
-      p.delta_frequency = r.u32();
+      p.delta_frequency = r.i32();
       p.mode = r.str();
       p.message = r.str();
       p.low_confidence = r.boolean();

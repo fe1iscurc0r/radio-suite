@@ -177,14 +177,19 @@ void AprsMapWidget::drawGraticule(QPainter& p) {
   const QPointF tl = project(center_lat_, center_lon_) -
                      QPointF(width() / 2.0, height() / 2.0);
   double lon = std::floor(-180.0 / step) * step;
+  qreal last_label_x = -1e9;
   for (; lon <= 180.0; lon += step) {
     const double x = project(0.0, lon).x() - tl.x();
     if (x < -1 || x > width() + 1) continue;
     p.drawLine(QPointF(x, 0), QPointF(x, height()));
-    p.setPen(QColor(120, 160, 180, 180));
-    p.drawText(QPointF(x + 3, height() - 8),
-               QString::number(lon, 'f', step < 1 ? 1 : 0) + "°");
-    p.setPen(QPen(QColor(70, 110, 130, 120), 1, Qt::DashLine));
+    const QString label = QString::number(lon, 'f', step < 1 ? 1 : 0) + "°";
+    // 相邻标签会首尾相接（0.1° 步进时约 59px），按上一枚的宽度隔一枚画。
+    if (x - last_label_x >= p.fontMetrics().horizontalAdvance(label) + 10) {
+      p.setPen(QColor(120, 160, 180, 180));
+      p.drawText(QPointF(x + 3, height() - 8), label);
+      last_label_x = x;
+      p.setPen(QPen(QColor(70, 110, 130, 120), 1, Qt::DashLine));
+    }
   }
   double lat = std::floor(-85.0 / step) * step;
   for (; lat <= 85.0; lat += step) {
@@ -192,8 +197,10 @@ void AprsMapWidget::drawGraticule(QPainter& p) {
     if (y < -1 || y > height() + 1) continue;
     p.drawLine(QPointF(0, y), QPointF(width(), y));
     p.setPen(QColor(120, 160, 180, 180));
-    p.drawText(QPointF(4, y - 3), QString::number(lat, 'f', step < 1 ? 1 : 0) +
-                                      "°");
+    // 最底一条纬度刻度与经度标签同高（y≈height()-8），会叠字，只保留网格线。
+    if (y >= 20 && y <= height() - 20)
+      p.drawText(QPointF(4, y - 3),
+                 QString::number(lat, 'f', step < 1 ? 1 : 0) + "°");
     p.setPen(QPen(QColor(70, 110, 130, 120), 1, Qt::DashLine));
   }
 }
@@ -323,7 +330,9 @@ void AprsMapWidget::paintEvent(QPaintEvent*) {
                           .arg(follow_ ? "跟随" : "自由");
   p.drawText(8, 16, hud);
   p.setPen(QColor(140, 160, 170, 200));
-  p.drawText(8, height() - 6, "© OpenStreetMap contributors");
+  // 版权放右上：底部一行被经度刻度占着，左下会和第一枚经度标签叠字。
+  const QString credit = "© OpenStreetMap contributors";
+  p.drawText(width() - p.fontMetrics().horizontalAdvance(credit) - 8, 16, credit);
 }
 
 void AprsMapWidget::mousePressEvent(QMouseEvent* event) {

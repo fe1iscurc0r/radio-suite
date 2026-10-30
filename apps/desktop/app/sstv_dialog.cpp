@@ -88,7 +88,14 @@ SstvDialog::SstvDialog(radio::app::RadioSession* session, QWidget* parent)
   root->addWidget(rx_view_, 1);
 }
 
-SstvDialog::~SstvDialog() = default;  // unique_ptr<AudioOut>（完整类型在 audio_out.h）
+SstvDialog::~SstvDialog() {
+  // 播放线程最多 50ms 内退出；若发射尚未收尾，这里负责回 RX（不把 PTT 留在键上）
+  audio_->wait();
+  if (tx_active_) {
+    tx_active_ = false;
+    if (session_) session_->endScriptedTx();
+  }
+}
 
 void SstvDialog::onDecode() {
   const QString path = QFileDialog::getOpenFileName(this, "选择 SSTV .wav",
@@ -211,9 +218,14 @@ void SstvDialog::onGenerate() {
 }
 
 void SstvDialog::onTransmit() {
-  if (last_pcm_.empty()) return;
+  if (last_pcm_.empty() || tx_active_) return;
   if (!session_) {
     info_->setText("会话未就绪");
+    return;
+  }
+  const int device = audio_->defaultOutputDevice();
+  if (device < 0) {
+    info_->setText("无可用输出设备");
     return;
   }
   if (!session_->beginScriptedTx()) {
@@ -221,9 +233,28 @@ void SstvDialog::onTransmit() {
     return;
   }
 
-  info_->setText("发射中…（音频直出 MOD）");
-  std::string err;
-  const bool ok = audio_->play(last_pcm_, 44100, 0, &err);
-  session_->endScriptedTx();
-  info_->setText(ok ? "已播完并回 RX" : QString("音频失败：") + err.c_str());
+  // 播放可能长达 115s（Martin M1）：必须走后台线程，否则 GUI 冻结到播完
+  tx_active_ = true;
+  tx_btn_->setEnabled(false);
+  info_->setText("发射中…（音频直出 MOD，播完自动回 RX）");
+  const bool started = audio_->playAsync(
+      last_pcm_, 44100, static_cast<uint32_t>(device),
+      [this](bool ok, std::string err) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, ok, err] {
+              tx_active_ = false;
+              tx_btn_->setEnabled(true);
+              if (session_) session_->endScriptedTx();
+              info_->setText(ok ? "已播完并回 RX"
+                                : QString("音频失败：") + err.c_str());
+            },
+            Qt::QueuedConnection);
+      });
+  if (!started) {
+    tx_active_ = false;
+    tx_btn_->setEnabled(true);
+    session_->endScriptedTx();
+    info_->setText("播放线程忙，已回 RX");
+  }
 }

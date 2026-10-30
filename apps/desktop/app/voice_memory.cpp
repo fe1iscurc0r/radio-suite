@@ -10,6 +10,9 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <cstring>
+
 #include "app/session.h"
 #include "audio/audio_in.h"
 #include "audio/audio_out.h"
@@ -43,15 +46,18 @@ std::vector<int16_t> readWav(const QString& path) {
   if (!f.open(QIODevice::ReadOnly)) return {};
   const QByteArray all = f.readAll();
   const int off = all.indexOf("data");
-  if (off < 0) return {};
+  if (off < 0 || off + 8 > all.size()) return {};
   const int32_t len =
       static_cast<uint8_t>(all[off + 4]) |
       (static_cast<uint8_t>(all[off + 5]) << 8) |
       (static_cast<uint8_t>(all[off + 6]) << 16) |
       (static_cast<uint32_t>(static_cast<uint8_t>(all[off + 7])) << 24);
-  const int n = len / 2;
-  std::vector<int16_t> pcm(n);
-  std::memcpy(pcm.data(), all.constData() + off + 8, len);
+  // 截断文件按实际剩余字节算，避免越界 memcpy
+  const int available = all.size() - (off + 8);
+  const int n = std::max(0, std::min(static_cast<int>(len), available)) / 2;
+  std::vector<int16_t> pcm(static_cast<size_t>(n));
+  if (n > 0) std::memcpy(pcm.data(), all.constData() + off + 8,
+                         static_cast<size_t>(n) * sizeof(int16_t));
   return pcm;
 }
 }  // namespace
@@ -93,7 +99,14 @@ VoiceMemoryDialog::VoiceMemoryDialog(radio::app::RadioSession* session,
   refreshList();
 }
 
-VoiceMemoryDialog::~VoiceMemoryDialog() = default;
+VoiceMemoryDialog::~VoiceMemoryDialog() {
+  audio_in_->stop();
+  audio_out_->wait();
+  if (tx_active_) {
+    tx_active_ = false;
+    if (session_) session_->endScriptedTx();
+  }
+}
 
 QString VoiceMemoryDialog::voiceDir() const {
   // 音频文件放仓库 tools/voice/（随仓管理，不放系统目录）
@@ -144,30 +157,77 @@ void VoiceMemoryDialog::onRecordToggle() {
 
 void VoiceMemoryDialog::onPlay() {
   if (!list_->currentItem()) return;
+  if (audio_out_->playing()) {
+    status_->setText("播放中…");
+    return;
+  }
   const QString path = voiceDir() + "/" + list_->currentItem()->text() + ".wav";
   const auto pcm = readWav(path);
   if (pcm.empty()) {
     status_->setText("文件不可读");
     return;
   }
+  const int device = audio_out_->defaultOutputDevice();
+  if (device < 0) {
+    status_->setText("无可用输出设备");
+    return;
+  }
   status_->setText("播放中…");
-  audio_out_->play(pcm, kRate);
-  status_->setText("播放完成");
+  play_btn_->setEnabled(false);
+  const bool started = audio_out_->playAsync(
+      pcm, kRate, static_cast<uint32_t>(device),
+      [this](bool ok, std::string err) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, ok, err] {
+              play_btn_->setEnabled(true);
+              status_->setText(ok ? "播放完成"
+                                  : QString("播放失败：") + err.c_str());
+            },
+            Qt::QueuedConnection);
+      });
+  if (!started) {
+    play_btn_->setEnabled(true);
+    status_->setText("播放线程忙");
+  }
 }
 
 void VoiceMemoryDialog::onTransmit() {
-  if (!list_->currentItem()) {
-    status_->setText("先选中一条录音");
-    return;
-  }
+  if (!list_->currentItem() || tx_active_) return;
   const auto pcm = readWav(voiceDir() + "/" + list_->currentItem()->text() + ".wav");
   if (pcm.empty()) return;
   if (!session_ || !session_->beginScriptedTx()) {
     status_->setText("发射被门禁拒绝");
     return;
   }
-  status_->setText("发射中…（Voice Memory → MOD）");
-  audio_out_->play(pcm, kRate);
-  session_->endScriptedTx();
-  status_->setText("已播完并回 RX");
+  const int device = audio_out_->defaultOutputDevice();
+  if (device < 0) {
+    session_->endScriptedTx();
+    status_->setText("无可用输出设备");
+    return;
+  }
+  // 录音最长 60s：后台播放，GUI 不冻结；播完在 GUI 线程回 RX
+  tx_active_ = true;
+  tx_btn_->setEnabled(false);
+  status_->setText("发射中…（Voice Memory → MOD，播完自动回 RX）");
+  const bool started = audio_out_->playAsync(
+      pcm, kRate, static_cast<uint32_t>(device),
+      [this](bool ok, std::string err) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, ok, err] {
+              tx_active_ = false;
+              tx_btn_->setEnabled(true);
+              if (session_) session_->endScriptedTx();
+              status_->setText(ok ? "已播完并回 RX"
+                                  : QString("音频失败：") + err.c_str());
+            },
+            Qt::QueuedConnection);
+      });
+  if (!started) {
+    tx_active_ = false;
+    tx_btn_->setEnabled(true);
+    session_->endScriptedTx();
+    status_->setText("播放线程忙，已回 RX");
+  }
 }
