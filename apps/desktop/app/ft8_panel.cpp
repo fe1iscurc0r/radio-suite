@@ -255,6 +255,10 @@ void Ft8Panel::updateTxLabel(int64_t now_ms) {
 }
 
 void Ft8Panel::refreshTick() {
+  // 排期倒计时跟着 tick 走：不解码时也要能看到还剩几秒（下面 decoder 未跑会早退）
+  if (tx_pending_) {
+    updateTxLabel(static_cast<int64_t>(QDateTime::currentMSecsSinceEpoch()));
+  }
   if (!decoder_.running()) {
     progress_->setValue(0);
     return;
