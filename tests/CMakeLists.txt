@@ -140,6 +140,20 @@ if(BUILD_GUI)
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   set_target_properties(radio_ft8_ui_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_ft8_ui_tests)
+
+  # 本机声学环回：扬声器播一槽、麦克风收一槽。要真出声故默认跳过，不进 CI。
+  if(TARGET radio::audio)
+    add_executable(radio_ft8_acoustic_tests test_ft8_acoustic.cpp)
+    target_link_libraries(radio_ft8_acoustic_tests PRIVATE
+      radio::ft8_codec
+      radio::audio
+      Qt6::Core
+      Catch2::Catch2WithMain)
+    target_include_directories(radio_ft8_acoustic_tests PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${CMAKE_SOURCE_DIR}/apps/desktop")
+    catch_discover_tests(radio_ft8_acoustic_tests)
+  endif()
 endif()
 
 if(TARGET radio::aprs_db)
