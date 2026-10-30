@@ -1,25 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/ft8_panel.h"
 
+#include <QApplication>
+#include <QComboBox>
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 
 #include <cmath>
 #include <memory>
+#include <stdexcept>
+#include <utility>
 
 #include "app/decode_target.h"
+#include "ft8/ft8_tx.h"
 
 namespace radio::app {
 namespace {
 
 constexpr int kMaxRows = 500;  // 与 WSJT-X 面板解码表同量级
+constexpr int64_t kTxLeadMs = 500;  // 槽起点前留给 PTT 键控与音频设备启动
+constexpr int64_t kTxFireLateWarnMs = 250;  // 起播晚于槽起点这么多就算「没对齐」
+constexpr uint32_t kTxRateHz = 48000;
 
 QString snrText(float snr) { return QString::number(snr, 'f', 0); }
 QString dtText(float dt) { return QString::number(dt, 'f', 1); }
@@ -47,6 +57,30 @@ void Ft8Panel::buildUi() {
   top->addWidget(status_label_, 1);
   top->addWidget(stats_label_);
   root->addLayout(top);
+
+  // 发射：文本 + 音频频偏 + 槽奇偶 + 一个会变身（排期 / 取消）的按钮
+  auto* txrow = new QHBoxLayout();
+  txrow->addWidget(new QLabel("文本", this));
+  msg_edit_ = new QLineEdit(this);
+  msg_edit_->setPlaceholderText("CQ BG5GXO PM01");
+  txrow->addWidget(msg_edit_, 1);
+  txrow->addWidget(new QLabel("音频频偏", this));
+  f0_spin_ = new QSpinBox(this);
+  f0_spin_->setRange(200, 2700);
+  f0_spin_->setSingleStep(50);
+  f0_spin_->setSuffix(" Hz");
+  f0_spin_->setValue(1000);
+  txrow->addWidget(f0_spin_);
+  parity_box_ = new QComboBox(this);
+  parity_box_->addItems({"任意时隙", "偶数时隙", "奇数时隙"});
+  txrow->addWidget(parity_box_);
+  tx_btn_ = new QPushButton("定时发射", this);
+  txrow->addWidget(tx_btn_);
+  tx_info_ = new QLabel(this);
+  tx_info_->setMinimumWidth(210);
+  txrow->addWidget(tx_info_);
+  root->addLayout(txrow);
+  updateTxLabel(0);
 
   progress_ = new QProgressBar(this);
   progress_->setRange(0, 100);
@@ -77,6 +111,11 @@ void Ft8Panel::buildUi() {
   connect(clear_btn_, &QPushButton::clicked, this, &Ft8Panel::clearRows);
   connect(table_, &QTableWidget::cellDoubleClicked, this,
           [this](int row, int) { activateDecode(row); });
+
+  connect(tx_btn_, &QPushButton::clicked, this, &Ft8Panel::onTxClicked);
+  tx_timer_ = new QTimer(this);
+  tx_timer_->setSingleShot(true);
+  connect(tx_timer_, &QTimer::timeout, this, [this] { fireTransmit(); });
 
   decoder_.setCallback([this](const radio::ft8::SlotResult& result) {
     // 解码线程 → GUI 线程；对象析构后 Qt 会丢弃未执行的投递
@@ -117,6 +156,102 @@ void Ft8Panel::stopDecoding() {
 void Ft8Panel::feedRxPcm(std::span<const int16_t> pcm) {
   if (!decoder_.running()) return;
   decoder_.push(pcm);
+}
+
+bool Ft8Panel::scheduleTransmit(const QString& text, float f0_hz, int parity,
+                                int64_t now_ms) {
+  if (tx_pending_) {
+    tx_info_->setText("已有一次发射在等待，先取消");
+    return false;
+  }
+  if (text.trimmed().isEmpty()) {
+    tx_info_->setText("文本为空");
+    return false;
+  }
+  std::vector<int16_t> pcm;
+  try {
+    pcm = radio::ft8::renderTxPcm(text.toStdString(), f0_hz);
+  } catch (const std::exception& e) {
+    tx_info_->setText("文本无法按 FT8 打包");
+    emit statusMessage(QString("FT8 发射取消：%1").arg(e.what()), true);
+    return false;
+  }
+  const int64_t start = radio::ft8::nextTxSlotStart(now_ms, kTxLeadMs, parity);
+  tx_pcm_ = std::move(pcm);
+  tx_start_ms_ = start;
+  tx_pending_ = true;
+  tx_timer_->start(static_cast<int>(start - now_ms));
+  updateTxLabel(now_ms);
+  emit statusMessage(
+      QString("FT8 已排期：%1 UTC 起发射（双击前不会自动重发）")
+          .arg(QDateTime::fromMSecsSinceEpoch(start).toUTC().toString("hh:mm:ss")),
+      false);
+  return true;
+}
+
+void Ft8Panel::cancelTransmit() {
+  tx_timer_->stop();
+  tx_pending_ = false;
+  tx_pcm_.clear();
+  tx_start_ms_ = 0;
+  updateTxLabel(static_cast<int64_t>(QDateTime::currentMSecsSinceEpoch()));
+}
+
+bool Ft8Panel::fireTransmit(int64_t now_ms) {
+  if (!tx_pending_) return false;
+  const int64_t start = tx_start_ms_;
+  if (now_ms <= 0) now_ms = static_cast<int64_t>(QDateTime::currentMSecsSinceEpoch());
+  // QTimer 晚了说明 GUI 线程被堵住（模态框/重活）：整槽波形会整体偏离槽起点，
+  // 拦不住也不该悄悄发出去，把偏差报出来让操作者知道这一发不干净
+  const int64_t late = now_ms - start;
+  tx_pending_ = false;
+  std::vector<int16_t> pcm;
+  pcm.swap(tx_pcm_);
+  if (!tx_) {
+    tx_info_->setText("未接发射出口（需要主窗音频链路）");
+    emit statusMessage("FT8 发射未开始：本面板没有接上音频出口", true);
+    return false;
+  }
+  if (!tx_(std::move(pcm), kTxRateHz)) {
+    tx_info_->setText("发射被拒绝（门禁或非业余段）");
+    emit statusMessage("FT8 发射未开始：门禁拒绝或无输出设备", true);
+    return false;
+  }
+  tx_info_->setText(QString("%1 UTC 起整槽发射").arg(
+      QDateTime::fromMSecsSinceEpoch(start).toUTC().toString("hh:mm:ss")));
+  emit statusMessage(late > kTxFireLateWarnMs
+                         ? QString("FT8 发射中（比槽起点晚 %1 ms，这一发对不齐）")
+                               .arg(late)
+                         : "FT8 发射中（15 s 整槽，播完自动回 RX）",
+                     late > kTxFireLateWarnMs);
+  return true;
+}
+
+void Ft8Panel::onTxClicked() {
+  const int64_t now = static_cast<int64_t>(QDateTime::currentMSecsSinceEpoch());
+  if (tx_pending_) {
+    cancelTransmit();
+    return;
+  }
+  const int parity = parity_box_->currentIndex() - 1;  // 0=任意 → -1
+  scheduleTransmit(msg_edit_->text(),
+                   static_cast<float>(f0_spin_->value()), parity, now);
+}
+
+void Ft8Panel::updateTxLabel(int64_t now_ms) {
+  if (!tx_pending_) {
+    tx_btn_->setText("定时发射");
+    tx_info_->setText("等到下一个时隙起点整槽播出（15 s）");
+    return;
+  }
+  tx_btn_->setText("取消发射");
+  const double left = static_cast<double>(tx_start_ms_ - now_ms) / 1000.0;
+  tx_info_->setText(
+      QString("%1 UTC 起（%2 s 后）")
+          .arg(QDateTime::fromMSecsSinceEpoch(tx_start_ms_)
+                   .toUTC()
+                   .toString("hh:mm:ss"))
+          .arg(left, 0, 'f', 1));
 }
 
 void Ft8Panel::refreshTick() {

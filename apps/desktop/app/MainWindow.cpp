@@ -48,6 +48,8 @@
 #include <QRegularExpression>
 #include <QSettings>
 
+#include "audio/audio_out.h"
+
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
 #include "app/wsjtx_client.h"
 #include "app/wsjtx_logbook.h"
@@ -187,12 +189,21 @@ MainWindow::~MainWindow() {
   if (network_audio_) network_audio_->stop();
   // 面板是独立顶层窗口（父为空），析构前先停解码线程
   if (ft8_panel_) ft8_panel_->stopDecoding();
+  // FT8 发射中途退窗：等播放线程收手，再强制回 RX——它的收尾回调排在事件队列里，
+  // 关闭路上不一定还有机会跑，不能指望它把 PTT 放掉
+  if (ft8_tx_audio_) {
+    ft8_tx_audio_->wait();
+    session_.endScriptedTx();
+  }
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
   // APRS / WSJT-X / FT8 面板是无父顶层窗口：只要还有一个可见，Qt 就不退出，
   // 于是「关掉主窗」变成进程留在原地、FT8 解码线程继续跑。
-  if (ft8_panel_) ft8_panel_->stopDecoding();
+  if (ft8_panel_) {
+    ft8_panel_->cancelTransmit();  // 排期未到的整槽不许在关窗路上起播
+    ft8_panel_->stopDecoding();
+  }
   for (QWidget* w : QApplication::topLevelWidgets()) {
     if (w != this && w->isVisible()) w->hide();
   }
@@ -378,6 +389,39 @@ void MainWindow::buildUi() {
             if (!grid.isEmpty()) text += " · " + grid;
             flashStatus(text, false);
           });
+
+  // FT8 发射出口：整槽 PCM 走本机声卡直出（与 SSTV 一键发射同一路），
+  // PTT 由门禁键控、播完回 RX。不注进 50003 上行：桥队列 200ms 满则丢最旧，
+  // 实时语音丢一帧无所谓，15 s 整槽丢不得。
+  ft8_panel_->setTxController([this](std::vector<int16_t> pcm, uint32_t rate) {
+    if (!ft8_tx_audio_) ft8_tx_audio_ = std::make_unique<radio::audio::AudioOut>();
+    // 优先用「音频设置」里选的那块卡（-1 = 系统默认）
+    int dev = network_audio_ ? network_audio_->outputDevice() : -1;
+    if (dev < 0) dev = ft8_tx_audio_->defaultOutputDevice();
+    if (dev < 0) return false;
+    // 整槽发射必须独占：已经在 Tx（SSTV/语音正在播）时再叠一路，两路声卡流会
+    // 一起进电台，解出来全是垃圾。beginScriptedTx 对已键控状态是放行的，所以自己拦。
+    if (session_.gate().phase() == radio::core::PttPhase::Tx) return false;
+    if (!session_.beginScriptedTx()) return false;
+    const bool started = ft8_tx_audio_->playAsync(
+        std::move(pcm), rate, static_cast<uint32_t>(dev),
+        [this](bool ok, std::string err) {
+          QMetaObject::invokeMethod(
+              this,
+              [this, ok, err] {
+                session_.endScriptedTx();
+                flashStatus(ok ? "FT8 整槽播完，已回 RX"
+                               : QString("FT8 发射中断：%1").arg(err.c_str()),
+                            !ok);
+              },
+              Qt::QueuedConnection);
+        });
+    if (!started) {
+      session_.endScriptedTx();
+      return false;
+    }
+    return true;
+  });
 
   auto mk_big = [central](const QString& text, const QColor& c) {
     auto* b = new QPushButton(text, central);

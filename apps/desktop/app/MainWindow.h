@@ -33,6 +33,9 @@ class SetModeDialog;
 class MemoryChannelDialog;
 class NetworkAudio;
 }
+namespace radio::audio {
+class AudioOut;
+}
 class QLineEdit;
 class QPushButton;
 class SMeterWidget;
@@ -128,6 +131,8 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   radio::app::AprsPanel* aprs_panel_ = nullptr;
   radio::app::WsjtxPanel* wsjtx_panel_ = nullptr;
   radio::app::Ft8Panel* ft8_panel_ = nullptr;
+  // FT8 整槽发射的出口（与 SSTV 一键发射同路：PTT 门禁 + 本机声卡直出）
+  std::unique_ptr<radio::audio::AudioOut> ft8_tx_audio_;
   QLineEdit* qso_call_edit_ = nullptr;   // QSO 对方呼号
   QListWidget* qso_list_ = nullptr;      // 最近 QSO（HamLog 库实时视图）
 #ifdef RADIO_SUITE_HAVE_LOGBOOK

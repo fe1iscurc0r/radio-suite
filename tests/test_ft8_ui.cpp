@@ -136,3 +136,91 @@ TEST_CASE("ft8 panel: rx pcm flows through slot decoder into the table",
   panel.feedRxPcm(std::span<const int16_t>(pcm.data(), 960));  // 停了就不再收
   REQUIRE(panel.decodeRowCount() == rows);
 }
+
+TEST_CASE("ft8 panel: tx schedules the slot then hands the exit one full slot",
+          "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+
+  std::vector<int16_t> got;
+  uint32_t rate = 0;
+  int fires = 0;
+  panel.setTxController([&](std::vector<int16_t> pcm, uint32_t r) {
+    got = std::move(pcm);
+    rate = r;
+    ++fires;
+    return true;
+  });
+
+  // 排期阶段只算时间不许起播：到点前发射出口必须还是 0 次
+  REQUIRE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 10'000));
+  REQUIRE(panel.txScheduled());
+  REQUIRE(panel.txStartUtcMs() == 15'000);
+  REQUIRE(fires == 0);
+
+  REQUIRE(panel.fireTransmit(15'000));
+  REQUIRE(fires == 1);
+  REQUIRE(rate == 48'000);
+  REQUIRE(got.size() == 15'000 * 48);
+  REQUIRE_FALSE(panel.txScheduled());
+  REQUIRE_FALSE(panel.fireTransmit(30'000));  // 一发只播一遍，不自动重发
+  REQUIRE(fires == 1);
+}
+
+TEST_CASE("ft8 panel: tx rejects bad input, double booking and refusals",
+          "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  int fires = 0;
+  panel.setTxController([&](std::vector<int16_t>, uint32_t) {
+    ++fires;
+    return true;
+  });
+
+  REQUIRE_FALSE(panel.scheduleTransmit("   ", 1000.0f, -1, 10'000));
+  REQUIRE_FALSE(panel.scheduleTransmit("this text is far too long for ft8", 1000.0f,
+                                       -1, 10'000));
+  REQUIRE_FALSE(panel.txScheduled());
+  REQUIRE(fires == 0);
+
+  // parity 走 UI 的偶/奇槽语义：0=偶（:00 :30），1=奇
+  REQUIRE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, 0, 10'000));
+  REQUIRE(panel.txStartUtcMs() == 30'000);
+  REQUIRE_FALSE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 10'000));
+  panel.cancelTransmit();
+  REQUIRE_FALSE(panel.txScheduled());
+  REQUIRE_FALSE(panel.fireTransmit(30'000));  // 取消后到点也不许发
+  REQUIRE(fires == 0);
+
+  // 出口拒绝（门禁/无设备）：这一发就废了，不留在等待态反复撞门禁
+  panel.setTxController([&](std::vector<int16_t>, uint32_t) {
+    ++fires;
+    return false;
+  });
+  REQUIRE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 10'000));
+  REQUIRE_FALSE(panel.fireTransmit(15'000));
+  REQUIRE(fires == 1);
+  REQUIRE_FALSE(panel.txScheduled());
+}
+
+TEST_CASE("ft8 panel: a late fire is reported as misaligned", "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  panel.setTxController([](std::vector<int16_t>, uint32_t) { return true; });
+
+  QString msg;
+  bool flagged = false;
+  QObject::connect(&panel, &radio::app::Ft8Panel::statusMessage,
+                   [&](const QString& text, bool err) {
+                     msg = text;
+                     flagged = err;
+                   });
+
+  REQUIRE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 10'000));
+  REQUIRE(panel.fireTransmit(15'000));  // 准时：只是常规提示
+  REQUIRE_FALSE(flagged);
+  REQUIRE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 46'000));
+  REQUIRE(panel.fireTransmit(60'000 + 900));  // GUI 线程被堵：晚了 900 ms
+  REQUIRE(flagged);
+  REQUIRE(msg.contains("900"));
+}
