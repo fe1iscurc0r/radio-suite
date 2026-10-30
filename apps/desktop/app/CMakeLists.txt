@@ -38,7 +38,12 @@ if(Qt6HttpServer_FOUND)
   list(APPEND APP_SRC ../bus/bus_server.cpp ../bus/rigctld_server.cpp)
 endif()
 
-add_executable(radio-suite ${APP_SRC})
+# Android 用 qt_add_executable：它会挂上 androiddeployqt 的部署设置与 apk 目标
+if(ANDROID)
+  qt_add_executable(radio-suite ${APP_SRC})
+else()
+  add_executable(radio-suite ${APP_SRC})
+endif()
 
 target_link_libraries(radio-suite PRIVATE
   Qt6::Widgets
@@ -67,6 +72,17 @@ if(TARGET radio::logbook)
   target_link_libraries(radio-suite PRIVATE radio::logbook)
   target_compile_definitions(radio-suite PRIVATE RADIO_SUITE_HAVE_LOGBOOK=1)
   find_package(Qt6 REQUIRED COMPONENTS Widgets)
+endif()
+
+# Android 打包：清单覆盖 Qt 模板默认值（包名/INTERNET/RECORD_AUDIO）
+if(ANDROID)
+  set_target_properties(radio-suite PROPERTIES
+    QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/packaging/android"
+    QT_ANDROID_PACKAGE_NAME "org.radiosuite.app"
+    QT_ANDROID_VERSION_NAME "0.1.0"
+    QT_ANDROID_VERSION_CODE "1"
+    QT_ANDROID_MIN_SDK_VERSION "26"
+    QT_ANDROID_TARGET_SDK_VERSION "34")
 endif()
 
 # Windows 运行部署：刷新 packaging/out-win（exe + Qt DLL/插件），双击即可运行

@@ -19,6 +19,11 @@
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QPermissions>  // Qt 6.7 没有独立的 QMicrophonePermission 头
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -82,6 +87,17 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
                        QWidget* parent)
     : QMainWindow(parent), session_(std::move(transport)) {
   buildUi();
+
+#ifdef Q_OS_ANDROID
+  // AAudio 录音（50003 上行 / Voice Memory）要 RECORD_AUDIO 运行时授权：
+  // 启动时申请一次，避免用户开网络音频时才因无权限静默失败
+  {
+    QMicrophonePermission mic_permission;
+    if (qApp->checkPermission(mic_permission) ==
+        Qt::PermissionStatus::Undetermined)
+      qApp->requestPermission(mic_permission, [](const QPermission&) {});
+  }
+#endif
 
   samples_.assign(kFftSize, 0.0f);
   rx_ring_.assign(kFftSize, 0);

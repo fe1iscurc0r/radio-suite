@@ -167,11 +167,12 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
   `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
 
-### 6.1 Android 交叉编译（2026-10-30 装好工具链；GUI 目标已能链出）
+### 6.1 Android 交叉编译与 APK（2026-10-30 工具链 + GUI + APK 均已跑通）
 
 ```bash
 cmd //c "build\android_configure.bat"          # 生成 build-android（arm64-v8a，GUI 默认 ON、测试 OFF）
 cmd //c "build\android_build.bat radio-suite"  # 或只编核心库：… radio_core radio_ft8 radio_aprs
+cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，签名见下）
 ```
 
 - 本机安装位置：`D:/Qt/6.7.3/android_arm64_v8a`（目标库，含 Gui/Widgets/OpenGLWidgets/
@@ -199,12 +200,25 @@ cmd //c "build\android_build.bat radio-suite"  # 或只编核心库：… radio_
 - GLES 兼容：瀑布纹理原写死 `GL_R8`/`GL_RED`，Android 的 GLES2 上下文没有这两个常量。
   现按 `QSurfaceFormat` 判 ES2 → `GL_LUMINANCE`，否则 `GL_R8`/`GL_RED`，
   并用 `#ifndef` 兜底常量（`apps/desktop/app/WaterfallWidget.cpp`）。
-- **剩余阻塞（做 APK 前必须解决）**：
-  1. Qt 二进制包**不含 APK 打包模板**（`src/android/templates` 只在源码包），
-     要做 APK 得自备 `AndroidManifest.xml` + gradle 包源（权限、包名、targetSdk）。
-  2. 麦克风权限：`RECORD_AUDIO` 要在 manifest 声明并在运行期用
-     `QMicrophonePermission` 申请，否则 AAudio 输入流打不开。
-  3. 真机未验：尚未装到手机，AAudio 延迟/回声/后台存活都只有编译级保证。
+- **APK 已能打出来**（2026-10-30）：`cmd //c "build\android_build.bat apk"` →
+  `build-android/apps/desktop/app/android-build/build/outputs/apk/release/android-build-release-unsigned.apk`
+  （约 12 MB，`org.radiosuite.app`，minSdk 26 / targetSdk 34，含
+  `libradio-suite_arm64-v8a.so` 与 Qt 运行库）。两点经验：
+  1. 之前记的「Qt 二进制包不含 APK 模板」是**错的**：aqt 装的
+     `D:/Qt/6.7.3/android_arm64_v8a/src/android/` 里有 `templates/`（AndroidManifest、
+     build.gradle、res）和 `3rdparty/gradle/gradlew`；androiddeployqt 直接可用，
+     gradle 走 wrapper（AGP 7.4.1 + androidx 从 google()/mavenCentral() 拉，首次需网络）。
+  2. 应用清单用 `packaging/android/AndroidManifest.xml` 覆盖模板
+     （`QT_ANDROID_PACKAGE_SOURCE_DIR`）：包名 `org.radiosuite.app` + `RECORD_AUDIO`
+     （INTERNET/storage 由 androiddeployqt 自动注入）。APP 目标在 Android 上必须是
+     `qt_add_executable`，否则没有部署设置/apk 目标。
+  3. 签名（本机调试）：`apksigner sign --ks <debug.keystore>`，
+     `apksigner verify --print-certs` 复核；keystore 别进仓库。
+- 麦克风权限：`RECORD_AUDIO` 已在清单声明；`MainWindow` 构造时在 Android 上
+  `qApp->requestPermission(QMicrophonePermission)` 申请一次（Qt 6.7 没有独立
+  `QMicrophonePermission` 头，用 `<QPermissions>`）。
+- **仍未验（无设备）**：APK 未装到手机跑过，AAudio 延迟/回声/后台存活、GLES 实机
+  渲染、触屏布局都只有编译级保证；`adb devices` 当前为空。
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 

@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<!-- radio-suite Android 包清单：覆盖 Qt 模板里的默认值（包名/权限/应用名）。
+     %%INSERT_*%% 交给 androiddeployqt 填。麦克风是 50003 上行必需，
+     Qt 6.7 需在运行期用 QMicrophonePermission 申请（见 audio_dialog）。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.radiosuite.app"
+    android:installLocation="auto"
+    android:versionCode="-- %%INSERT_VERSION_CODE%% --"
+    android:versionName="-- %%INSERT_VERSION_NAME%% --">
+    <!-- INTERNET / ACCESS_NETWORK_STATE 由 androiddeployqt 自动注入，这里只补麦克风 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- %%INSERT_PERMISSIONS -->
+    <!-- %%INSERT_FEATURES -->
+    <supports-screens
+        android:anyDensity="true"
+        android:largeScreens="true"
+        android:normalScreens="true"
+        android:smallScreens="true" />
+    <application
+        android:name="org.qtproject.qt.android.bindings.QtApplication"
+        android:hardwareAccelerated="true"
+        android:label="radio-suite"
+        android:allowBackup="true"
+        android:fullBackupOnly="false">
+        <activity
+            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:launchMode="singleTop"
+            android:screenOrientation="unspecified"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="-- %%INSERT_APP_LIB_NAME%% --" />
+
+            <meta-data
+                android:name="android.app.arguments"
+                android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.qtprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/qtprovider_paths"/>
+        </provider>
+    </application>
+</manifest>
