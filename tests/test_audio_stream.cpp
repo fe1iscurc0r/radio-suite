@@ -64,7 +64,6 @@ TEST_CASE("audio: TX all-zero frame skipped", "[audio]") {
 
 TEST_CASE("audio: RX in-order delivery and seq advance", "[audio]") {
   AudioRxBuffer rx;
-  // 构造合法 RX 包：0x6c 头 + seq LE + 载荷
   auto make = [](uint16_t seq, size_t payload_len) {
     std::vector<uint8_t> p(24 + payload_len, 0);
     p[0] = 0x6c; p[1] = 0x05;
@@ -74,29 +73,104 @@ TEST_CASE("audio: RX in-order delivery and seq advance", "[audio]") {
     return p;
   };
 
-  auto e1 = rx.feed(make(100, 100));
-  CHECK(e1.delivered);
-  CHECK(e1.pcm.size() == 100);
+  auto e1 = rx.feed(make(100, 1364), 0);
+  REQUIRE(e1.ready.size() == 1);
+  CHECK(e1.ready[0].seq == 100);
+  CHECK(e1.ready[0].pcm.size() == 1364);
+  CHECK_FALSE(e1.dropped);
 
-  auto e2 = rx.feed(make(101, 100));
-  CHECK(e2.delivered);
-  CHECK(e2.lost == 0);
+  auto e2 = rx.feed(make(101, 556), 1);
+  REQUIRE(e2.ready.size() == 1);
+  CHECK(e2.ready[0].seq == 101);
+  CHECK(e2.ready[0].pcm.size() == 556);
+  CHECK(rx.lostPackets() == 0);
+  CHECK(rx.lastDeliveredSeq() == 101);
+  CHECK(rx.pendingPackets() == 0);
+}
 
-  // 缺一包（102 丢）：103 到达报 lost=1
-  auto e3 = rx.feed(make(103, 100));
-  CHECK(e3.delivered);
-  CHECK(e3.lost == 1);
+TEST_CASE("audio: RX reorder window buffers early packets", "[audio]") {
+  AudioRxBuffer rx;
+  auto make = [](uint16_t seq) {
+    std::vector<uint8_t> p(24 + kAudioPart2Pcm, 0);  // part2 包头（580B 下限）
+    p[0] = 0x44; p[1] = 0x02;
+    p[6] = static_cast<uint8_t>(seq & 0xFF);
+    p[7] = static_cast<uint8_t>(seq >> 8);
+    return p;
+  };
 
-  // 迟到的 102（重传）：丢弃
-  auto e4 = rx.feed(make(102, 100));
-  CHECK(e4.dropped);
-  CHECK_FALSE(e4.delivered);
+  CHECK(rx.feed(make(100), 0).ready.size() == 1);
+  // 102 早到：进重排窗，不投递
+  auto early = rx.feed(make(102), 10);
+  CHECK(early.ready.empty());
+  CHECK_FALSE(early.dropped);
+  CHECK(rx.pendingPackets() == 1);
+  // 窗口未到期不强行放行
+  CHECK(rx.flush(50).empty());
+  // 101 补上：101、102 一起按序投递
+  auto fill = rx.feed(make(101), 60);
+  REQUIRE(fill.ready.size() == 2);
+  CHECK(fill.ready[0].seq == 101);
+  CHECK(fill.ready[1].seq == 102);
+  CHECK(rx.lostPackets() == 0);
+  CHECK(rx.pendingPackets() == 0);
+}
+
+TEST_CASE("audio: RX gap releases after 100ms window", "[audio]") {
+  AudioRxBuffer rx;
+  auto make = [](uint16_t seq) {
+    std::vector<uint8_t> p(24 + kAudioPart2Pcm, 0);
+    p[0] = 0x6c; p[1] = 0x05;
+    p[6] = static_cast<uint8_t>(seq & 0xFF);
+    p[7] = static_cast<uint8_t>(seq >> 8);
+    return p;
+  };
+
+  CHECK(rx.feed(make(200), 0).ready.size() == 1);
+  auto buffered = rx.feed(make(203), 5);  // 201/202 缺失
+  CHECK(buffered.ready.empty());
+  CHECK(rx.flush(100).empty());  // 95ms < 100ms
+  auto released = rx.flush(106);  // 101ms ≥ 100ms
+  REQUIRE(released.size() == 1);
+  CHECK(released[0].seq == 203);
+  CHECK(rx.lostPackets() == 2);
+  CHECK(rx.lastDeliveredSeq() == 203);
+  CHECK(rx.pendingPackets() == 0);
+
+  // 迟到（被窗口判丢后）重传包：丢弃计数
+  auto late = rx.feed(make(201), 120);
+  CHECK(late.dropped);
+  CHECK(late.ready.empty());
+  CHECK(rx.droppedPackets() == 1);
+}
+
+TEST_CASE("audio: RX duplicate dropped, seq wraps", "[audio]") {
+  AudioRxBuffer rx;
+  auto make = [](uint16_t seq) {
+    std::vector<uint8_t> p(24 + kAudioPart2Pcm, 0);
+    p[0] = 0x44; p[1] = 0x02;
+    p[6] = static_cast<uint8_t>(seq & 0xFF);
+    p[7] = static_cast<uint8_t>(seq >> 8);
+    return p;
+  };
+
+  CHECK(rx.feed(make(0xFFFF), 0).ready.size() == 1);
+  CHECK(rx.feed(make(0x0000), 1).ready.size() == 1);  // 环绕：FFFF→0 视为连续
+  CHECK(rx.feed(make(0x0001), 2).ready.size() == 1);
+  CHECK(rx.lostPackets() == 0);
+
+  auto dup = rx.feed(make(0x0001), 3);
+  CHECK(dup.dropped);
+  CHECK(rx.droppedPackets() == 1);
 }
 
 TEST_CASE("audio: non-audio packets ignored", "[audio]") {
   AudioRxBuffer rx;
   std::vector<uint8_t> junk(600, 0x00);  // 头不匹配
-  CHECK_FALSE(rx.feed(junk).delivered);
-  std::vector<uint8_t> short_pkt(10, 0x6c);
-  CHECK_FALSE(rx.feed(short_pkt).delivered);
+  CHECK(rx.feed(junk, 0).ready.empty());
+  CHECK_FALSE(rx.receivedAnything());
+  // 包头对但总长不足 580（上游 handleRead 门槛）：忽略
+  std::vector<uint8_t> short_pkt(24 + 100, 0);
+  short_pkt[0] = 0x6c; short_pkt[1] = 0x05;
+  CHECK(rx.feed(short_pkt, 0).ready.empty());
+  CHECK_FALSE(rx.receivedAnything());
 }

@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/meter_widgets.h"
 
+#include <QFontMetricsF>
 #include <QPainter>
 #include <QPainterPath>
 #include <cmath>
 
+#include "app/smeter_scale.h"
+
 namespace {
-// S 表刻度映射：dbm → 弧上 [0,1]
-float dbmToNorm(float dbm) {
-  const float lo = -127.0f, hi = -13.0f;  // S0 .. S9+60dB
-  float v = (dbm - lo) / (hi - lo);
-  return std::clamp(v, 0.0f, 1.0f);
-}
+using radio::app::smeterDbmToNorm;
+using radio::app::smeterNormToDbm;
 }  // namespace
 
 SMeterWidget::SMeterWidget(QWidget* parent) : QFrame(parent) {
@@ -26,12 +25,12 @@ void SMeterWidget::setDbm(float dbm) { dbm_ = dbm; }
 
 void SMeterWidget::timerEvent(QTimerEvent*) {
   // 机械表针缓动（快慢两个时间常数：升快降慢）
-  const float target = dbmToNorm(dbm_);
-  const float cur = dbmToNorm(needle_);
+  const float target = smeterDbmToNorm(dbm_);
+  const float cur = smeterDbmToNorm(needle_);
   const float k = target > cur ? 0.35f : 0.08f;
   const float next = cur + (target - cur) * k;
   if (std::abs(next - cur) < 0.0005f) return;
-  needle_ = -127.0f + next * 114.0f;
+  needle_ = smeterNormToDbm(next);
   update();
 }
 
@@ -51,17 +50,17 @@ void SMeterWidget::paintEvent(QPaintEvent*) {
   face.closeSubpath();
   p.drawPath(face);
 
-  // 刻度：S1..S9 每 S 一大格，S9 后 +20/+40/+60
+  // 刻度：S0..S9 每 S 一大格，S9 后 +20/+40/+60（同一套 S 表标定）
   p.setPen(QPen(QColor(210, 216, 224), 1));
   for (int s = 0; s <= 15; ++s) {
-    // S0..S9 → norm 0..0.75；+20..+60 → 0.75..1
     float norm;
     QString label;
     if (s <= 9) {
-      norm = s / 9.0f * 0.75f;
+      norm = smeterDbmToNorm(radio::app::kSmeterS1Dbm +
+                             radio::app::kSmeterDbPerSUnit * s);
       if (s % 3 == 0 || s == 9) label = QString("S%1").arg(s);
     } else {
-      norm = 0.75f + (s - 9) / 6.0f * 0.25f;
+      norm = smeterDbmToNorm(radio::app::kSmeterS9Dbm + (s - 9) * 10.0f);
       if ((s - 9) % 2 == 0) label = QString("+%1").arg((s - 9) * 10);
     }
     const float ang = 180.0f - norm * 180.0f;  // 左=0
@@ -78,29 +77,34 @@ void SMeterWidget::paintEvent(QPaintEvent*) {
                       c.y() - std::sin(ang * M_PI / 180) * r * 0.70f);
       p.setPen(QColor(190, 198, 208));
       p.setFont(QFont("Consolas", 8));
-      p.drawText(QRectF(t.x() - 20, t.y() - 8, 40, 14),
+      p.drawText(QRectF(t.x() - 17, t.y() - 7, 34, 14),
                  Qt::AlignCenter, label);
     }
   }
 
   // 指针
-  const float na = 180.0f - dbmToNorm(needle_) * 180.0f;
+  const float na = 180.0f - smeterDbmToNorm(needle_) * 180.0f;
   p.setPen(QPen(QColor(255, 235, 130), 2.5));
   p.drawLine(c, QPointF(c.x() + std::cos(na * M_PI / 180) * r * 0.95f,
                         c.y() - std::sin(na * M_PI / 180) * r * 0.95f));
   p.setBrush(QColor(220, 190, 90));
   p.drawEllipse(c, 4, 4);
 
-  // 读数
+  // 读数：与刻度同一套标定（S9 以下给小数 S，S9 以上给 S9+dB）；表针会从读数位置穿过，
+  // 所以先垫一块与表盘同色的圆角底衬，保证文字不被针切成两半。
+  const QString reading =
+      dbm_ <= radio::app::kSmeterS9Dbm
+          ? QString("S%1").arg(radio::app::smeterUnits(dbm_), 0, 'f', 1)
+          : QString("S9+%1").arg(dbm_ - radio::app::kSmeterS9Dbm, 0, 'f', 0);
+  const QString readout = QString("%1  %2 dBm").arg(reading).arg(dbm_, 0, 'f', 0);
+  p.setFont(QFont("Consolas", 9, QFont::Bold));
+  const qreal tw = QFontMetricsF(p.font()).horizontalAdvance(readout) + 10;
+  const QRectF back(c.x() - tw / 2, c.y() - r * 0.34 - 8, tw, 16);
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(12, 14, 18, 240));
+  p.drawRoundedRect(back, 5, 5);
   p.setPen(QColor(150, 230, 170));
-  p.setFont(QFont("Consolas", 11, QFont::Bold));
-  p.drawText(QRectF(c.x() - 90, c.y() - r * 0.34, 180, 20), Qt::AlignCenter,
-             QString("S%1  %2 dBm")
-                 .arg(dbmToNorm(dbm_) * 9.0f + (dbmToNorm(dbm_) > 0.75f
-                                                    ? (dbmToNorm(dbm_) - 0.75f) * 240.0f
-                                                    : 0.0f),
-                      0, 'f', 1)
-                 .arg(dbm_, 0, 'f', 0));
+  p.drawText(back, Qt::AlignCenter, readout);
 }
 
 PoSwrWidget::PoSwrWidget(QWidget* parent) : QFrame(parent) {

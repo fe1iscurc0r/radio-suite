@@ -69,6 +69,36 @@ TEST_CASE("aprs: compressed position roundtrip", "[aprs]") {
   CHECK(p.comment == "Compressed");
 }
 
+TEST_CASE("aprs: compressed csT carries altitude without mirroring south lat",
+          "[aprs]") {
+  // 南半球气象台站：压缩纬度用 90 - value/380926 表示（南纬负数由公式自然得出），
+  // csT 里 c/s 携带高度。旧实现一见 csT 非空就把南纬取反 → 台站被镜像到北纬。
+  std::string info = makePosition(LatLon{-33.8688, 151.2093},
+                                  Symbol{'/', '_'}, "wx", true, true);
+  REQUIRE(info.size() >= 14);
+  REQUIRE(info.substr(1, 1) == "/");
+  // body 下标（去掉 DTI）：0=/ 1..4 纬度 5..8 经度 9 符号 10..12 csT
+  info[11] = 'F';  // c = 37
+  info[12] = '{';  // s = 90 → 1.002^(37*91+90) ≈ 1000 ft
+  info[13] = '1';  // t：bit4/3 = 0x10 → 高度
+  Packet p;
+  REQUIRE(parseInfo(info, &p));
+  CHECK(p.compressed);
+  CHECK(p.pos.lat == Approx(-33.8688).margin(0.001));
+  CHECK(p.pos.lon == Approx(151.2093).margin(0.001));
+  CHECK(p.altitude_ft == Approx(1000.0).margin(2.0));
+
+  // 同一位置改成航向/航速：c=10 → 40°，s=45 → 1.08^45-1 ≈ 30.9 kt
+  info[11] = static_cast<char>(10 + 33);
+  info[12] = static_cast<char>(45 + 33);
+  info[13] = '"';  // (t-33)=1 → 非高度分支
+  Packet q;
+  REQUIRE(parseInfo(info, &q));
+  CHECK(q.course_deg == Approx(40.0).margin(0.01));
+  CHECK(q.speed_kt == Approx(30.9).margin(0.2));
+  CHECK(q.pos.lat == Approx(-33.8688).margin(0.001));
+}
+
 TEST_CASE("aprs: Mic-E decode", "[aprs]") {
   const auto p = mustParse(
       "N1ZZN-9>T2SP0W:`c_Vm6hk/ \"49}Originl Mic-E");
@@ -401,9 +431,23 @@ TEST_CASE("aprs: igate policy", "[aprs]") {
   policy.callsign = "BG5ABC";
   policy.is_to_rf = true;
   policy.tx_path = "WIDE1-1";
-  CHECK(mayGateToRf(is, policy));
-  CHECK(toRfPacket(is, policy) ==
-        "N0CALL-9>APRS,WIDE1-1:!4903.50N/07201.75W-Test");
+  // IS→RF 只放消息/对象/条目：位置/气象/遥测属于当地台站自己的 RF 流量
+  CHECK_FALSE(mayGateToRf(is, policy));
+  CHECK(toRfPacket(is, policy).empty());
+
+  Packet msg;
+  REQUIRE(parseTnc2("N0CALL-9>APRS,TCPIP*,qAS,BG5ABC::BG5ABC   :hello{12", &msg));
+  CHECK(msg.kind == PacketKind::Message);
+  CHECK(mayGateToRf(msg, policy));
+  CHECK(toRfPacket(msg, policy) ==
+        "N0CALL-9>APRS,WIDE1-1::BG5ABC   :hello{12");
+
+  Packet obj;
+  REQUIRE(parseTnc2("N0CALL>APRS,TCPIP*:;LEADER   *092345z4903.50N/07201.75W>obj",
+                    &obj));
+  CHECK(obj.kind == PacketKind::Object);
+  CHECK(mayGateToRf(obj, policy));
+
   CHECK_FALSE(mayGateToRf(rf, policy));
   CHECK(toRfPacket(rf, policy).empty());
 

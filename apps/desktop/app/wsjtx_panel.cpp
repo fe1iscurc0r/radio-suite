@@ -14,6 +14,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSettings>
 #include <QShowEvent>
 #include <QSpinBox>
@@ -49,9 +50,13 @@ struct DecodeTarget {
 };
 
 bool plausibleCall(const QString& token) {
+  static const QSet<QString> kProtocol{"RR73", "RRR", "RR", "73", "R",
+                                       "TU",   "DE",  "CQ", "QRZ"};
+  if (kProtocol.contains(token.toUpper())) return false;
   if (token.size() < 3 || token.size() > 12) return false;
   bool letter = false, digit = false;
   for (const QChar c : token) {
+    if (!c.isLetterOrNumber() && c != '/') return false;  // 排除 -12 / R-12 报告
     if (c.isLetter()) letter = true;
     if (c.isDigit()) digit = true;
   }
@@ -64,27 +69,22 @@ bool looksLikeGrid(const QString& token) {
   return re.match(token).hasMatch();
 }
 
-// WSJT-X 文本：CQ [修饰] CALL [GRID] / CALL1 CALL2 [GRID|报告|73]
-// 定向报文第二个呼号是发报方，也是操作员要回应的对象。
+// WSJT-X 文本：CQ [修饰…] CALL [GRID] / CALL1 CALL2 [GRID|报告|73]
+// 修饰词（DX/TEST/POTA/SOTA/QRP/FD/WW/VHF…）都"不像呼号"，用同一判据筛掉，
+// 不再维护一份必然漏项的清单。
 DecodeTarget parseDecodeTarget(const QString& message) {
   DecodeTarget target;
   const QStringList tokens =
       message.trimmed().split(' ', Qt::SkipEmptyParts);
   if (tokens.isEmpty()) return target;
-  if (tokens[0] == "CQ") {
-    int i = 1;
-    static const QStringList modifiers{"DX", "TEST", "NA", "SA", "EU",
-                                       "AS", "AF",   "OC"};
-    if (i < tokens.size() && modifiers.contains(tokens[i])) ++i;
-    if (i < tokens.size()) target.call = tokens[i];
-  } else if (tokens[0].startsWith("QRZ")) {
-    if (tokens.size() > 1) target.call = tokens[1];
-  } else if (tokens.size() > 1) {
-    target.call = tokens[1];
+  for (int i = 1; i < tokens.size(); ++i) {
+    const QString& token = tokens[i];
+    if (looksLikeGrid(token)) {
+      if (target.grid.isEmpty()) target.grid = token;
+      continue;
+    }
+    if (target.call.isEmpty() && plausibleCall(token)) target.call = token;
   }
-  if (!plausibleCall(target.call)) target.call.clear();
-  if (tokens.size() > 1 && looksLikeGrid(tokens.last()))
-    target.grid = tokens.last();
   return target;
 }
 
@@ -434,8 +434,12 @@ bool WsjtxPanel::activateDecode(int row) {
     return false;
   }
   quint64 hz = last_dial_hz_;
-  if (hz != 0 && decode.delta_frequency > 0)
-    hz += static_cast<quint64>(decode.delta_frequency);
+  if (hz != 0) {
+    // delta_frequency 在协议里是有符号 qint32：负偏移意味着低于刻度频率
+    const int64_t target_hz =
+        static_cast<int64_t>(hz) + decode.delta_frequency;
+    if (target_hz > 0) hz = static_cast<quint64>(target_hz);
+  }
   const QString mode = QString::fromStdString(decode.mode);
   emit decodeActivated(target.call, target.grid, hz, mode);
   flash(QString("已送入主窗口：%1%2")

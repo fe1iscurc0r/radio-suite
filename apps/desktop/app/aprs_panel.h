@@ -103,6 +103,7 @@ class AprsPanel : public QWidget {
   void applyRfSettings();
   void startAfskTx(std::vector<float> audio);
   void pumpAfskTx();
+  void abortAfskTx();  // 中止 AFSK 发送并释放 PTT（幂等）
   void saveNow();
 
   // APRS-IS

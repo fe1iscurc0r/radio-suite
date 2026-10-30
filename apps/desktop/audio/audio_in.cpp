@@ -4,6 +4,7 @@
 #include <RtAudio.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <mutex>
@@ -19,12 +20,17 @@ struct CaptureCtx {
   // 跨回调累积：RtAudio 一帧缓冲未必恰好 960 样本
   std::vector<int16_t> residue;
   std::mutex mu;
+  std::atomic<size_t>* overflows = nullptr;
 };
 
 int captureCallback(void* /*out*/, void* in, unsigned int nFrames, double,
                     RtAudioStreamStatus status, void* user) {
   auto* ctx = static_cast<CaptureCtx*>(user);
-  if (status != 0 || in == nullptr) return 0;
+  if (in == nullptr) return 0;
+  // RTAUDIO_INPUT_OVERFLOW 只说明此前有采样被丢，本块数据仍然有效：
+  // 丢块会让上行整段静音（WASAPI 抖动常见），这里照常上抛并计数。
+  if (status != 0 && ctx->overflows != nullptr)
+    ctx->overflows->fetch_add(1, std::memory_order_relaxed);
   const auto* src = static_cast<const int16_t*>(in);
   std::lock_guard<std::mutex> lock(ctx->mu);
   ctx->residue.insert(ctx->residue.end(), src, src + nFrames);
@@ -80,6 +86,8 @@ bool AudioIn::start(uint32_t device_id, FrameCallback cb, std::string* error) {
   auto* rt = static_cast<RtAudio*>(dac_);
   auto* ctx = new CaptureCtx();
   ctx->cb = std::move(cb);
+  ctx->overflows = &overflows_;
+  overflows_.store(0, std::memory_order_relaxed);
   RtAudio::StreamParameters p;
   p.deviceId = device_id;
   p.nChannels = 1;

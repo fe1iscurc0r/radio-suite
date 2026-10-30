@@ -18,9 +18,6 @@
 
 #include <array>
 #include <cstdint>
-#include <deque>
-#include <functional>
-#include <map>
 #include <span>
 #include <vector>
 
@@ -49,25 +46,50 @@ class AudioTxPacker {
   uint16_t send_seq_ = 1;  // 上游 init：audioSendSeq = 1
 };
 
-// ---- RX：100ms 重排窗（kappanhang seqBuf 语义子集）----
+// ---- RX：100ms 重排窗（对齐 kappanhang seqBuf，见 seqbuf.go / audiostream.go）----
+// 上游语义：乱序包先入队，只有"期望序号"能出队；缺口出现后锁 100ms
+// （同时向电台请求重传），超时后把缺口计为丢包、放行后续。
+// 差异：重传请求包格式未在真机抓包里确认，这里只做超时放行，不发重传请求。
+// 缺口只在真丢包时引入 100ms 静音延迟；顺序流零等待。
 class AudioRxBuffer {
  public:
-  // 喂入一个识别为音频的 UDP 包（含 24B 头）；返回本次是否产出载荷
-  struct Event {
-    bool delivered = false;     // 顺序到达并产出
-    bool dropped = false;       // 乱序迟到丢弃
-    int lost = 0;               // 本次事件中判定的丢包数
-    std::vector<uint8_t> pcm;   // delivered 时为载荷（≤1364B）
+  struct Chunk {
+    uint16_t seq = 0;
+    std::vector<uint8_t> pcm;  // ≤1364B
   };
-  Event feed(std::span<const uint8_t> udp_packet);
+  struct Push {
+    std::vector<Chunk> ready;  // 本次可投递（按序）
+    bool dropped = false;      // 迟到/重复包丢弃
+  };
+
+  // 喂一个音频 UDP 包（24B 头 + 载荷；上游 handleRead 要求总长 ≥580）
+  Push feed(std::span<const uint8_t> udp_packet, int64_t now_ms);
+  // 重排窗到期检查：最老缺口等待 ≥ kReorderWindowMs 后计丢包并放行后续。
+  // 每次 poll 调一次即可。
+  std::vector<Chunk> flush(int64_t now_ms);
+
+  static constexpr int64_t kReorderWindowMs = 100;
+  static constexpr size_t kMaxPending = 256;  // 序号异常时的内存上限
 
   bool receivedAnything() const { return received_; }
-  uint16_t lastSeq() const { return last_seq_; }
+  uint16_t lastDeliveredSeq() const { return last_delivered_seq_; }
+  size_t lostPackets() const { return lost_; }
+  size_t droppedPackets() const { return dropped_; }
+  size_t pendingPackets() const { return pending_.size(); }
 
  private:
+  struct Pending {
+    uint16_t seq = 0;
+    std::vector<uint8_t> pcm;
+    int64_t at_ms = 0;
+  };
+  void drainContiguous(std::vector<Chunk>& out);
   bool received_ = false;
-  uint16_t last_seq_ = 0;
-  std::map<uint16_t, std::vector<uint8_t>> pending_;  // 提前到的包暂存
+  uint16_t expected_ = 0;  // 下一个期望 seq
+  uint16_t last_delivered_seq_ = 0;
+  std::vector<Pending> pending_;
+  size_t lost_ = 0;
+  size_t dropped_ = 0;
 };
 
 }  // namespace radio::core::rsba1

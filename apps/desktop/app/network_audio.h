@@ -18,6 +18,7 @@
 #include <string>
 
 #include "app/audio_bridge.h"
+#include "app/audio_stats.h"
 #include "audio/audio_in.h"
 #include "audio/audio_out.h"
 
@@ -31,7 +32,15 @@ class NetworkAudio : public QObject {
   explicit NetworkAudio(RadioSession* session, QObject* parent = nullptr);
   ~NetworkAudio() override;
 
-  // 打开默认输出/输入设备并挂上 50003 回调；失败时 error 为可读原因
+  // 设备选择：-1 = 系统默认；下次 start() 生效（已在跑时由调用方 stop→start）
+  void setDevices(int input_id, int output_id) {
+    in_dev_ = input_id;
+    out_dev_ = output_id;
+  }
+  int inputDevice() const { return in_dev_; }
+  int outputDevice() const { return out_dev_; }
+
+  // 打开输出/输入设备并挂上 50003 回调；失败时 error 为可读原因
   bool start(std::string* error = nullptr);
   void stop();
   bool active() const { return active_; }
@@ -50,7 +59,10 @@ class NetworkAudio : public QObject {
   size_t rxChunks() const { return rx_chunks_; }
   size_t txFrames() const { return tx_frames_; }
   size_t txDropped() const { return bridge_.dropped(); }
-  size_t sinkQueued() const { return sink_.queuedSamples(); }
+  size_t sinkQueued() { return sink_.queuedSamples(); }
+
+  // 诊断快照（链路 RX 质量 + 门禁/设备计数）；未开启时设备侧计数为 0
+  AudioStats stats();
 
  signals:
   void statusChanged(const QString& text);
@@ -66,6 +78,8 @@ class NetworkAudio : public QObject {
   QTimer pump_timer_;
   std::function<void(std::span<const int16_t>)> rx_tap_;
   bool active_ = false;
+  int in_dev_ = -1;   // -1 = 系统默认
+  int out_dev_ = -1;
   size_t rx_chunks_ = 0;
   size_t tx_frames_ = 0;
 };

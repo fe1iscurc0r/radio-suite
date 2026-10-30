@@ -36,6 +36,14 @@ target_compile_definitions(radio_tests PRIVATE
 include(Catch)
 catch_discover_tests(radio_tests)
 
+# RS-BA1 本机环回（假电台服务端 + 真 UDP 传输）：需要 radio_core 编入
+# transport_udp.cpp，即 RADIO_SUITE_UDP=ON 且找到 Qt6::Network。
+find_package(Qt6 QUIET COMPONENTS Network)
+if(RADIO_SUITE_UDP AND Qt6Network_FOUND)
+  target_sources(radio_tests PRIVATE test_rsba1_loopback.cpp fake_rsba1_server.cpp)
+  target_link_libraries(radio_tests PRIVATE Qt6::Network)
+endif()
+
 add_executable(radio_session_tests
   test_session_tx.cpp
   "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp")
@@ -147,11 +155,14 @@ if(BUILD_GUI AND TARGET radio::ui_common)
   find_package(Qt6 REQUIRED COMPONENTS Widgets)
   add_executable(radio_ui_tests
     test_dialogs.cpp
+    test_audio_ui.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/set_mode_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/repeater_dialog.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/repeater_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_stats.cpp")
   target_include_directories(radio_ui_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/apps/desktop")

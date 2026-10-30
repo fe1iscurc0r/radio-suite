@@ -43,6 +43,7 @@ class SstvDialog : public QDialog {
   QImage img_;      // 发送图（按制式缩放）
   QImage rx_img_;   // 接收解码结果
   std::vector<int16_t> last_pcm_;  // 最近编码结果（发射直接播，免回读文件）
+  bool tx_active_ = false;         // 后台播放中（PTT 已键，播完/析构回 RX）
   radio::app::RadioSession* session_ = nullptr;
   std::unique_ptr<radio::audio::AudioOut> audio_;
 };
