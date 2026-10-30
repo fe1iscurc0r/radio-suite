@@ -56,6 +56,10 @@ class AudioSink {
   // 默认输出设备 ID；-1 = 无可用设备（WASAPI ID 非连续，不能拿 0 当默认）
   int defaultOutputDevice() const;
 
+  // 有输出通道的设备（两个列表同序；WASAPI ID 非连续，选择 UI 用 id 不用下标）
+  std::vector<uint32_t> outputDeviceIds() const;
+  std::vector<std::string> outputDeviceNames() const;
+
   bool start(uint32_t device_id, uint32_t sample_rate = 48000,
              std::string* error = nullptr);
   void stop();

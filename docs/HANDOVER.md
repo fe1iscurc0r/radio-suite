@@ -7,7 +7,7 @@
 > 50003 网络语音链（RX 播放 / PTT 门禁 TX / 真实频谱）+ 引擎化准备（WO-274）+
 > 2026-10-29 审查修复与算法优化（异步播放 / S 表标定 / Welch 平均 / APRS csT）
 > + 实窗验证修复（频谱越界读 / S 表可读性 / WSJT-X 线格式互通）+ RS-BA1 本机环回
-> （假电台三信道 + 100 ms 音频重排窗），146/146 测试全绿；
+> （假电台三信道 + 100 ms 音频重排窗 + 音频设备/质量面板），149/149 测试全绿；
 > 真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
 > 接手人先读本文件 + `docs/WO-274-engine-switch.md` + `docs/WO-273-radio-competitive.md`。
 
@@ -29,7 +29,7 @@ radio-suite/
 ├── apps/spike/                                   # WO-274 rigplane 引擎 spike（默认不编）
 ├── libs/dsp/dsp/                                 # FFT/瀑布（双端共用）
 ├── libs/protocol/rsba1-core/                     # MIT 跟随副本（subtree 同步）
-├── tests/ (Catch2, 146 用例)  docs/  packaging/  tools/
+├── tests/ (Catch2, 149 用例)  docs/  packaging/  tools/
 ```
 
 include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀不变）。
@@ -98,7 +98,10 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
    真机复验清单（按风险排序）见 `docs/original-rsba1-feature-map.md` §K / §L.5。
 5. **50003 音频真机复验**（代码已接、门禁有单测，但**未在 IC-705 上实际通话**）：
    RX 播放 / PTT 门禁麦克风上行 / 半双工静音 / 真实 RX PCM 频谱四条都要过一遍。
-   设备固定取系统默认输入/输出，无设备选择 UI；抖动/丢包计数未上界面。
+   设备可选（2026-10-30）：主窗「音频设置」列 WASAPI 输入/输出，选 `QSettings`
+   键 `audio/in_dev`、`audio/out_dev`（-1=跟随系统），开启中切换会按新设备重开；
+   对话框同页每 0.5 s 显示 RX 块/待发/丢/弃、TX 帧/弃、扬声器积压/欠载/丢、
+   麦克风溢出（`app/audio_stats.*`，链路计数走 `IAudioLink::rxStats`）。
    2026-10-30 已补本机环回（假电台三信道：握手/CI-V 双向/TX 线格式/RX 重排与
    丢包放行/拆除五件套），**协议与编排已可回归，真机时钟/抖动/音频设备仍待复验**。
    复验清单见 `docs/original-rsba1-feature-map.md` §L.6 与
@@ -129,7 +132,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 146/146
+cmd //c "D:\tmp\rs-build.bat test"        # 149/149
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -138,7 +141,7 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 146 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 149 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，DSP 单音/泄漏/Welch 平均与
   S 表 IARU 映射，RS-BA1 本机环回（假电台三信道 + 100 ms 音频重排窗，见

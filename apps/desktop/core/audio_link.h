@@ -22,6 +22,14 @@ class IAudioLink {
  public:
   using RxCallback = std::function<void(std::span<const int16_t>)>;
 
+  // 50003 下行质量（UI 诊断用；不具备音频能力的链路保持全零）
+  struct RxStats {
+    uint64_t chunks = 0;   // 已按序上抛的块数
+    uint32_t pending = 0;  // 重排窗内待发块
+    uint32_t lost = 0;     // 缺口超时判丢块数
+    uint32_t dropped = 0;  // 迟到/重复/超窗丢弃块数
+  };
+
   virtual ~IAudioLink() = default;
 
   // 音频信道是否完成握手（链路连上但音频失败时为 false）
@@ -32,6 +40,8 @@ class IAudioLink {
 
   // 发送一帧 20ms PCM（960 样本）。长度不符/未就绪返回 false。
   virtual bool sendTxAudio(std::span<const int16_t> pcm) = 0;
+
+  virtual RxStats rxStats() const { return {}; }
 };
 
 }  // namespace radio::core

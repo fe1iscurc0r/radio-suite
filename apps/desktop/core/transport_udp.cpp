@@ -247,9 +247,19 @@ bool Rsba1UdpTransport::sendTxAudio(std::span<const int16_t> pcm) {
   return true;
 }
 
+IAudioLink::RxStats Rsba1UdpTransport::rxStats() const {
+  RxStats s;
+  s.chunks = rx_delivered_;
+  s.pending = static_cast<uint32_t>(audio_rx_.pendingPackets());
+  s.lost = static_cast<uint32_t>(audio_rx_.lostPackets());
+  s.dropped = static_cast<uint32_t>(audio_rx_.droppedPackets());
+  return s;
+}
+
 size_t Rsba1UdpTransport::poll() {
   if (state_ != State::Connected) return 0;
   const auto deliver = [this](const rsba1::AudioRxBuffer::Chunk& c) {
+    ++rx_delivered_;
     if (!audio_cb_ || c.pcm.size() % 2 != 0) return;
     audio_scratch_.resize(c.pcm.size() / 2);
     std::memcpy(audio_scratch_.data(), c.pcm.data(), c.pcm.size());

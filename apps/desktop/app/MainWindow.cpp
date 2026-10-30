@@ -7,6 +7,7 @@
 #include "app/set_mode_dialog.h"
 
 #include <QDateTime>
+#include <QDialog>
 #include <QFile>
 #include <QFileDialog>
 #include <QFont>
@@ -23,6 +24,7 @@
 #include <string>
 
 #include "app/aprs_panel.h"
+#include "app/audio_dialog.h"
 #include "app/connect_dialog.h"
 #include "app/dial_widget.h"
 #include "app/dtmf_dialog.h"
@@ -90,6 +92,12 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
 
   // 50003 音频链：RX 播放 + PTT 门禁上行 + 真实频谱 tap
   network_audio_ = std::make_unique<radio::app::NetworkAudio>(&session_);
+  {
+    // 上次在「音频设置」里选的设备（-1 = 系统默认）
+    QSettings st;
+    network_audio_->setDevices(st.value("audio/in_dev", -1).toInt(),
+                               st.value("audio/out_dev", -1).toInt());
+  }
   connect(&session_, &radio::app::RadioSession::pttPhaseChanged, this,
           [this](int phase) {
             if (network_audio_)
@@ -802,7 +810,7 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
   audio_btn_->setEnabled(has_audio);
   audio_btn_->setToolTip(
       has_audio
-          ? "RS-BA1 50003：RX 下行→扬声器；麦克风→PTT 上行（默认设备，48kHz s16le）"
+          ? "RS-BA1 50003：RX 下行→扬声器；麦克风→PTT 上行（设备在「音频设置」里选，48kHz s16le）"
           : "当前链路无 50003 音频（mock / Python 桥）；用 --radio <IP> 连真机后可用");
   audio_btn_->setStyleSheet(
       "QPushButton { background:#12333a; border-color:#2e7d8a; color:#8fe; }"
@@ -822,6 +830,12 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
     }
   });
   funcs->addWidget(audio_btn_);
+  audio_setup_btn_ = new QPushButton("音频设置", central);
+  audio_setup_btn_->setToolTip("选择麦克风/扬声器，并查看 50003 下行丢包与设备欠载计数");
+  audio_setup_btn_->setMinimumSize(84, 32);
+  connect(audio_setup_btn_, &QPushButton::clicked, this,
+          &MainWindow::onAudioSettings);
+  funcs->addWidget(audio_setup_btn_);
   funcs->addStretch(1);
   block->addLayout(funcs);
   return block;
@@ -1000,6 +1014,58 @@ void MainWindow::onMemRecall() {
   }
   session_.setMode(static_cast<radio::core::civ::Mode>(mode));
   session_.tuneTo(freq);
+}
+
+void MainWindow::onAudioSettings() {
+  // 设备表现场枚举（USB 插拔后无需重启程序即可看到新设备）
+  radio::audio::AudioIn mic_enum;
+  radio::audio::AudioSink sink_enum;
+  std::vector<radio::app::AudioSettingsDialog::Device> ins, outs;
+  {
+    const auto ids = mic_enum.inputDeviceIds();
+    const auto names = mic_enum.deviceNames();
+    for (size_t i = 0; i < ids.size() && i < names.size(); ++i)
+      ins.push_back({static_cast<int>(ids[i]), QString::fromStdString(names[i])});
+  }
+  {
+    const auto ids = sink_enum.outputDeviceIds();
+    const auto names = sink_enum.outputDeviceNames();
+    for (size_t i = 0; i < ids.size() && i < names.size(); ++i)
+      outs.push_back({static_cast<int>(ids[i]), QString::fromStdString(names[i])});
+  }
+
+  radio::app::AudioSettingsDialog dlg(this);
+  dlg.setDevices(ins, outs, network_audio_ ? network_audio_->inputDevice() : -1,
+                 network_audio_ ? network_audio_->outputDevice() : -1);
+  if (network_audio_ && network_audio_->active())
+    dlg.setStatsProvider([this] { return network_audio_->stats(); });
+  if (dlg.exec() != QDialog::Accepted) return;
+
+  if (!network_audio_) return;
+  const int in_id = dlg.chosenInputId();
+  const int out_id = dlg.chosenOutputId();
+  {
+    QSettings st;
+    st.setValue("audio/in_dev", in_id);
+    st.setValue("audio/out_dev", out_id);
+  }
+  network_audio_->setDevices(in_id, out_id);
+  if (!network_audio_->active()) {
+    flashStatus("音频设备已保存：下次打开「网络音频」生效", false);
+    return;
+  }
+  // 正在跑：按新设备重开（失败则按钮回弹，避免"显示 ON 但没声"）
+  network_audio_->stop();
+  std::string err;
+  if (network_audio_->start(&err)) {
+    flashStatus("音频设备已切换并重新打开", false);
+  } else {
+    QSignalBlocker guard(audio_btn_);
+    audio_btn_->setChecked(false);
+    flashStatus(QString("新设备打开失败，已退回关闭：%1")
+                    .arg(QString::fromStdString(err)),
+                true);
+  }
 }
 
 void MainWindow::onBenchTick() {

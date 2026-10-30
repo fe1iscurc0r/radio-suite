@@ -53,6 +53,7 @@ class Rsba1UdpTransport final : public ICivTransport, public IAudioLink {
   bool audioReady() const override { return audio_ready_; }
   void setRxAudioCallback(RxCallback cb) override { audio_cb_ = std::move(cb); }
   bool sendTxAudio(std::span<const int16_t> pcm) override;
+  RxStats rxStats() const override;
 
  private:
   enum class State { Idle, CtrlHandshake, Login, SerialHandshake, Connected, Failed };
@@ -93,6 +94,7 @@ class Rsba1UdpTransport final : public ICivTransport, public IAudioLink {
   std::map<uint16_t, std::vector<uint8_t>> ser_tx_buf_;  // 重传缓存
   int64_t last_reauth_ms_ = 0;
   size_t delivered_ = 0;
+  uint64_t rx_delivered_ = 0;  // 已按序上抛的音频块（诊断）
   std::string log_;
 };
 

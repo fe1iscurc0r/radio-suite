@@ -56,6 +56,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
   void onMemSave();       // 本地记忆：当前频/模存入所选槽
   void onMemRecall();     // 本地记忆：取出槽内频/模
+  void onAudioSettings();  // 音频设备选择 + 50003 链路质量读数
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   void onLogQso();        // 记一条 QSO（自动填频率/模式/UTC，写 HamLog 库）
   void onExportAdif();    // 导出 ADIF（radio-suite 与 hamlog 的交换契约）
@@ -108,6 +109,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QPushButton* dup_btn_ = nullptr;       // Dup 循环 SPLX/DUP-/DUP+（回读驱动）
   QLineEdit* freq_edit_ = nullptr;       // 手动输频（MHz）
   QPushButton* audio_btn_ = nullptr;     // 50003 网络音频开关（mock 下禁用）
+  QPushButton* audio_setup_btn_ = nullptr;  // 音频设备/诊断
 
   // 50003 音频链（created after buildUi；销毁顺序在 session_ 之前）
   std::unique_ptr<radio::app::NetworkAudio> network_audio_;

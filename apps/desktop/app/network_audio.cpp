@@ -28,12 +28,12 @@ bool NetworkAudio::start(std::string* error) {
   if (!link->audioReady())
     return set_err("50003 音频信道未握手：检查电台 WLAN 远程设置与 UDP 通路");
 
-  const int out_id = sink_.defaultOutputDevice();
+  const int out_id = out_dev_ >= 0 ? out_dev_ : sink_.defaultOutputDevice();
   if (out_id < 0) return set_err("未找到音频输出设备");
   if (!sink_.start(static_cast<uint32_t>(out_id), core::kNetAudioRate, error))
     return false;
 
-  const int in_id = mic_.defaultInputDevice();
+  const int in_id = in_dev_ >= 0 ? in_dev_ : mic_.defaultInputDevice();
   if (in_id < 0) {
     sink_.stop();
     return set_err("未找到麦克风输入设备");
@@ -84,6 +84,26 @@ void NetworkAudio::onRxPcm(std::span<const int16_t> pcm) {
   ++rx_chunks_;
   if (bridge_.shouldPlayRx()) sink_.push(pcm);
   if (rx_tap_) rx_tap_(pcm);
+}
+
+AudioStats NetworkAudio::stats() {
+  AudioStats s;
+  s.rx_chunks = rx_chunks_;
+  s.tx_frames = tx_frames_;
+  s.tx_dropped = bridge_.dropped();
+  s.sink_queued = sink_.queuedSamples();
+  s.sink_dropped = sink_.droppedSamples();
+  s.sink_underruns = sink_.underruns();
+  s.mic_overflows = mic_.overflows();
+  if (auto* link = session_ ? session_->audioLink() : nullptr) {
+    const auto rs = link->rxStats();
+    // 链路层块数含回调缺省时的计数，比本层回调次数更准；全零说明实现不支持
+    if (rs.chunks != 0) s.rx_chunks = rs.chunks;
+    s.rx_pending = rs.pending;
+    s.rx_lost = rs.lost;
+    s.rx_dropped = rs.dropped;
+  }
+  return s;
 }
 
 }  // namespace radio::app
