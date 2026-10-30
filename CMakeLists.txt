@@ -28,7 +28,9 @@ enable_testing()
 
 include(cmake/dependencies.cmake)
 
+add_subdirectory(third_party)  # vendored C 库（ft8_lib，MIT）
 add_subdirectory(apps/desktop/core)
+add_subdirectory(apps/desktop/ft8)  # 本地 FT8 编解码（纯标准库）
 add_subdirectory(apps/desktop/aprs)  # APRS 协议核心（纯标准库）
 add_subdirectory(apps/desktop/wsjtx)  # WSJT-X UDP 协议核心（纯标准库）
 add_subdirectory(libs/dsp/dsp)  # WO-273 单仓裁决：dsp 双端共用（web 未来也用）

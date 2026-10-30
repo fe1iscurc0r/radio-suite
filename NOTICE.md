@@ -12,6 +12,7 @@
 | SSTVEncoder2 | master（引入 2026-10-25） | Apache-2.0 | 制式参数移植（sstv.cpp）+ NOTICE 摘录 | [docs/sstvencoder2-notice.txt](docs/sstvencoder2-notice.txt)；规格出处 JL Barber "Dayton Paper" |
 | rsba1-core | 上游 main（subtree 同步，见 `docs/rsba1-core-collab.md`） | MIT | **跟随副本**（旧仓，准备与 rigplane 合并） | Python 协议源（MCP/桥可直接运行，`tools/rsba1_bridge.py` 从此处 import）；C++ 实现与其 fixtures 字节级互锁；合并落地后本目录退役，引擎原生支持 RS-BA1 |
 | GLM | （M2 引入） | MIT | — | 仅矩阵/向量数学，不作框架 |
+| ft8_lib | master（引入 2026-10-30） | MIT | **整目录 vendored**：third_party/ft8_lib（另附 kiss-fft BSD-3-Clause） | 本地 FT8 编解码/同步（`radio::ft8`）；见 [third_party/ft8_lib/VENDORED.md](third_party/ft8_lib/VENDORED.md)；© 2018 Kārlis Goba |
 
 第三方许可原文目录：[LICENSES/](LICENSES/)（含 [LGPL-3.0-only.txt](LICENSES/LGPL-3.0-only.txt)）。
 

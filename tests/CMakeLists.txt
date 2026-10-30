@@ -15,6 +15,7 @@ add_executable(radio_tests
   test_audio_bridge.cpp
   test_aprs.cpp
   test_wsjtx.cpp
+  test_ft8.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
@@ -22,6 +23,7 @@ target_link_libraries(radio_tests PRIVATE
   radio::core
   radio::aprs
   radio::wsjtx
+  radio::ft8_codec
   radio::dsp
   Qt6::Core
   Catch2::Catch2WithMain)
