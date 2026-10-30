@@ -16,6 +16,8 @@ add_executable(radio_tests
   test_aprs.cpp
   test_wsjtx.cpp
   test_ft8.cpp
+  test_ft8_slot.cpp
+  test_ft8_tx.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
@@ -124,6 +126,20 @@ if(BUILD_GUI)
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   set_target_properties(radio_wsjtx_ui_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_wsjtx_ui_tests)
+
+  # FT8 本机解码面板：PCM→槽解码→表格，双击回填（离屏）
+  add_executable(radio_ft8_ui_tests
+    test_ft8_ui.cpp
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/ft8_panel.cpp")
+  target_link_libraries(radio_ft8_ui_tests PRIVATE
+    radio::ft8_codec
+    Qt6::Widgets
+    Catch2::Catch2WithMain)
+  target_include_directories(radio_ft8_ui_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/desktop")
+  set_target_properties(radio_ft8_ui_tests PROPERTIES AUTOMOC ON)
+  catch_discover_tests(radio_ft8_ui_tests)
 endif()
 
 if(TARGET radio::aprs_db)

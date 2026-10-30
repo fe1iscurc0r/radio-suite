@@ -12,6 +12,7 @@
 #include <vector>
 class QHBoxLayout;
 class QVBoxLayout;
+class QCloseEvent;
 
 #include "app/WaterfallWidget.h"
 #include "app/session.h"
@@ -25,11 +26,15 @@ class QVBoxLayout;
 class QListWidget;
 namespace radio::app {
 class AprsPanel;
+class Ft8Panel;
 class WsjtxPanel;
 class CwKeyerDialog;
 class SetModeDialog;
 class MemoryChannelDialog;
 class NetworkAudio;
+}
+namespace radio::audio {
+class AudioOut;
 }
 class QLineEdit;
 class QPushButton;
@@ -44,6 +49,10 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   explicit MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
                       QWidget* parent = nullptr);
   ~MainWindow() override;
+
+ protected:
+  // 副面板是无父顶层窗口：主窗关闭时要一起收掉，否则进程不会退出
+  void closeEvent(QCloseEvent* event) override;
 
  private slots:
   void refreshState();    // RadioState → 标签 + 模式/功能按钮回读同步
@@ -81,6 +90,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QPushButton* ptt_btn_ = nullptr;
   QPushButton* aprs_big_btn_ = nullptr; // 右侧大按键（显眼件）
   QPushButton* wsjtx_big_btn_ = nullptr;  // WSJT-X UDP 接入
+  QPushButton* ft8_big_btn_ = nullptr;    // FT8 本机解码（不经 WSJT-X）
   QPushButton* sstv_big_btn_ = nullptr;
   QPushButton* rit_btn_ = nullptr;      // RIT / ΔTX / Split（原厂件，回读驱动）
   QPushButton* dtx_btn_ = nullptr;
@@ -120,6 +130,9 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   // hamlog / APRS / WSJT-X 融合区
   radio::app::AprsPanel* aprs_panel_ = nullptr;
   radio::app::WsjtxPanel* wsjtx_panel_ = nullptr;
+  radio::app::Ft8Panel* ft8_panel_ = nullptr;
+  // FT8 整槽发射的出口（与 SSTV 一键发射同路：PTT 门禁 + 本机声卡直出）
+  std::unique_ptr<radio::audio::AudioOut> ft8_tx_audio_;
   QLineEdit* qso_call_edit_ = nullptr;   // QSO 对方呼号
   QListWidget* qso_list_ = nullptr;      // 最近 QSO（HamLog 库实时视图）
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
