@@ -134,6 +134,10 @@ std::vector<std::string> AudioOut::deviceNames() const {
   return {"系统默认"};
 }
 
+std::vector<uint32_t> AudioOut::outputDeviceIds() const {
+  return {kDefaultDeviceId};
+}
+
 bool AudioOut::play(const std::vector<int16_t>& pcm, uint32_t sample_rate,
                     uint32_t /*device_id*/, std::string* error) {
   if (impl_->worker.joinable()) {

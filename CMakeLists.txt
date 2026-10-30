@@ -37,6 +37,7 @@ add_subdirectory(libs/dsp/dsp)  # WO-273 单仓裁决：dsp 双端共用（web �
 add_subdirectory(apps/desktop/ui_common)  # app/logbook 共用设置对话框（无 Qt Widgets 自动跳过）
 add_subdirectory(apps/desktop/logbook)  # 无 Qt6::Sql 环境自动跳过（内部判断）
 add_subdirectory(apps/desktop/audio)    # RtAudio (MIT, vendor/)：SSTV/DV 播放
+add_subdirectory(tools)                 # 台架小工具（ft8play）：内部判断平台与依赖
 if(BUILD_GUI)
   add_subdirectory(apps/desktop/app)
 endif()
