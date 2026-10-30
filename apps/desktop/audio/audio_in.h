@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// radio-suite · audio/audio_in.h — 麦克风采集（RtAudio，48kHz s16le mono）
+// radio-suite · audio/audio_in.h — 麦克风采集（桌面 RtAudio / Android AAudio，48kHz s16le mono）
 // 输出 20ms 帧（1920B）给 TX PCM 路径（sendAudioFrame / SSTV / DV）。
 // 采集与发射的联动由调用方编排（PTT 门禁在 session/safety，此处只产帧）。
 #pragma once
@@ -39,7 +39,7 @@ class AudioIn {
   size_t overflows() const { return overflows_.load(std::memory_order_relaxed); }
 
  private:
-  void* dac_ = nullptr;   // RtAudio*（PIMPL，避免头文件传染）
+  void* dac_ = nullptr;   // RtAudio* 或 AAudioStream*（PIMPL，避免头文件传染）
   bool capturing_ = false;
   void* ctx_ = nullptr;   // CaptureCtx
   std::atomic<size_t> overflows_{0};

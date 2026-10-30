@@ -38,7 +38,11 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
  private:
   bool buildPrograms();
 
+  // R8 单通道纹理：桌面 GL / GLES3 用 GL_R8+GL_RED；GLES2 上下文没有这两个
+  // 常量，退回 GL_LUMINANCE（ES2 下取样 .r 仍是亮度值）
   unsigned tex_ = 0;
+  unsigned tex_internal_ = 0;  // GL_R8 或 GL_LUMINANCE
+  unsigned tex_format_ = 0;    // GL_RED 或 GL_LUMINANCE
   int next_row_ = 0;  // 下一个写入行 = 当前最旧行（也是显示底边）
   bool row_pending_ = false;
   std::vector<uint8_t> row_;

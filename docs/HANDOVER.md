@@ -167,11 +167,11 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
   `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
 
-### 6.1 Android 交叉编译（2026-10-30 装好工具链）
+### 6.1 Android 交叉编译（2026-10-30 装好工具链；GUI 目标已能链出）
 
 ```bash
-cmd //c "build\android_configure.bat"          # 生成 build-android（arm64-v8a，GUI/测试 OFF）
-cmd //c "build\android_build.bat radio_core radio_ft8 radio_aprs radio_wsjtx"
+cmd //c "build\android_configure.bat"          # 生成 build-android（arm64-v8a，GUI 默认 ON、测试 OFF）
+cmd //c "build\android_build.bat radio-suite"  # 或只编核心库：… radio_core radio_ft8 radio_aprs
 ```
 
 - 本机安装位置：`D:/Qt/6.7.3/android_arm64_v8a`（目标库，含 Gui/Widgets/OpenGLWidgets/
@@ -183,14 +183,28 @@ cmd //c "build\android_build.bat radio_core radio_ft8 radio_aprs radio_wsjtx"
   无 `qt6_683`）；aqt 装 Android 版时也不会带 host tools，必须再装同版本桌面版并给
   `QT_HOST_PATH`，否则 moc/androiddeployqt 缺失。
 - 已验证：`radio_core`、`radio_ft8lib`、`radio_ft8`、`radio_aprs`、`radio_aprs_db`、
-  `radio_wsjtx`、`radio_dsp`、`radio_ui_common`、`radio_logbook` 全部编成 **AArch64**
-  静态库（`llvm-readelf -h` 核对 Machine=AArch64）。
-- **两个已知阻塞**（做 APK 前必须解决）：
-  1. `vendored RtAudio 6.0.1 没有 Android 后端`（源码里 0 处 android/AAudio/OpenSLES），
-     `apps/desktop/audio/CMakeLists.txt` 的 else 分支会按 Linux 编 ALSA →
-     `alsa/asoundlib.h` 找不到。Android 需要新的音频后端（AAudio/Oboe/OpenSLES）。
-  2. Qt 二进制包**不含 APK 打包模板**（`src/android/templates` 只在源码包），
+  `radio_wsjtx`、`radio_dsp`、`radio_ui_common`、`radio_logbook`、`radio_audio` 全部编成
+  **AArch64**（`llvm-readelf -h` 核对 Machine=AArch64）；`radio-suite` **GUI 可执行文件也
+  已链出**（ELF64 PIE，interpreter `/system/bin/linker64`，for Android 26，19 MB）。
+- 音频后端（2026-10-30）：vendored RtAudio 6.0.1 与上游 master **都没有 Android 后端**
+  （源码 0 处 android/AAudio/OpenSLES），原来的 else 分支按 Linux 编 ALSA 直接
+  `alsa/asoundlib.h` not found。现改为 **NDK AAudio** 直连实现
+  （`audio_out_android.cpp` / `audio_in_android.cpp`，接口与 RtAudio 版
+  `AudioOut`/`AudioIn`/`AudioSink` 完全一致，桌面代码零改动）：输出用
+  `AAUDIO_PERFORMANCE_MODE_LOW_LATENCY` + 非阻塞写（100 ms 超时轮询 `playing`），
+  采集用回调 + 余料累积到 20 ms 帧（与桌面同一 `kTxFrameSamples` 语义），
+  `AudioSink` 仍是 200 ms 有界队列 + 欠载计数。AAudio 要求 **API 26+**，
+  `CMakeLists.txt` 会对 `ANDROID_PLATFORM` 做下限检查并 `FATAL_ERROR`。
+  设备枚举在 Android 上退化为「系统默认」单设备（AAudio 无 RtAudio 那种 ID）。
+- GLES 兼容：瀑布纹理原写死 `GL_R8`/`GL_RED`，Android 的 GLES2 上下文没有这两个常量。
+  现按 `QSurfaceFormat` 判 ES2 → `GL_LUMINANCE`，否则 `GL_R8`/`GL_RED`，
+  并用 `#ifndef` 兜底常量（`apps/desktop/app/WaterfallWidget.cpp`）。
+- **剩余阻塞（做 APK 前必须解决）**：
+  1. Qt 二进制包**不含 APK 打包模板**（`src/android/templates` 只在源码包），
      要做 APK 得自备 `AndroidManifest.xml` + gradle 包源（权限、包名、targetSdk）。
+  2. 麦克风权限：`RECORD_AUDIO` 要在 manifest 声明并在运行期用
+     `QMicrophonePermission` 申请，否则 AAudio 输入流打不开。
+  3. 真机未验：尚未装到手机，AAudio 延迟/回声/后台存活都只有编译级保证。
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
