@@ -133,7 +133,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 149/149
+cmd //c "D:\tmp\rs-build.bat test"        # 152/152
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -166,6 +166,33 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - 部署目录 `packaging/out-win/`：`cmd //c "build\msvc_build.bat deploy_win"`
   会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
   `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
+
+### 6.1 Android 交叉编译（2026-10-30 装好工具链）
+
+```bash
+cmd //c "build\android_configure.bat"          # 生成 build-android（arm64-v8a，GUI/测试 OFF）
+cmd //c "build\android_build.bat radio_core radio_ft8 radio_aprs radio_wsjtx"
+```
+
+- 本机安装位置：`D:/Qt/6.7.3/android_arm64_v8a`（目标库，含 Gui/Widgets/OpenGLWidgets/
+  Network/Sql/Multimedia，381 MB）+ `D:/Qt/6.7.3/msvc2019_64`（host tools：
+  moc/rcc/uic/**androiddeployqt**）；SDK `D:/Android/sdk`（platform-tools/adb 37.0.1、
+  platforms;android-34、build-tools;34.0.0、cmake;3.22.1）+ NDK `26.1.10909125`（r26b，2 GB）。
+  Java 21（Adoptium）已在本机，sdkmanager 与本仓脚本都用它。
+- **Qt 官方公开仓库的 Android 包只到 6.7.3**（`download.qt.io/.../windows_x86/android/`
+  无 `qt6_683`）；aqt 装 Android 版时也不会带 host tools，必须再装同版本桌面版并给
+  `QT_HOST_PATH`，否则 moc/androiddeployqt 缺失。
+- 已验证：`radio_core`、`radio_ft8lib`、`radio_ft8`、`radio_aprs`、`radio_aprs_db`、
+  `radio_wsjtx`、`radio_dsp`、`radio_ui_common`、`radio_logbook` 全部编成 **AArch64**
+  静态库（`llvm-readelf -h` 核对 Machine=AArch64）。
+- **两个已知阻塞**（做 APK 前必须解决）：
+  1. `vendored RtAudio 6.0.1 没有 Android 后端`（源码里 0 处 android/AAudio/OpenSLES），
+     `apps/desktop/audio/CMakeLists.txt` 的 else 分支会按 Linux 编 ALSA →
+     `alsa/asoundlib.h` 找不到。Android 需要新的音频后端（AAudio/Oboe/OpenSLES）。
+  2. Qt 二进制包**不含 APK 打包模板**（`src/android/templates` 只在源码包），
+     要做 APK 得自备 `AndroidManifest.xml` + gradle 包源（权限、包名、targetSdk）。
+- 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
+  VS 的 CMake/Ninja 路径，不需要 vcvars。
 
 ### GitHub 与 CI 现状（2026-10-29 更新）
 
