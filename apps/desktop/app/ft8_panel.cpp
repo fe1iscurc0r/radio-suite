@@ -29,17 +29,22 @@ namespace {
 constexpr int kMaxRows = 500;  // 与 WSJT-X 面板解码表同量级
 constexpr int64_t kTxLeadMs = 500;  // 槽起点前留给 PTT 键控与音频设备启动
 constexpr int64_t kTxFireLateWarnMs = 250;  // 起播晚于槽起点这么多就算「没对齐」
-constexpr uint32_t kTxRateHz = 48000;
+constexpr uint32_t kTxRateHz = radio::ft8::kTxSampleRateHz;
 
 QString snrText(float snr) { return QString::number(snr, 'f', 0); }
 QString dtText(float dt) { return QString::number(dt, 'f', 1); }
 QString dfText(float df) { return QString::number(df, 'f', 0); }
 
+QString sourceName(Ft8Panel::Source s) {
+  return s == Ft8Panel::Source::Microphone ? QStringLiteral("本机麦克风")
+                                           : QStringLiteral("50003 下行");
+}
+
 }  // namespace
 
 Ft8Panel::Ft8Panel(QWidget* parent) : QWidget(parent) { buildUi(); }
 
-Ft8Panel::~Ft8Panel() = default;
+Ft8Panel::~Ft8Panel() { closeCapture(); }
 
 void Ft8Panel::buildUi() {
   setWindowTitle("FT8 本机解码 — radio-suite");
@@ -49,10 +54,14 @@ void Ft8Panel::buildUi() {
   auto* top = new QHBoxLayout();
   start_btn_ = new QPushButton("开始解码", this);
   clear_btn_ = new QPushButton("清空", this);
-  status_label_ = new QLabel("未开始（需要先开「网络音频」拿到 50003 下行）", this);
+  source_box_ = new QComboBox(this);
+  source_box_->addItems({"50003 下行", "本机麦克风"});
+  status_label_ = new QLabel("未开始（音源：电台链路或本机麦克风）", this);
   stats_label_ = new QLabel("", this);
   stats_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
   top->addWidget(start_btn_);
+  top->addWidget(new QLabel("音源", this));
+  top->addWidget(source_box_);
   top->addWidget(clear_btn_);
   top->addWidget(status_label_, 1);
   top->addWidget(stats_label_);
@@ -99,8 +108,8 @@ void Ft8Panel::buildUi() {
   root->addWidget(table_, 1);
 
   auto* hint = new QLabel(
-      "双击解码行：呼号/网格 → 主窗，频率 = 刻度 + DF。解码在本机完成，"
-      "不需要 WSJT-X。",
+      "双击解码行：呼号/网格 → 主窗，频率 = 刻度 + DF。解码在本机完成，不需要 "
+      "WSJT-X。音源可选 50003 下行或本机麦克风（不接电台，把喇叭对着麦克风也能解）。",
       this);
   hint->setWordWrap(true);
   root->addWidget(hint);
@@ -108,6 +117,8 @@ void Ft8Panel::buildUi() {
   connect(start_btn_, &QPushButton::clicked, this, [this] {
     if (decoding()) stopDecoding(); else startDecoding();
   });
+  connect(source_box_, &QComboBox::currentIndexChanged, this,
+          &Ft8Panel::onSourceChanged);
   connect(clear_btn_, &QPushButton::clicked, this, &Ft8Panel::clearRows);
   connect(table_, &QTableWidget::cellDoubleClicked, this,
           [this](int row, int) { activateDecode(row); });
@@ -132,21 +143,25 @@ void Ft8Panel::buildUi() {
 bool Ft8Panel::decoding() const { return decoder_.running(); }
 
 void Ft8Panel::startDecoding(int64_t utc_ms) {
+  // 麦克风音源要先拿到设备：开不起来就别说「已开始」然后一直等
+  if (source_ == Source::Microphone && !openCapture()) return;
   const int64_t wait_ms = decoder_.start(
       utc_ms >= 0 ? utc_ms
                   : static_cast<int64_t>(QDateTime::currentMSecsSinceEpoch()));
   start_btn_->setText("停止解码");
+  const QString tail =
+      wait_ms <= 0 ? QStringLiteral("当前时隙")
+                   : QStringLiteral("等待下一个 15 s 时隙（%1 s）")
+                         .arg(wait_ms / 1000.0, 0, 'f', 1);
   emit statusMessage(
-      wait_ms <= 0
-          ? "FT8 本机解码已开始（当前时隙）"
-          : QString("FT8 本机解码已开始，等待下一个 15 s 时隙（%1 s）")
-                .arg(wait_ms / 1000.0, 0, 'f', 1),
+      QString("FT8 本机解码已开始（%1 · %2）").arg(sourceName(source_), tail),
       false);
   refreshTick();
 }
 
 void Ft8Panel::stopDecoding() {
   decoder_.stop();
+  closeCapture();
   start_btn_->setText("开始解码");
   progress_->setValue(0);
   status_label_->setText("已停止");
@@ -154,8 +169,55 @@ void Ft8Panel::stopDecoding() {
 }
 
 void Ft8Panel::feedRxPcm(std::span<const int16_t> pcm) {
-  if (!decoder_.running()) return;
+  if (!decoder_.running() || source_ != Source::Network) return;
   decoder_.push(pcm);
+}
+
+void Ft8Panel::feedCapturePcm(std::span<const int16_t> pcm) {
+  if (!decoder_.running() || source_ != Source::Microphone) return;
+  decoder_.push(pcm);
+}
+
+void Ft8Panel::setSource(Source s) { source_box_->setCurrentIndex(static_cast<int>(s)); }
+
+void Ft8Panel::onSourceChanged(int index) {
+  const Source next = (index == static_cast<int>(Source::Microphone))
+                          ? Source::Microphone
+                          : Source::Network;
+  if (next == source_) return;
+  source_ = next;
+  emit sourceChanged(source_);
+  if (source_ == Source::Network) closeCapture();
+  if (!decoder_.running()) {
+    status_label_->setText(QString("音源：%1（未解码）").arg(sourceName(source_)));
+    return;
+  }
+  if (source_ == Source::Microphone && !openCapture()) {
+    stopDecoding();  // 设备开不起来就别让解码空等下一槽
+    return;
+  }
+  // 换源前那半槽是另一路音频，混进当前槽不作数：重新对齐到下一个槽起点
+  startDecoding();
+}
+
+bool Ft8Panel::openCapture() {
+  if (capturing_) return true;
+  if (!cap_start_) {
+    emit statusMessage("FT8 麦克风音源不可用：主窗未接入采集", true);
+    return false;
+  }
+  if (!cap_start_()) {
+    emit statusMessage("FT8 麦克风采集启动失败（设备不可用或被占用）", true);
+    return false;
+  }
+  capturing_ = true;
+  return true;
+}
+
+void Ft8Panel::closeCapture() {
+  if (!capturing_) return;
+  capturing_ = false;  // 先落标志：stop 里若回调回来不许再开一遍
+  if (cap_stop_) cap_stop_();
 }
 
 bool Ft8Panel::scheduleTransmit(const QString& text, float f0_hz, int parity,
@@ -205,6 +267,9 @@ bool Ft8Panel::fireTransmit(int64_t now_ms) {
   // 拦不住也不该悄悄发出去，把偏差报出来让操作者知道这一发不干净
   const int64_t late = now_ms - start;
   tx_pending_ = false;
+  // 按钮必须在这里就落回「定时发射」：只改标志不改标签，发射完按钮上还写着
+  // 「取消发射」，操作者点下去变成排下一次发射（不是取消），白送 15 s 功率
+  updateTxLabel(now_ms);
   std::vector<int16_t> pcm;
   pcm.swap(tx_pcm_);
   if (!tx_) {
@@ -238,6 +303,10 @@ void Ft8Panel::onTxClicked() {
                    static_cast<float>(f0_spin_->value()), parity, now);
 }
 
+QString Ft8Panel::txButtonLabel() const {
+  return tx_btn_ ? tx_btn_->text() : QString();
+}
+
 void Ft8Panel::updateTxLabel(int64_t now_ms) {
   if (!tx_pending_) {
     tx_btn_->setText("定时发射");
@@ -268,9 +337,12 @@ void Ft8Panel::refreshTick() {
   if (decoder_.decoding()) {
     status_label_->setText("解码中…");
   } else if (decoder_.fedSamples() == 0) {
-    status_label_->setText("等待 50003 下行音频（网络音频未开或链路无采样）");
+    status_label_->setText(source_ == Source::Microphone
+                                ? "等待麦克风采样（设备已打开但没进样本）"
+                                : "等待 50003 下行音频（网络音频未开或链路无采样）");
   } else {
-    status_label_->setText(QString("采集中 · 已解 %1 槽%2")
+    status_label_->setText(QString("%1 · 已解 %2 槽%3")
+                               .arg(sourceName(source_))
                                .arg(decoder_.slotsDecoded())
                                .arg(decoder_.droppedSlots() > 0
                                         ? QString(" · 丢弃 %1 槽")

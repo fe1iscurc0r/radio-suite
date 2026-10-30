@@ -48,6 +48,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 
+#include "audio/audio_in.h"
 #include "audio/audio_out.h"
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
@@ -422,6 +423,59 @@ void MainWindow::buildUi() {
     }
     return true;
   });
+
+  // FT8 音源「本机麦克风」：采集帧直灌面板，不接电台也能听空口
+  // （把喇叭对着麦克风就能自解自己播的槽）。输入设备沿用「音频设置」的
+  // audio/in_dev；网络音频在跑时它的 mic_ 已经占着输入设备，这里必须让路。
+  ft8_panel_->setCaptureController(
+      [this] {
+        if (network_audio_ && network_audio_->active()) {
+          flashStatus("FT8 麦克风音源让位：网络音频正占着麦克风上行，"
+                      "先关网络音频或改回 50003 音源",
+                      true);
+          return false;
+        }
+        if (!ft8_capture_)
+          ft8_capture_ = std::make_unique<radio::audio::AudioIn>();
+        QSettings st;
+        int dev = st.value("audio/in_dev", -1).toInt();
+        if (dev < 0) dev = ft8_capture_->defaultInputDevice();
+        if (dev < 0) {
+          flashStatus("FT8 麦克风音源：没有可用输入设备", true);
+          return false;
+        }
+        std::string err;
+        const bool ok = ft8_capture_->start(
+            static_cast<uint32_t>(dev),
+            [this](std::span<const int16_t> frame) {
+              if (ft8_panel_) ft8_panel_->feedCapturePcm(frame);
+            },
+            &err);
+        if (!ok) {
+          flashStatus(QString("FT8 麦克风采集失败：%1").arg(err.c_str()), true);
+          return false;
+        }
+        flashStatus("FT8 音源切到麦克风（48 kHz s16 mono 采集）", false);
+        return true;
+      },
+      [this] {
+        if (ft8_capture_) ft8_capture_->stop();
+      });
+
+  // 音源选择记住（-1/未设 = 50003 下行）：麦克风监听是「整晚挂着听」的用法
+  {
+    QSettings st;
+    ft8_panel_->setSource(
+        st.value("ft8/source", 0).toInt() == 1
+            ? radio::app::Ft8Panel::Source::Microphone
+            : radio::app::Ft8Panel::Source::Network);
+  }
+  connect(ft8_panel_, &radio::app::Ft8Panel::sourceChanged, this,
+          [](radio::app::Ft8Panel::Source source) {
+            QSettings st;
+            st.setValue("ft8/source",
+                        source == radio::app::Ft8Panel::Source::Microphone ? 1 : 0);
+          });
 
   auto mk_big = [central](const QString& text, const QColor& c) {
     auto* b = new QPushButton(text, central);

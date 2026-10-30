@@ -156,6 +156,7 @@ TEST_CASE("ft8 panel: tx schedules the slot then hands the exit one full slot",
   REQUIRE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 10'000));
   REQUIRE(panel.txScheduled());
   REQUIRE(panel.txStartUtcMs() == 15'000);
+  REQUIRE(panel.txButtonLabel() == "取消发射");
   REQUIRE(fires == 0);
 
   REQUIRE(panel.fireTransmit(15'000));
@@ -163,6 +164,8 @@ TEST_CASE("ft8 panel: tx schedules the slot then hands the exit one full slot",
   REQUIRE(rate == 48'000);
   REQUIRE(got.size() == 15'000 * 48);
   REQUIRE_FALSE(panel.txScheduled());
+  // 发完标签必须落回「定时发射」：留着「取消发射」，下一刀点下去是排期不是取消
+  REQUIRE(panel.txButtonLabel() == "定时发射");
   REQUIRE_FALSE(panel.fireTransmit(30'000));  // 一发只播一遍，不自动重发
   REQUIRE(fires == 1);
 }
@@ -189,6 +192,7 @@ TEST_CASE("ft8 panel: tx rejects bad input, double booking and refusals",
   REQUIRE_FALSE(panel.scheduleTransmit("CQ BG5GXO PM01", 1000.0f, -1, 10'000));
   panel.cancelTransmit();
   REQUIRE_FALSE(panel.txScheduled());
+  REQUIRE(panel.txButtonLabel() == "定时发射");
   REQUIRE_FALSE(panel.fireTransmit(30'000));  // 取消后到点也不许发
   REQUIRE(fires == 0);
 
@@ -201,6 +205,7 @@ TEST_CASE("ft8 panel: tx rejects bad input, double booking and refusals",
   REQUIRE_FALSE(panel.fireTransmit(15'000));
   REQUIRE(fires == 1);
   REQUIRE_FALSE(panel.txScheduled());
+  REQUIRE(panel.txButtonLabel() == "定时发射");  // 被拒同样不许留「取消发射」
 }
 
 TEST_CASE("ft8 panel: a late fire is reported as misaligned", "[ft8][ui]") {
@@ -223,4 +228,134 @@ TEST_CASE("ft8 panel: a late fire is reported as misaligned", "[ft8][ui]") {
   REQUIRE(panel.fireTransmit(60'000 + 900));  // GUI 线程被堵：晚了 900 ms
   REQUIRE(flagged);
   REQUIRE(msg.contains("900"));
+}
+
+TEST_CASE("ft8 panel: microphone source takes capture pcm and mutes the link",
+          "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  int starts = 0, stops = 0;
+  panel.setCaptureController([&] { ++starts; return true; },
+                             [&] { ++stops; });
+
+  panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+  REQUIRE(starts == 0);  // 只选音源不开设备：没在解码就别抢麦克风
+
+  panel.startDecoding(0);
+  REQUIRE(panel.decoding());
+  REQUIRE(starts == 1);
+
+  const std::vector<int16_t> frame(960, 0);
+  panel.feedRxPcm(frame);  // 50003 那一路在麦克风音源下必须闭嘴
+  REQUIRE(panel.fedSamples() == 0);
+  panel.feedCapturePcm(frame);
+  REQUIRE(panel.fedSamples() == 960);
+
+  panel.startDecoding(0);  // 已在解码时重复 start 不再抢一次设备
+  REQUIRE(starts == 1);
+
+  panel.stopDecoding();
+  REQUIRE_FALSE(panel.decoding());
+  REQUIRE(stops == 1);
+  panel.feedCapturePcm(frame);  // 停了就不再收
+  REQUIRE(panel.fedSamples() == 0);
+}
+
+TEST_CASE("ft8 panel: switching source mid-decode reopens the feed",
+          "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  int starts = 0, stops = 0, source_signals = 0;
+  QObject::connect(&panel, &radio::app::Ft8Panel::sourceChanged,
+                   [&](radio::app::Ft8Panel::Source) { ++source_signals; });
+  panel.setCaptureController([&] { ++starts; return true; },
+                             [&] { ++stops; });
+
+  panel.startDecoding(0);  // 默认 50003 音源：不碰采集设备
+  REQUIRE(starts == 0);
+  const std::vector<int16_t> frame(960, 7);
+  panel.feedRxPcm(frame);
+  REQUIRE(panel.fedSamples() == 960);
+
+  panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+  REQUIRE(starts == 1);
+  REQUIRE(panel.decoding());
+  REQUIRE(panel.fedSamples() == 0);  // 换源重对齐：上一路的半槽不作数
+  panel.feedRxPcm(frame);
+  REQUIRE(panel.fedSamples() == 0);
+
+  panel.setSource(radio::app::Ft8Panel::Source::Network);
+  REQUIRE(stops == 1);  // 切回来就把麦克风放掉
+  REQUIRE(panel.decoding());
+  panel.feedCapturePcm(frame);
+  REQUIRE(panel.fedSamples() == 0);
+  panel.feedRxPcm(frame);
+  REQUIRE(panel.fedSamples() == 960);
+  REQUIRE(source_signals == 2);  // 两次换源各发一次信号（主窗据此写 QSettings）
+}
+
+TEST_CASE("ft8 panel: a capture that will not open refuses to start decoding",
+          "[ft8][ui]") {
+  uiApp();
+  {
+    radio::app::Ft8Panel panel;  // 主窗没注入采集出口
+    QString msg;
+    bool flagged = false;
+    QObject::connect(&panel, &radio::app::Ft8Panel::statusMessage,
+                     [&](const QString& text, bool err) {
+                       msg = text;
+                       flagged = err;
+                     });
+    panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+    panel.startDecoding(0);
+    REQUIRE_FALSE(panel.decoding());
+    REQUIRE(flagged);
+    REQUIRE(msg.contains("未接入"));
+  }
+  {
+    radio::app::Ft8Panel panel;
+    int stops = 0;
+    panel.setCaptureController([&] { return false; }, [&] { ++stops; });
+    QString msg;
+    bool flagged = false;
+    QObject::connect(&panel, &radio::app::Ft8Panel::statusMessage,
+                     [&](const QString& text, bool err) {
+                       msg = text;
+                       flagged = err;
+                     });
+    panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+    panel.startDecoding(0);
+    REQUIRE_FALSE(panel.decoding());  // 设备开不起来不许假装在解码
+    REQUIRE(flagged);
+    REQUIRE(msg.contains("失败"));
+    REQUIRE(stops == 0);  // 没开成就不该去关别人的流
+  }
+}
+
+TEST_CASE("ft8 panel: a slot fed through the capture path decodes end to end",
+          "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  int opens = 0;
+  panel.setCaptureController([&] { ++opens; return true; }, [] {});
+  panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+  panel.startDecoding(0);
+  REQUIRE(opens == 1);
+
+  const auto tones = radio::ft8::encodeTones("CQ BG5GXO PM01");
+  const auto audio12k = radio::ft8::synthesize(tones, 1500.0f);
+  std::vector<int16_t> pcm;
+  pcm.reserve(audio12k.size() * 4);
+  for (float v : audio12k) {
+    const auto s = static_cast<int16_t>(std::lround(v * 12000.0f));
+    for (int k = 0; k < 4; ++k) pcm.push_back(s);
+  }
+  for (size_t i = 0; i < pcm.size(); i += 960) {
+    const size_t n = std::min<size_t>(960, pcm.size() - i);
+    panel.feedCapturePcm(std::span<const int16_t>(pcm.data() + i, n));
+  }
+
+  REQUIRE(waitUntil([&] { return panel.decodeRowCount() > 0; }, 120000));
+  REQUIRE(panel.decodeText(0) == "CQ BG5GXO PM01");
+  panel.stopDecoding();
 }
