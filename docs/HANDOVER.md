@@ -136,7 +136,9 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   并断言 mock 与状态回读；`BUILD_GUI=OFF` 的 Linux CI 自动不建该 target）。
   SSTV/Voice Memory 已统一走 `beginScriptedTx/endScriptedTx`；旧“双击收尾”经
   受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
-- 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
+- 部署目录 `packaging/out-win/`：`cmd //c "build\msvc_build.bat deploy_win"`
+  会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
+  `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
 
 ### GitHub 与 CI 现状（2026-10-29 更新）
 
