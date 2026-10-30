@@ -61,6 +61,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置；**`delta_frequency` 按上游为有符号 qint32**）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格；**QSO Logged 自动写 HamLog 库**（device=WSJT-X、备注网格）；**双击解码回填主窗口呼号**并按 `dial + ΔF` 显示绝对频率 | tests `[wsjtx]` 11 + offscreen `[wsjtx_ui]` 4（UDP 回环 + 面板渲染 + 激活解析含负频差 + HamLog 映射 + **QDataStream 字节长度前缀互通**：用本机 Qt 6.8 序列化出的 93 字节 Decode 包做金样本）；**消息体已按 QDataStream 字节长度前缀修正**，本机 127.0.0.1:2237 注入真线格式字节可完整进面板（客户端/14.074000 MHz/解码行全中）；**未与真实 WSJT-X / JTDX 进程联调**；自动写库未在真实 HamLog 库上复验 |
 | 音频 | ✅ 本机输出（AudioOut，**后台线程异步播放**，SSTV 36–115 s / Voice Memory 60 s 不冻 GUI；默认输出设备按 WASAPI ID 取）+ 输入（AudioIn，溢出计数不丢缓冲）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行** | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
+| FT8 | ✅ **本地编解码已入库**（vendored `ft8_lib`，MIT + kiss-fft BSD）：`radio::ft8::decode/encodeTones/synthesize`，纯 std、不依赖 Qt，可被 app/Android 复用 | tests `[ft8]` 3 用例 84 断言：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；**未接 UI、未接真实空中信号** |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -219,6 +220,10 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
    `[civ] ctcss and dtcs …` 与 `[ui] repeater dialog …`。
 8. **`0x0F` 写后必须读回**：`setDuplex()` 只发写帧时状态永远停在 simplex；
    该函数已补 `readDuplexFrame` + `poll()`，别再拆掉。
+9. **vendor 的 C 代码在 MSVC 上要补三处**：无 VLA（上游 `monitor.c` 变长数组、
+   `decode.c` 的 `s2[]`）、无 `stpcpy`（补 `third_party/ft8_lib/common/compat_msvc.c`）、
+   `M_PI` 要自己定义（`_USE_MATH_DEFINES` 不可靠）。升级 `ft8_lib` 前先看
+   `third_party/ft8_lib/VENDORED.md` 的补丁清单。
 
 ## 8. 工单脉络
 
