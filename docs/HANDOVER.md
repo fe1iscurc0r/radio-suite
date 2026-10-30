@@ -3,9 +3,9 @@
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
 > 同日的 UI 重排与中继频差 / 模拟·数字亚音）+ 两条生态融合（hamlog / APRS 工作台）+
-> WSJT-X UDP 接入（解码 / QSO / WSPR / ADIF / 远程控制）+
+> WSJT-X UDP 接入（解码 / QSO / WSPR / ADIF / 远程控制 / QSO 直写 HamLog）+
 > 50003 网络语音链（RX 播放 / PTT 门禁 TX / 真实频谱）+ 引擎化准备（WO-274），
-> 130/130 测试全绿；
+> 132/132 测试全绿；
 > 真机线路按师傅指示**永久搁置**，改走 mock 与 self-hosted 验证。
 > 接手人先读本文件 + `docs/WO-274-engine-switch.md` + `docs/WO-273-radio-competitive.md`。
 
@@ -27,7 +27,7 @@ radio-suite/
 ├── apps/spike/                                   # WO-274 rigplane 引擎 spike（默认不编）
 ├── libs/dsp/dsp/                                 # FFT/瀑布（双端共用）
 ├── libs/protocol/rsba1-core/                     # MIT 跟随副本（subtree 同步）
-├── tests/ (Catch2, 130 用例)  docs/  packaging/  tools/
+├── tests/ (Catch2, 132 用例)  docs/  packaging/  tools/
 ```
 
 include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀不变）。
@@ -57,7 +57,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | DTMF | ✅ 16 键编解码 + 回环 | tests `[dtmf]` |
 | APRS | ✅ 核心库（纯 std）：TNC2、三种坐标（未压缩/压缩/Mic-E）、对象·气象·遥测、消息 + ACK/REJ + 重发、第三方解包、12 类过滤器、通行码；**工作台 UI**（OSM 地图 + 台站表 + 消息窗）；APRS-IS 连接（china/rotate 轮换、指数退避）；**KISS TCP/串口**（Dire Wolf / LoRa APRS 网关）+ Bell 202 AFSK 1200 Bd 走 50003；**iGate 双向**（RF→IS 打 qAR、IS→RF 仅消息/对象并去重）；独立 SQLite 持久化（`%APPDATA%/radio-suite/aprs.db`） | tests `[aprs]` 18 + `[aprs_persist]` + offscreen `[aprs_ui]` 3；APRS-IS 实测 china.aprs2.net（308 台/7805 包）；**RF / LoRa / AFSK 真机未验** |
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
-| WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格 | tests `[wsjtx]` 8 + offscreen `[wsjtx_ui]` 2（UDP 回环 + 面板渲染）；**未与真实 WSJT-X / JTDX 联调** |
+| WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格；**QSO Logged 自动写 HamLog 库**（device=WSJT-X、备注网格）；**双击解码回填主窗口呼号**并显示绝对频率 | tests `[wsjtx]` 8 + offscreen `[wsjtx_ui]` 4（UDP 回环 + 面板渲染 + 激活解析 + HamLog 映射）；**未与真实 WSJT-X / JTDX 联调**；自动写库未在真实 HamLog 库上复验 |
 | 音频 | ✅ 本机输出（AudioOut，SSTV/Voice Memory）+ 输入（AudioIn）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行**；设备用系统默认输入/输出 | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
@@ -107,7 +107,9 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
    ① 在 WSJT-X `Settings → Reporting` 启用 `Accept UDP requests` 并统一组播
    地址/端口；② 验证 Status/Decode 刷新、双击/呼叫选中回发 Reply；③ 验证
    QSO Logged 与 ADIF 导出页；④ 验证 HaltTx / FreeText / Replay / Location
-   在真机上的行为（含跨机器 UDP 防火墙放行）。
+   在真机上的行为（含跨机器 UDP 防火墙放行）；⑤ QSO 自动入 HamLog
+   与双击回填只在映射/信号层有单测，**未在真实 HamLog 库上写入复验**（测试
+   仍遵守「真实库只读」约束），联调时注意先备份 `Log.db`。
 8. **工程小债**：logbook 库反向引用 app 层设置对话框头（链接可解）→ 挪 libs/ui 时清。
 9. ~~GitHub 推送~~ → **已于 2026-10-26 完成**（远端 fe1iscurc0r/radio-suite，
    public/AGPL-3.0，CI 三平台全绿；详见 §6「GitHub 与 CI 现状」）。
@@ -118,7 +120,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
 cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 130/130
+cmd //c "D:\tmp\rs-build.bat test"        # 132/132
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -127,7 +129,7 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 130 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 132 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，以及
   `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory/中继·亚音对话框按钮
@@ -136,17 +138,14 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
   受控变异确认会 FAIL（仍处 TX / 无 PTT OFF），恢复后全绿。
 - 部署目录 `packaging/out-win/`（windeployqt 后可独立运行）。
 
-### GitHub 与 CI 现状（2026-10-27 更新）
+### GitHub 与 CI 现状（2026-10-29 更新）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），默认分支 `main`（当前 `854bf42`，PR #2 合并后）+
-  `feat/rsba1-audio-chain`（50003 音频链，待评审）。
-- **PR #1 已合并**（2026-10-27，一键发射 PTT 编排 + 真实集成测试）；其分支
-  `fix/scripted-tx-and-real-tests` 的远端 sha `272bc5d` 是 REST 重建对象，
-  与本地同内容 commit 的 sha 不同。
-- **PR #2 已合并**（2026-10-27，旋钮调谐台 + 中继频差双频 + 亚音），merge
-  commit `854bf42`，分支 `feat/ui-tone-repeater`；合并前 CI run `40464364408`
-  三平台 success，合并后 main run `40465738233` 三平台 success。
+  **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
+  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）。
+- **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
+  （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
+  WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
 - **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
   macOS Qt。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。

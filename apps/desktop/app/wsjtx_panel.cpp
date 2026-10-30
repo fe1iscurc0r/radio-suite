@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QShowEvent>
 #include <QSpinBox>
@@ -40,6 +41,51 @@ QString mhz(uint64_t hz) {
 QString utcText(const radio::wsjtx::DateTime& dt) {
   return QDateTime::fromMSecsSinceEpoch(dt.utcMs()).toUTC().toString(
       "yyyy-MM-dd hh:mm:ss");
+}
+
+struct DecodeTarget {
+  QString call;
+  QString grid;
+};
+
+bool plausibleCall(const QString& token) {
+  if (token.size() < 3 || token.size() > 12) return false;
+  bool letter = false, digit = false;
+  for (const QChar c : token) {
+    if (c.isLetter()) letter = true;
+    if (c.isDigit()) digit = true;
+  }
+  return letter && digit;
+}
+
+bool looksLikeGrid(const QString& token) {
+  static const QRegularExpression re(
+      "^[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?$");
+  return re.match(token).hasMatch();
+}
+
+// WSJT-X 文本：CQ [修饰] CALL [GRID] / CALL1 CALL2 [GRID|报告|73]
+// 定向报文第二个呼号是发报方，也是操作员要回应的对象。
+DecodeTarget parseDecodeTarget(const QString& message) {
+  DecodeTarget target;
+  const QStringList tokens =
+      message.trimmed().split(' ', Qt::SkipEmptyParts);
+  if (tokens.isEmpty()) return target;
+  if (tokens[0] == "CQ") {
+    int i = 1;
+    static const QStringList modifiers{"DX", "TEST", "NA", "SA", "EU",
+                                       "AS", "AF",   "OC"};
+    if (i < tokens.size() && modifiers.contains(tokens[i])) ++i;
+    if (i < tokens.size()) target.call = tokens[i];
+  } else if (tokens[0].startsWith("QRZ")) {
+    if (tokens.size() > 1) target.call = tokens[1];
+  } else if (tokens.size() > 1) {
+    target.call = tokens[1];
+  }
+  if (!plausibleCall(target.call)) target.call.clear();
+  if (tokens.size() > 1 && looksLikeGrid(tokens.last()))
+    target.grid = tokens.last();
+  return target;
 }
 
 QTableWidget* makeTable(const QStringList& headers, QWidget* parent) {
@@ -97,6 +143,7 @@ void WsjtxPanel::buildUi() {
   decodes_->setColumnWidth(2, 60);
   decodes_->setColumnWidth(3, 70);
   decodes_->setColumnWidth(4, 70);
+  decodes_->setToolTip("双击一行：把呼号/网格/频率送入主窗口（可再记 QSO）");
   tabs_->addTab(decodes_, "解码");
 
   qsos_ = makeTable({"时间(UTC)", "对方", "网格", "频率 MHz", "模式", "报告", "操作员"},
@@ -161,6 +208,8 @@ void WsjtxPanel::buildUi() {
     else
       startListening(client_->group(), client_->port());
   });
+  connect(decodes_, &QTableWidget::cellDoubleClicked, this,
+          [this](int row, int) { activateDecode(row); });
   connect(settings_btn, &QPushButton::clicked, this, &WsjtxPanel::onSettings);
   connect(reply_btn_, &QPushButton::clicked, this, &WsjtxPanel::onReply);
   connect(halt_btn, &QPushButton::clicked, this,
@@ -270,6 +319,7 @@ void WsjtxPanel::refreshListenButton() {
 void WsjtxPanel::applyStatus(const radio::wsjtx::Status& status,
                              const QString& client_id) {
   last_client_ = client_id;
+  last_dial_hz_ = status.dial_frequency;
   client_label_->setText(QString("客户端：%1").arg(client_id));
   radio_label_->setText(
       QString("%1 %2 · %3 MHz %4%5")
@@ -369,6 +419,30 @@ void WsjtxPanel::addWspr(const radio::wsjtx::WsprDecode& decode) {
 void WsjtxPanel::setAdif(const QString& adif) {
   adif_view_->setPlainText(adif);
   tabs_->setTabText(3, "ADIF · 最近 1 条");
+}
+
+bool WsjtxPanel::activateDecode(int row) {
+  if (row < 0 || static_cast<size_t>(row) >= decodes_cache_.size()) {
+    flash("请先在解码表选择一行", true);
+    return false;
+  }
+  const auto& decode = decodes_cache_[static_cast<size_t>(row)];
+  const QString message = QString::fromStdString(decode.message);
+  const DecodeTarget target = parseDecodeTarget(message);
+  if (target.call.isEmpty()) {
+    flash(QString("无法从解码识别呼号：%1").arg(message), true);
+    return false;
+  }
+  quint64 hz = last_dial_hz_;
+  if (hz != 0 && decode.delta_frequency > 0)
+    hz += static_cast<quint64>(decode.delta_frequency);
+  const QString mode = QString::fromStdString(decode.mode);
+  emit decodeActivated(target.call, target.grid, hz, mode);
+  flash(QString("已送入主窗口：%1%2")
+            .arg(target.call,
+                 hz == 0 ? QString()
+                         : QString(" · %1 MHz").arg(hz / 1e6, 0, 'f', 6)));
+  return true;
 }
 
 void WsjtxPanel::onReply() {
