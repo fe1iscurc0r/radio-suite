@@ -111,7 +111,9 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QPushButton* vfo_equal_btn_ = nullptr;  // A=B
   QPushButton* dtmf_big_btn_ = nullptr;
   std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
-  std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，回读驱动）
+  std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，互斥 + 回读驱动）
+  // 与 mode_btns_ 一一对应的制式值：按钮行没有 RTTY，下标≠枚举值，回读按这个比
+  std::vector<radio::core::civ::Mode> mode_vals_;
   QPushButton* att_btn_ = nullptr;       // ATT 20dB（回读驱动）
   QPushButton* nb_btn_ = nullptr;        // NB（回读驱动）
   QPushButton* nr_btn_ = nullptr;        // NR（回读驱动）
