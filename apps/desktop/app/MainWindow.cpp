@@ -90,8 +90,8 @@ QString stepCaption(qint64 hz) {
 }  // namespace
 
 MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
-                       QWidget* parent)
-    : QMainWindow(parent), session_(std::move(transport)) {
+                       radio::app::LinkPrefs link, QWidget* parent)
+    : QMainWindow(parent), link_(std::move(link)), session_(std::move(transport)) {
   buildUi();
 
 #ifdef Q_OS_ANDROID
@@ -176,7 +176,7 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
 
   connect(&status_timer_, &QTimer::timeout, this, [this] {
     status_label_->setStyleSheet("");
-    status_label_->setText("transport: mock · radio: IC-705 sim");
+    status_label_->setText(radio::app::linkStatusText(link_));
   });
   status_timer_.setSingleShot(true);
 
@@ -286,12 +286,18 @@ void MainWindow::buildUi() {
           [this] { session_.pttButtonPressed(); });
   top->addWidget(ptt_btn_);
 
-  // 连接设置（原厂 Connect Setting 件；表单生成命令行，重启生效）
+  // 连接设置（原厂 Connect Setting 件）：保存写持久化偏好，重启后由 launch_config 建链路
   auto* conn_btn = new QPushButton("连接…", central);
   conn_btn->setMinimumSize(88, 40);
   connect(conn_btn, &QPushButton::clicked, this, [this] {
-    ConnectDialog dlg(this);
-    dlg.exec();
+    ConnectDialog dlg(radio::app::loadLinkPrefs(), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    radio::app::saveLinkPrefs(dlg.prefs());
+    // 本次会话的 transport 已经建好，不能假装切了链路：文案只说已保存
+    flashStatus(
+        QString("链路设置已保存（%1），重启 radio-suite 生效")
+            .arg(radio::app::linkName(dlg.prefs().link)),
+        false);
   });
   top->addWidget(conn_btn);
   root->addLayout(top, 0);
@@ -638,7 +644,7 @@ void MainWindow::buildUi() {
   body->addLayout(side);
   root->addLayout(body, 1);
 
-  status_label_ = new QLabel("transport: mock · radio: IC-705 sim", central);
+  status_label_ = new QLabel(radio::app::linkStatusText(link_), central);
   root->addWidget(status_label_);
 
   setCentralWidget(central);

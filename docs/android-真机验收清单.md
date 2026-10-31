@@ -4,29 +4,44 @@
 **适用产物:** `build-android/apps/desktop/app/android-build/build/outputs/apk/release/android-build-release-unsigned.apk`（arm64-v8a，minSdk 26 / targetSdk 34）
 **代码基线:** 本清单里的 FT8 条目（B4–B6 / F1–F4）依赖 `feat/ft8-mic-source`（PR #17，栈在
 PR #16 之上）——`main`（`5a08fa4`）上还没有 FT8 面板（`apps/desktop/app/` 无 `ft8_panel.*`）
-也没有 `tools/ft8play`，用 main 出的包跑这些条目会找不到入口。上面那个 APK 是
-2026-10-30 21:27 用本分支代码打的。
+也没有 `tools/ft8play`，用 main 出的包跑这些条目会找不到入口。K1/K3 的代码修和 G-0 那条
+在 `fix/android-link-prefs`（PR #17 之上再叠一层）。上面那个 APK 是
+2026-10-30 21:27 用本分支代码打的，**不含**这些改动——跑 G-0 前要先重新出包。
 **本清单的状态:** ⚠️ **下面每一条都还没在任何真机上跑过**——本机 `adb devices` 列表为空，手上没有可连的手机。条目里写「代码事实」「现状」的部分，只记录我在 PC 上**静态核对**到的东西（源码行号、aapt 出包信息、jar 字节码），不代表真机行为。真机跑通之前，本清单不构成任何验收结论。
 
 ---
 
-## 0. 三条阻塞：先读这段再动手
+## 0. 三条前提：先读这段再动手
 
-### K1 · APK 目前只能跑 mock，接不上真电台（阻塞第 7 节全部条目）
+### K1 · APK 只能跑 mock —— 代码侧已修（`fix/android-link-prefs`），**真机未验**
 
-传输层只在 `main.cpp` 里按命令行开关构造，兜底一律是 `MockTransport`
-（[apps/desktop/app/main.cpp:96](../apps/desktop/app/main.cpp#L96)、
-[apps/desktop/app/main.cpp:118](../apps/desktop/app/main.cpp#L118)）：
+原缺口：传输层只在 `main.cpp` 里按命令行开关构造，兜底一律 `MockTransport`；
+「连接设置」对话框只把命令行**渲染成一行文本**，自己不构造任何传输；
+Android 上没有命令行输入口 ⇒ 装完 APK 点遍全应用也到不了真机链路。
 
-```cpp
-if (cli.isSet(radio_opt)) { ... Rsba1UdpTransport ... }   // 只有 --radio 才走真机
-if (!transport) transport = std::make_shared<radio::core::MockTransport>();
-```
+现在的形状（`apps/desktop/app/launch_config.{h,cpp}`，GUI 与 headless 共用同一个工厂）：
 
-而「连接设置」对话框只是把命令行**渲染成一行文本**给人看
-（`apps/desktop/app/connect_dialog.cpp` 的 `cmdline_` QLabel），它自己不构造任何传输。
-Android 上没有命令行输入口 ⇒ 用户装完 APK 点遍全应用也到不了真机链路。
-这与既定方向「APK 直连电台优先」正面冲突，**必须先修**（三选一，见 §7 前置）。
+- 优先级 **命令行 > 持久化偏好 > mock**，在
+  [main.cpp:50-56](../apps/desktop/app/main.cpp#L50-L56) 一处算完；
+- 偏好读写在 [launch_config.cpp:23-31](../apps/desktop/app/launch_config.cpp#L23-L31)：
+  Android 上显式走 `QSettings::IniFormat`（默认构造的 NativeFormat 在安卓没有后端，
+  见 D1），键为 `link/mode|host|user|pass|python`；
+- 对话框的「保存」真的落到那套偏好里
+  （[connect_dialog.cpp:141](../apps/desktop/app/connect_dialog.cpp#L141) →
+  [MainWindow.cpp:290-300](../apps/desktop/app/MainWindow.cpp#L290-L300)），重启生效；
+- 建不出来的链路（本构建缺 Qt6::Network / 电台 IP 为空 / 平台上没有 Python 桥）
+  在 [launch_config.cpp:33-43](../apps/desktop/app/launch_config.cpp#L33-L43) 折回真话，
+  不让状态栏与实际链路各说各的。
+
+离屏用例覆盖到优先级、空 IP 降级、ini 往返、对话框回填/保存
+（[tests/test_launch_config.cpp](../tests/test_launch_config.cpp)，8 例）；
+Android 交叉编译侧只验证了**编得过、链得上**（`build-android/.../libradio-suite_arm64-v8a.so`）。
+**「手机上点保存 → 重启 → 真连上电台」这一条仍然要靠 A7/A8/G 节实测**，A5 之后照 G 节走。
+
+桌面实窗等价验证已做过一轮（2026-10-31，非手机）：保存写通、不带参数重启后
+状态栏读回 `transport: udp · <IP>`、连不上时频率落 0 / S 表 -999 不谎报在线
+（过程与结论见 `docs/HANDOVER.md` §5 第 11 条）。**这只证明代码逻辑通，不证明
+Android 的 ini 落盘与启动路径通**——G-0 照跑不误。
 
 ### K2 · 但 adb 有一条能塞参数的后门（`applicationArguments`）
 
@@ -51,13 +66,19 @@ if (s != null) appendApplicationParameters(s);
 `appendApplicationParameters`，切词实现在 `.so` 里，真机顺带确认值里带空格会怎样）。
 A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
 
-### K3 · 状态栏那句 "transport: mock" 不可作为判据
+### K3 · 状态栏那句 "transport: mock" —— 硬编码已去掉，但**仍不作为判据**
 
-空闲文本硬编码在 [apps/desktop/app/MainWindow.cpp:641](../apps/desktop/app/MainWindow.cpp#L641)，
-且所有一次性提示 3 s 后都被 [apps/desktop/app/MainWindow.cpp:177-180](../apps/desktop/app/MainWindow.cpp#L177-L180)
-重置回同一句 `transport: mock · radio: IC-705 sim`——**即使真的连上 UDP，它也这么写**。
-本清单凡是要判「链路是什么」的条目，一律用行为（频率是否随电台变、50003 音频是否进来）
-而不是这行字。
+原先空闲文本硬编码在 `MainWindow.cpp`，所有一次性提示 3 s 后又被重置回同一句
+`transport: mock · radio: IC-705 sim`——**即使真的连上 UDP 也这么写**。
+现在两处都改成由链路偏好派生
+（[MainWindow.cpp:647](../apps/desktop/app/MainWindow.cpp#L647) 建标签、
+[MainWindow.cpp:177-180](../apps/desktop/app/MainWindow.cpp#L177-L180) 恢复空闲文本，
+内容来自 [launch_config.cpp:153](../apps/desktop/app/launch_config.cpp#L153)），
+UDP 链路下会长成 `transport: udp · <电台 IP>`。
+
+但这条字仍然只说明**程序以为自己在跑哪条链路**（偏好折回真话之后的取值），
+不证明电台真的应答。凡是要判「链路通没通」的条目，照旧用行为：
+频率是否随电台变、50003 音频是否进来、PTT 相位是否被电台推着走。
 
 ---
 
@@ -119,12 +140,15 @@ A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
   "$ADB" shell am start -n org.radiosuite.app/org.qtproject.qt.android.bindings.QtActivity \
     --es applicationArguments "--radio 192.168.0.31 --user linnan --pass <现场填>"
   ```
-  判定（**不看状态栏**，见 K3）：
-  - 通：S 表/频率随电台实际变化出现非零变化，或 FT8 面板音源切到「电台链路」后
-    能出解码行（50003 下行只有真机链路才有）；
+  判定：
+  - 参数**进没进到 `QApplication::arguments`** 这一层现在可以直接看状态栏
+    （K3 已修：命令行 > 偏好 > mock，走命令行时文本会长成 `transport: udp · <IP>`）；
+  - 链路**通没通**照旧不看状态栏，看行为：S 表/频率随电台实际变化出现非零变化，
+    或 FT8 面板音源切到「电台链路」后能出解码行（50003 下行只有真机链路才有）；
   - 不通：始终与 mock 行为一致（mock 会把频率自己漂、PTT 自己走完）。
-  记不下结论就在清单备注里写「applicationArguments 未生效」，然后走 §7 前置的代码修，
-  别在 adb 参数上继续耗。
+  状态栏写了 mock 而参数里明明有 `--radio <IP>`，说明被降级判定折回了（IP 空 / 本构建缺
+  Qt6::Network），先查 `linkPrefsFromCli` 那条链，别在 adb 参数上继续耗。
+  这条路只是**调试通道**：日常用 G-0 的应用内设置，不依赖 adb。
 
 - [ ] **A8 A7 不通时的退路：打包期钉参数**
   在 `apps/desktop/app/CMakeLists.txt` 的 target 上临时加：
@@ -232,15 +256,20 @@ A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
 ## 4. Gate D — 持久化（Android 上是重灾区）
 
 - [ ] **D1 QSettings 到底存不存**
-  代码事实：全应用用**默认构造** `QSettings st;`，org/app 都设成了 `radio-suite`
-  （[apps/desktop/app/main.cpp:23-25](../apps/desktop/app/main.cpp#L23-L25)），共 10 处：
-  [MainWindow.cpp:119/440/467/475/1161/1173/1213](../apps/desktop/app/MainWindow.cpp#L119)、
+  代码事实：全应用另有 **10 处**用**默认构造** `QSettings st;`，org/app 都设成了 `radio-suite`
+  （[apps/desktop/app/main.cpp:19-21](../apps/desktop/app/main.cpp#L19-L21)）：
+  [MainWindow.cpp:119/446/473/481/1167/1179/1219](../apps/desktop/app/MainWindow.cpp#L119)、
   [wsjtx_panel.cpp:233/441/479](../apps/desktop/app/wsjtx_panel.cpp#L233)。
   默认格式 = `NativeFormat`，Android 没有原生注册表/plist 后端。
+  **链路偏好这一处已经改掉了**（[launch_config.cpp:23-31](../apps/desktop/app/launch_config.cpp#L23-L31)：
+  Android 上显式 `QSettings(IniFormat, UserScope, "radio-suite", "radio-suite")`），
+  上面这 10 处**还是默认构造**——本条测的是它们。
   操作：设音频设备 + 把 FT8 音源切成麦克风 → `"$ADB" shell am force-stop org.radiosuite.app`
   → 重启 → 回看两处设置。
-  判定：**重启后仍在** = 通过；回到默认值 = 缺陷（修法方向：显式
-  `QSettings(QSettings::IniFormat, QSettings::UserScope, ...)` 或落在 `QStandardPaths::AppDataLocation`）。
+  判定：**重启后仍在** = 通过；回到默认值 = 缺陷（修法照 launch_config 那一处，
+  把这 10 处的 `QSettings st;` 换成同一个显式后端，别再各写一遍）。
+  顺手对照：同一次重启里**链路设置应当保住**（它已经走显式 ini），
+  如果链路也没保住，说明连显式 IniFormat 在这台设备上都没落盘，属更高一级缺陷。
   辅助命令（只有 debuggable 包能用 `run-as`）：
   ```bash
   "$ADB" exec-out run-as org.radiosuite.app sh -c 'ls -l files/ 2>/dev/null; find . -name "*.conf" -o -name "*.ini" 2>/dev/null'
@@ -330,14 +359,22 @@ A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
 
 ---
 
-## 7. Gate G — 真机链路（当前被 K1 阻塞）
+## 7. Gate G — 真机链路
 
-**前置（三选一，先做再跑本节）：**
-1. 在 `main.cpp` 之外增加应用内构造入口：把 `ConnectDialog` 从「渲染一行命令文本」
-   改成真返回 host/user/pass 并让 `MainWindow` 换 transport；
-2. 从 `QSettings`（或启动意图参数）读链路配置，启动时决定 transport；
-3. 打包期用 `QT_ANDROID_APPLICATION_ARGUMENTS` 把 `--radio <IP>` 等钉进 manifest（= A8，
-   演示包可用；口令不进仓库，长期不够）。
+前置三选一里**第 2 条已落地**（`fix/android-link-prefs`：`QSettings` 偏好 + 启动时决定
+transport，见 K1）。第 1 条也顺带做了（对话框真返回表单内容，只是不热切换——存了要重启）。
+第 3 条（A8 打包期钉参数）没做，仍可作为演示包的第二通道。
+所以下面六条**不再因 K1 阻塞**，只等手机接上。
+
+- [ ] **G-0 应用内配置链路**（本节入口，手机上先做这条）
+  操作：主窗右上「连接…」→ 链路选「C++ 原生 UDP」→ 填电台 IP / 用户名 / 密码 → 保存
+  → `"$ADB" shell am force-stop org.radiosuite.app` → 重新 `am start`。
+  判定：状态栏空闲文本变成 `transport: udp · <你填的 IP>`（见 K3，这只证明程序按偏好
+  建了 UDP 链路，通没通看 G-1 起的行为条目）；
+  下拉框在手机上**只有两档**（没有 Python 桥那档，`bridgeAvailable()` 决定）；
+  口令框不回显但重开对话框仍在（D1 里链路这一项已走显式 ini）。
+  填错 IP 保存后重启应表现为**连不上/超时**，不是悄悄跑 mock——若状态栏又写回 mock，
+  说明 IP 被折回空（launch_config 的降级判定），属真缺陷。
 
 - [ ] **G-1** 行为判据：mock 的频率会自漂、PTT 自己走完时序；真机链路不会自漂。
 - [ ] **G-2** 读回频率与电台面板一致（差 0 Hz）。
@@ -345,8 +382,13 @@ A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
 - [ ] **G-4** 50003 下行音频进频谱/瀑布，FT8 音源选「电台链路」能出解码行。
 - [ ] **G-5** PTT 一键发射在真电台上出声，且应用状态回 RX。
 - [ ] **G-6** 断链（拔网线/电台关机）后 UI 如实显示失联，不谎报在线。
+  已知会误判的地方（桌面实测，2026-10-31）：频率会落到 `0.000000 MHz`、S 表 `-999 dBm`
+  （如实）；但**瀑布/频谱照旧画三个合成峰**——`MainWindow.cpp:1242-1250` 只在网络音频
+  active 时才切真实 PCM，与链路类型无关。看这条时**别拿瀑布当在线判据**，
+  也别把假峰记成「链路正常」。
 
-以上六条在「前置」那三选一落地之前**一律标 BLOCKED**，不要靠 mock 行为打勾——那会写出假报告。
+以上七条（G-0…G-6）**一条都不许靠 mock 行为打勾**——那会写出假报告。G-0 过不了就说明
+偏好在安卓上没落地，回头查 D1 的 `run-as` 那条命令，别往下猜。
 
 ---
 

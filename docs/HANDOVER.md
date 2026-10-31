@@ -138,14 +138,37 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     其次为 Dire Wolf 思路（DCD 监听 / 早迟门比特同步）与 liquid-dsp（MIT，真机
     灵敏度不足时再引）。优先级与工作量见该文档 §3。
 11. **安卓真机验收**（2026-10-31 清单已就绪，**一条都没跑过**——本机无设备）：
-    `docs/android-真机验收清单.md`。其中 **K1 是阻塞级缺口**：APK 目前只能跑 mock——
-    传输层只在 `apps/desktop/app/main.cpp` 里按 `--radio` 命令行开关构造，兜底恒为
-    `MockTransport`，而「连接设置」对话框只把命令行**渲染成一行文本**、自己不建传输；
-    Android 没有命令行输入口 ⇒ 与既定方向「APK 直连电台优先」正面冲突。三条修法见
-    该文档 §7 前置，修好之前第 7 节全部条目按 BLOCKED 处理，**不许拿 mock 行为打勾**。
-    另有 **K3**：状态栏空闲文本硬编码 `transport: mock · radio: IC-705 sim`
-    （`MainWindow.cpp` 初始值 + 一次性提示 3 s 后的复位回调），真连上 UDP 也这么写，
-    所以它不能当链路判据；判链路一律看行为（频率是否随电台变、50003 是否进音频）。
+    `docs/android-真机验收清单.md`。清单里写「代码事实」的部分只做过 PC 静态核对
+    （源码行号、aapt 出包信息、jar 字节码），不构成任何真机结论。
+    - **K1（APK 只能跑 mock）代码侧已修**（`fix/android-link-prefs`）：新增
+      `apps/desktop/app/launch_config.{h,cpp}`，链路优先级 **命令行 > 持久化偏好 > mock**
+      在 `main.cpp` 一处算完，GUI 与 `--headless` 共用同一个 transport 工厂；
+      Android 上偏好显式走 `QSettings::IniFormat`（默认构造的 NativeFormat 在安卓没有后端）；
+      「连接…」对话框从「只渲染一行命令文本」改成真表单：回填偏好、「保存」写偏好、
+      重启生效（**不做会话热切换**）。离屏用例 8 例（`tests/test_launch_config.cpp`）。
+      仍未验的是：手机上点保存 → 重启 → 真连上电台（清单 G-0 起）。
+    - **K3（状态栏谎报）代码侧已修**：空闲文本改由 `LinkPrefs` 派生，UDP 链路下是
+      `transport: udp · <IP>`；但它只反映「程序以为在跑哪条链路」，**链路通不通仍看行为**
+      （频率是否随电台变、50003 是否进音频）。
+    - **桌面实窗已验（2026-10-31，非真机、非手机）**：`--mock` 起来后状态栏
+      `transport: mock · radio: IC-705 sim`；「连接…」对话框（链路下拉/电台 IP/用户名/
+      密码/Python 档 + 实时预览「下次启动 → …」+ 保存/关闭）渲染正常，点「保存」后
+      主窗闪现 `链路设置已保存（mock），重启 radio-suite 生效`，注册表
+      `HKCU\Software\radio-suite\radio-suite\link` 落下 `mode/host/user/pass/python`
+      五个值（写侧通）；再把 `link/mode` 手改成 1、`host` 改成 192.0.2.55（TEST-NET，
+      不可达）**不带任何命令行参数**重启 → 状态栏 `transport: udp · 192.0.2.55`、
+      频率读到 0.000000 MHz、S 表 -999 dBm（读侧通，且连不上时不谎报在线）。
+      这条正是 Android 路线的桌面等价验证，**不等于手机上通**（手机上还差
+      IniFormat 落盘与 `am` 启动两处）。测完已删掉自己建的 `link` 键，其余设置未动。
+    - **顺手挖到的同类缺陷（未修，记此）**：合成谱与链路无关
+      （`MainWindow.cpp:1242-1250`，只有网络音频 active 且有下行才切真实 PCM），
+      所以 UDP 链路没连上时瀑布照画三个假峰——和 K3 同一类「界面说的不是真话」。
+      要修得先定口径：按链路类型关掉合成谱，还是给瀑布挂「合成」角标。
+    - **K2**：未签名 release 包也能用 `am start --es applicationArguments "…"` 注入参数
+      （`QtActivityLoader.extractContextMetaData()` 在 debuggable 闸**之前**读该 extra）；
+      `extraappparams` 那条才要 `android:debuggable="true"`。打包期退路是 target 属性
+      `QT_ANDROID_APPLICATION_ARGUMENTS`。两条都只是调试通道，日常用 G-0 的应用内设置。
+    - 判链路/判音源的条目**不许拿 mock 行为打勾**，那会写出假报告。
 
 ## 6. 构建与验证（本机环境）
 

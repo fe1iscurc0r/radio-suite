@@ -6,16 +6,12 @@
 #include <memory>
 
 #include "app/MainWindow.h"
+#include "app/launch_config.h"
 #include "app/session.h"
 #include "ui_common/font_proxy_settings.h"
-#include "core/transport_mock.h"
 #ifdef RADIO_SUITE_HAVE_BUS
 #include "bus/bus_server.h"
 #include "bus/rigctld_server.h"
-#endif
-#ifdef RADIO_SUITE_HAVE_UDP
-#include "core/transport_pybridge.h"
-#include "core/transport_udp.h"
 #endif
 
 int main(int argc, char* argv[]) {
@@ -50,22 +46,22 @@ int main(int argc, char* argv[]) {
   cli.addHelpOption();
   cli.process(app);
 
+  // 链路选择：命令行 > 持久化偏好（Android 没命令行，只能走这条）> mock
+  const radio::app::LinkPrefs cli_prefs = radio::app::linkPrefsFromCli(
+      cli.isSet(mock_opt), cli.isSet(radio_opt), cli.isSet(radio_py_opt),
+      cli.value(radio_opt).toStdString(), cli.value(user_opt).toStdString(),
+      cli.value(pass_opt).toStdString(),
+      cli.isSet(python_opt) ? cli.value(python_opt).toStdString() : std::string{});
+  const radio::app::LinkPrefs prefs =
+      radio::app::resolveLink(cli_prefs, radio::app::loadLinkPrefs());
+
   if (cli.isSet(headless_opt) || cli.isSet(bus_opt)) {
     // ---- headless 总线模式（scratchpad/lumo 集成，M5 第一片）----
 #ifdef RADIO_SUITE_HAVE_BUS
     uint16_t port = static_cast<uint16_t>(cli.value(bus_opt).toInt());
     if (port == 0) port = 8765;
     std::shared_ptr<radio::core::ICivTransport> transport =
-        std::make_shared<radio::core::MockTransport>();
-#ifdef RADIO_SUITE_HAVE_UDP
-    if (cli.isSet(radio_opt)) {
-      radio::core::Rsba1UdpTransport::Config cfg;
-      cfg.host = cli.value(radio_opt).toStdString();
-      cfg.username = cli.value(user_opt).toStdString();
-      cfg.password = cli.value(pass_opt).toStdString();
-      transport = std::make_shared<radio::core::Rsba1UdpTransport>(std::move(cfg));
-    }
-#endif
+        radio::app::makeTransport(prefs);
     radio::app::RadioSession session(transport);
     session.start();
     radio::bus::BusServer bus(session);
@@ -91,33 +87,15 @@ int main(int argc, char* argv[]) {
 #endif
   }
 
-  std::shared_ptr<radio::core::ICivTransport> transport;
-#ifdef RADIO_SUITE_HAVE_UDP
-  if (cli.isSet(radio_opt)) {
-    const bool use_bridge = cli.isSet("radio-py");
-    if (use_bridge) {
-      // rsba1-core（Python，MIT，真机验证 2026-08-18）桥：tools/rsba1_bridge.py
-      radio::core::PyBridgeTransport::Config cfg;
-      cfg.host = cli.value(radio_opt).toStdString();
-      cfg.username = cli.value(user_opt).toStdString();
-      cfg.password = cli.value(pass_opt).toStdString();
-      if (cli.isSet(python_opt))
-        cfg.python_exe = cli.value(python_opt).toStdString();
-      transport = std::make_shared<radio::core::PyBridgeTransport>(std::move(cfg));
-      qInfo() << "真机链路：rsba1-core Python 桥（后手兜底）";
-    } else {
-      radio::core::Rsba1UdpTransport::Config cfg;
-      cfg.host = cli.value(radio_opt).toStdString();
-      cfg.username = cli.value(user_opt).toStdString();
-      cfg.password = cli.value(pass_opt).toStdString();
-      transport = std::make_shared<radio::core::Rsba1UdpTransport>(std::move(cfg));
-      qInfo() << "真机链路：C++ 原生 UDP";
-    }
-  }
-#endif
-  if (!transport) transport = std::make_shared<radio::core::MockTransport>();
+  std::shared_ptr<radio::core::ICivTransport> transport =
+      radio::app::makeTransport(prefs);
+  const char* origin =
+      cli_prefs.explicit_cli              ? "命令行"
+      : prefs.link == radio::app::Link::Mock ? "默认"
+                                             : "持久化偏好";
+  qInfo() << "链路：" << radio::app::linkName(prefs.link) << "（来源：" << origin << "）";
 
-  MainWindow win(transport);
+  MainWindow win(transport, prefs);
   win.resize(1280, 720);
   win.show();
   return app.exec();
