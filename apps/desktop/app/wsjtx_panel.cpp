@@ -13,7 +13,6 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QSettings>
 #include <QShowEvent>
 #include <QSpinBox>
 #include <QTabWidget>
@@ -22,6 +21,7 @@
 
 #include "app/decode_target.h"
 #include "app/wsjtx_client.h"
+#include "ui_common/app_settings.h"
 
 namespace radio::app {
 namespace {
@@ -230,7 +230,7 @@ void WsjtxPanel::showEvent(QShowEvent* event) {
   QWidget::showEvent(event);
   if (auto_started_ || client_->isListening()) return;
   auto_started_ = true;
-  QSettings st;
+  auto st = radio::ui::appSettings();
   const QString group =
       st.value("wsjtx/group", QString::fromLatin1(radio::wsjtx::kDefaultGroup))
           .toString();
@@ -438,7 +438,7 @@ void WsjtxPanel::onSetLocation() {
     flash("Location 发送失败：未监听", true);
     return;
   }
-  QSettings st;
+  auto st = radio::ui::appSettings();
   st.setValue("wsjtx/my_grid", grid);
   flash(QString("已把操作位置设为 %1").arg(grid));
 }
@@ -476,7 +476,7 @@ void WsjtxPanel::onSettings() {
     flash("地址不能为空", true);
     return;
   }
-  QSettings st;
+  auto st = radio::ui::appSettings();
   st.setValue("wsjtx/group", new_group);
   st.setValue("wsjtx/port", new_port);
   client_->setClientId(new_id);

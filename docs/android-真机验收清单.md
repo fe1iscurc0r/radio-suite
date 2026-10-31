@@ -5,7 +5,8 @@
 **代码基线:** 本清单里的 FT8 条目（B4–B6 / F1–F4）依赖 `feat/ft8-mic-source`（PR #17，栈在
 PR #16 之上）——`main`（`5a08fa4`）上还没有 FT8 面板（`apps/desktop/app/` 无 `ft8_panel.*`）
 也没有 `tools/ft8play`，用 main 出的包跑这些条目会找不到入口。K1/K3 的代码修和 G-0 那条
-在 `fix/android-link-prefs`（PR #17 之上再叠一层）。上面那个 APK 是
+在 `fix/android-link-prefs`（PR #17 之上再叠一层），D1 的统一设置后端再叠它一层
+（`fix/android-settings-persistence`）。上面那个 APK 是
 2026-10-30 21:27 用本分支代码打的，**不含**这些改动——跑 G-0 前要先重新出包。
 **本清单的状态:** ⚠️ **下面每一条都还没在任何真机上跑过**——本机 `adb devices` 列表为空，手上没有可连的手机。条目里写「代码事实」「现状」的部分，只记录我在 PC 上**静态核对**到的东西（源码行号、aapt 出包信息、jar 字节码），不代表真机行为。真机跑通之前，本清单不构成任何验收结论。
 
@@ -23,18 +24,19 @@ Android 上没有命令行输入口 ⇒ 装完 APK 点遍全应用也到不了�
 
 - 优先级 **命令行 > 持久化偏好 > mock**，在
   [main.cpp:50-56](../apps/desktop/app/main.cpp#L50-L56) 一处算完；
-- 偏好读写在 [launch_config.cpp:23-31](../apps/desktop/app/launch_config.cpp#L23-L31)：
+- 偏好读写在 [launch_config.cpp:69-95](../apps/desktop/app/launch_config.cpp#L69-L95)，
+  存储后端在 [ui_common/app_settings.h:14-22](../apps/desktop/ui_common/app_settings.h#L14-L22)：
   Android 上显式走 `QSettings::IniFormat`（默认构造的 NativeFormat 在安卓没有后端，
   见 D1），键为 `link/mode|host|user|pass|python`；
 - 对话框的「保存」真的落到那套偏好里
   （[connect_dialog.cpp:141](../apps/desktop/app/connect_dialog.cpp#L141) →
   [MainWindow.cpp:290-300](../apps/desktop/app/MainWindow.cpp#L290-L300)），重启生效；
 - 建不出来的链路（本构建缺 Qt6::Network / 电台 IP 为空 / 平台上没有 Python 桥）
-  在 [launch_config.cpp:33-43](../apps/desktop/app/launch_config.cpp#L33-L43) 折回真话，
+  在 [launch_config.cpp:25-33](../apps/desktop/app/launch_config.cpp#L25-L33) 折回真话，
   不让状态栏与实际链路各说各的。
 
 离屏用例覆盖到优先级、空 IP 降级、ini 往返、对话框回填/保存
-（[tests/test_launch_config.cpp](../tests/test_launch_config.cpp)，8 例）；
+（[tests/test_launch_config.cpp](../tests/test_launch_config.cpp)，9 例）；
 Android 交叉编译侧只验证了**编得过、链得上**（`build-android/.../libradio-suite_arm64-v8a.so`）。
 **「手机上点保存 → 重启 → 真连上电台」这一条仍然要靠 A7/A8/G 节实测**，A5 之后照 G 节走。
 
@@ -73,7 +75,7 @@ A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
 现在两处都改成由链路偏好派生
 （[MainWindow.cpp:647](../apps/desktop/app/MainWindow.cpp#L647) 建标签、
 [MainWindow.cpp:177-180](../apps/desktop/app/MainWindow.cpp#L177-L180) 恢复空闲文本，
-内容来自 [launch_config.cpp:153](../apps/desktop/app/launch_config.cpp#L153)），
+内容来自 [launch_config.cpp:144](../apps/desktop/app/launch_config.cpp#L144)），
 UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 但这条字仍然只说明**程序以为自己在跑哪条链路**（偏好折回真话之后的取值），
@@ -256,25 +258,40 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 ## 4. Gate D — 持久化（Android 上是重灾区）
 
 - [ ] **D1 QSettings 到底存不存**
-  代码事实：全应用另有 **10 处**用**默认构造** `QSettings st;`，org/app 都设成了 `radio-suite`
-  （[apps/desktop/app/main.cpp:19-21](../apps/desktop/app/main.cpp#L19-L21)）：
+  代码事实（改动前）：全应用有 **16 处**各写各的 QSettings——10 处**默认构造**
+  `QSettings st;`（org/app 靠 [main.cpp:19-21](../apps/desktop/app/main.cpp#L19-L21) 设成
+  `radio-suite`）：
   [MainWindow.cpp:119/446/473/481/1167/1179/1219](../apps/desktop/app/MainWindow.cpp#L119)、
-  [wsjtx_panel.cpp:233/441/479](../apps/desktop/app/wsjtx_panel.cpp#L233)。
-  默认格式 = `NativeFormat`，Android 没有原生注册表/plist 后端。
-  **链路偏好这一处已经改掉了**（[launch_config.cpp:23-31](../apps/desktop/app/launch_config.cpp#L23-L31)：
-  Android 上显式 `QSettings(IniFormat, UserScope, "radio-suite", "radio-suite")`），
-  上面这 10 处**还是默认构造**——本条测的是它们。
-  操作：设音频设备 + 把 FT8 音源切成麦克风 → `"$ADB" shell am force-stop org.radiosuite.app`
-  → 重启 → 回看两处设置。
-  判定：**重启后仍在** = 通过；回到默认值 = 缺陷（修法照 launch_config 那一处，
-  把这 10 处的 `QSettings st;` 换成同一个显式后端，别再各写一遍）。
-  顺手对照：同一次重启里**链路设置应当保住**（它已经走显式 ini），
+  [wsjtx_panel.cpp:233/441/479](../apps/desktop/app/wsjtx_panel.cpp#L233)；
+  另有 6 处 `QSettings st(kOrg, "radio-suite")`
+  （[font_proxy_settings.cpp:47/56/65/91/105/119](../apps/desktop/ui_common/font_proxy_settings.cpp#L47)）——
+  显式给了名字，但格式仍是 `NativeFormat`，Android 没有原生注册表/plist 后端。
+  **代码侧已统一**（`fix/android-settings-persistence`）：这 16 处加上链路偏好那两处，
+  现在都走 [ui_common/app_settings.h](../apps/desktop/ui_common/app_settings.h) 里唯一的
+  `radio::ui::appSettings()`——Android 显式 `IniFormat/UserScope`，桌面仍是
+  `HKCU\Software\radio-suite\radio-suite`（与旧路径同址，老设置不挪窝）。
+  **本条要验的是这个统一在手机上真落盘，不是代码逻辑通不通。**
+  操作：设音频设备 + 把 FT8 音源切成麦克风 + 改一次字号 →
+  `"$ADB" shell am force-stop org.radiosuite.app` → 重启 → 回看这三处。
+  判定：**三处重启后仍在** = 通过；任一处回到默认值 = 那个站点还没并进来
+  （先 `grep -n "QSettings st" apps/` 看有没有人又直接构造）。
+  顺手对照：同一次重启里**链路设置应当保住**（它从 PR #18 起就走显式 ini），
   如果链路也没保住，说明连显式 IniFormat 在这台设备上都没落盘，属更高一级缺陷。
   辅助命令（只有 debuggable 包能用 `run-as`）：
   ```bash
   "$ADB" exec-out run-as org.radiosuite.app sh -c 'ls -l files/ 2>/dev/null; find . -name "*.conf" -o -name "*.ini" 2>/dev/null'
   "$ADB" logcat -d | grep -i "qsettings"
   ```
+  桌面等价验证（2026-10-31，非手机）：往 `HKCU\Software\radio-suite\radio-suite\font`
+  写 `family=Consolas` / `size=16` → 不带任何参数起 radio-suite → 全界面字体变成
+  Consolas 16（截图对照过），删键复原。这证明**改过的 `applySaved()` 仍从同一存储读到值**；
+  它不证明 Android 的 ini 落盘，D1 照跑不误。
+  顺带挖到的坑（**不是**本次改动引入，桌面实测）：手工 `reg add` 写出的
+  `wsjtx/group`（值名带斜杠、平铺在 app 键下）**应用读不到**——QSettings 把
+  `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，得落在子键 `wsjtx` 下才算。
+  本机就留着这么一对平铺值（`wsjtx/group=127.0.0.1`、`wsjtx/port=2237`），
+  所以 WSJT-X 面板照旧按默认组播 224.0.0.1 去 join 并报「加入组播失败」。
+  要改监听地址请走面板里的「设置」，别用 `reg add`。
 
 - [ ] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级**
   代码事实：[apps/desktop/logbook/logbook.cpp:21-25](../apps/desktop/logbook/logbook.cpp#L21-L25) 读 `APPDATA`，

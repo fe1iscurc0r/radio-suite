@@ -145,7 +145,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       在 `main.cpp` 一处算完，GUI 与 `--headless` 共用同一个 transport 工厂；
       Android 上偏好显式走 `QSettings::IniFormat`（默认构造的 NativeFormat 在安卓没有后端）；
       「连接…」对话框从「只渲染一行命令文本」改成真表单：回填偏好、「保存」写偏好、
-      重启生效（**不做会话热切换**）。离屏用例 8 例（`tests/test_launch_config.cpp`）。
+      重启生效（**不做会话热切换**）。离屏用例 9 例（`tests/test_launch_config.cpp`）。
       仍未验的是：手机上点保存 → 重启 → 真连上电台（清单 G-0 起）。
     - **K3（状态栏谎报）代码侧已修**：空闲文本改由 `LinkPrefs` 派生，UDP 链路下是
       `transport: udp · <IP>`；但它只反映「程序以为在跑哪条链路」，**链路通不通仍看行为**
@@ -168,6 +168,20 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       （`QtActivityLoader.extractContextMetaData()` 在 debuggable 闸**之前**读该 extra）；
       `extraappparams` 那条才要 `android:debuggable="true"`。打包期退路是 target 属性
       `QT_ANDROID_APPLICATION_ARGUMENTS`。两条都只是调试通道，日常用 G-0 的应用内设置。
+    - **D1（其余持久化在安卓必丢）代码侧已统一**（`fix/android-settings-persistence`）：
+      新增 `apps/desktop/ui_common/app_settings.h`，全站唯一的
+      `radio::ui::appSettings()`——Android 显式 `IniFormat/UserScope`，桌面仍是
+      `HKCU\Software\radio-suite\radio-suite`（与旧默认构造同址，老设置不挪窝）。
+      并进来的 16 处：MainWindow 7 + wsjtx_panel 3 + font_proxy_settings 6，
+      加上链路偏好那两处；`launch_config` 自己的 `openSettings()` 已删，不再各写一遍。
+      桌面等价验证（2026-10-31，非手机）：写 `font/family=Consolas` + `font/size=16` →
+      **不带任何参数**重启 → 全界面字体变 Consolas 16（截图对照过基线）→ 删键复原；
+      用例 `app_settings_names_its_own_store` 锁住「后端自己点名，不靠宿主调过
+      setOrganizationName」（logbook 就没调）。**手机上这条照旧没验**（清单 D1）。
+    - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
+      ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
+      `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
+      224.0.0.1 去 join 并报「加入组播失败」。改监听地址要走面板里的「设置」，别用 `reg add`。
     - 判链路/判音源的条目**不许拿 mock 行为打勾**，那会写出假报告。
 
 ## 6. 构建与验证（本机环境）
@@ -175,7 +189,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 ```bash
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "build\msvc_build.bat radio-suite radio_tests radio_ft8_ui_tests"   # 仓内脚本，自己 call vcvars64
-QT_QPA_PLATFORM=offscreen cmd //c "build\run_ctest.bat"                     # 172/172
+QT_QPA_PLATFORM=offscreen cmd //c "build\run_ctest.bat"                     # 181/181（本栈分支；main 上少一截，栈里几条 PR 都没合）
 cmd //c "build\msvc_build.bat"                       # 至少要带一个 target，无参不给全量
 # 单测 exe 直跑要 Qt bin 在 PATH：PATH="/d/Qt/6.8.3/msvc2022_64/bin:$PATH" \
 #   QT_QPA_PLATFORM=offscreen ./build/tests/radio_ft8_ui_tests.exe "[ft8][ui]" -s
@@ -190,14 +204,15 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 172 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 这 181 个用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，DSP 单音/泄漏/Welch 平均与
   S 表 IARU 映射，RS-BA1 本机环回（假电台三信道 + 100 ms 音频重排窗，见
   `docs/research/rsba1-audio-upstream-2026-10-30.md`），FT8 槽解码器（UTC 对齐 /
   48k→12k 抽取 / 合成信号端到端）与 FT8 发射（排期算术 / 整槽渲染 / 渲染→解码闭环），以及
   `radio_ui_tests`（offscreen QPA，真点 CW/Set Mode/Memory/中继·亚音对话框按钮
-  并断言 mock 与状态回读）与 `radio_ft8_ui_tests`（面板注入行 → 激活目标、
+  并断言 mock 与状态回读；另含链路偏好优先级、空 IP 折回 mock、偏好 ini 往返、
+  「连接…」对话框回填/保存、设置后端命名）与 `radio_ft8_ui_tests`（面板注入行 → 激活目标、
   PCM → 解码 → 表格端到端、发射排期→到点出口→取消/拒绝四条路径；`BUILD_GUI=OFF`
   的 Linux CI 自动不建这些 target）。
   SSTV/Voice Memory 已统一走 `beginScriptedTx/endScriptedTx`；旧“双击收尾”经

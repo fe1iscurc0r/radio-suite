@@ -6,6 +6,7 @@
 
 #include "core/transport.h"
 #include "core/transport_mock.h"
+#include "ui_common/app_settings.h"
 #ifdef RADIO_SUITE_HAVE_UDP
 #include "core/transport_pybridge.h"
 #include "core/transport_udp.h"
@@ -19,16 +20,6 @@ constexpr const char* kHost = "link/host";
 constexpr const char* kUser = "link/user";
 constexpr const char* kPass = "link/pass";
 constexpr const char* kPython = "link/python";
-
-QSettings openSettings() {
-#ifdef Q_OS_ANDROID
-  // 默认构造走 NativeFormat，Android 上没有对应后端；不显式指定就是「存了没存」
-  return QSettings(QSettings::IniFormat, QSettings::UserScope,
-                   QStringLiteral("radio-suite"), QStringLiteral("radio-suite"));
-#else
-  return QSettings();
-#endif
-}
 
 // 把「想要的链路」折成「实际会建出来的链路」；见 resolveLink 的注释
 LinkPrefs sanitize(LinkPrefs p) {
@@ -95,12 +86,12 @@ void saveLinkPrefs(QSettings& st, const LinkPrefs& p) {
 }
 
 LinkPrefs loadLinkPrefs() {
-  QSettings st = openSettings();
+  QSettings st = radio::ui::appSettings();
   return loadLinkPrefs(st);
 }
 
 void saveLinkPrefs(const LinkPrefs& p) {
-  QSettings st = openSettings();
+  QSettings st = radio::ui::appSettings();
   saveLinkPrefs(st, p);
 }
 
