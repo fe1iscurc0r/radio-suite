@@ -15,6 +15,7 @@
 #include <span>
 
 #include "app/session.h"
+#include "app/touch_dialog.h"
 
 namespace radio::app {
 namespace {
@@ -107,6 +108,7 @@ SetModeDialog::SetModeDialog(RadioSession* session, QWidget* parent)
   connect(session_, &RadioSession::stateChanged, this, &SetModeDialog::syncFromState);
 
   onPresetChanged(0);
+  radio::app::touch::fitDialog(this);
 }
 
 void SetModeDialog::onPresetChanged(int index) {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/voice_memory.h"
 
+#include "app/touch_dialog.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -97,6 +99,7 @@ VoiceMemoryDialog::VoiceMemoryDialog(radio::app::RadioSession* session,
   audio_in_ = std::make_unique<radio::audio::AudioIn>();
   audio_out_ = std::make_unique<radio::audio::AudioOut>();
   refreshList();
+  radio::app::touch::fitDialog(this);
 }
 
 VoiceMemoryDialog::~VoiceMemoryDialog() {

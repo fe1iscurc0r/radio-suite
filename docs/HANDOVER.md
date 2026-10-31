@@ -234,6 +234,28 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       但真机 `hamlog_.available()` 恒假——`HamLogDb::defaultDbPath()` 指的文件不存在，
       `available()` 要求「库在且 log 表可读」。旧布局里这组控件静默隐藏，分页版第一稿
       才把它摆成一页死内容；现处置为**不可用就不建这一页**，另开条目待补建库逻辑。
+    - **手机对话框/面板「能滚、能关」已修（C10，`fix/android-touch-dialogs`）**：用户真机报
+      「音频设置没有退出键、cancel 无效，应用中继没有关闭键，频差/模拟亚音/DTCS 选不到，
+      估计无法滑动；连接关闭键失效，APRS/WSJT-X 无退出键，切 WSJT-X 页面有问题，
+      SSTV 依旧无法滑动；波段点击不显示亮度」。根因是 Android 没有窗口管理器：
+      `QDialog` 无标题栏、尺寸不受屏幕约束（中继 560 宽、SSTV 更高），376dp 高的内容区
+      把底部按钮整排推到屏外；面板连关闭键都没有，系统返回键 hide 顶层窗后主窗大按键
+      仍是 checked，再点一下只是关掉「看不见的已开窗」。
+      修法：新增 Android-only 的 `apps/desktop/app/touch_dialog.{h,cpp}`——
+      `fitDialog` 把根布局整体搬进 `QScrollArea`、底部钉常驻「关闭」（→ reject）、
+      按钮抬到 ≥44dp、窗口压进 `QScreen::availableGeometry()`；`addCloseBar` 给
+      APRS/WSJT-X/FT8 三个顶层面板插「标题 + 关闭 ✕」；`showInfo` 替代
+      `QMessageBox`（长文案会滚）。接线覆盖 12 个对话框（音频设置、中继/亚音、连接、
+      SSTV、DTMF、语音、CW、SET、MEM、APRS 消息、APRS RF、WSJT-X UDP）。
+      主窗侧：三个面板 `QEvent::Hide` → 复位对应大按键；三个面板大按键互斥并加
+      `:checked` 琥珀背光；波段/广播预置改 `checkable`，`syncBandHighlight()` 在
+      `refreshState()` 按 `[low, high)` 回读点亮。
+      **已验**：桌面 MSVC 构建、`ctest` 181/181、Android clang 交叉编译出新包并
+      `adb install -r` 到手机；桌面实窗（`--mock`）14.070 MHz 时 20m 亮琥珀。
+      **未验**：装包时手机已灭屏且带安全锁屏（截屏黑图、`wm dismiss-keyguard` 无效），
+      这一轮**没在手机上点过**——滚动手感、关闭条位置、返回键复位、三面板互斥待解锁后复验。
+      另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
+      这类 Qt 自带文件框不在范围内。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
@@ -393,6 +415,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
   （HamLog 不可用时不出日志页签）的真机截图还欠着，见 §5 第 11 条。
+  手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已装包但**没在手机上点过**，
+  同样待解锁复验。
 - 手机上跑：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
   adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
   不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置；**先看 §K4**，
@@ -416,7 +440,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   → #19 `fix/android-settings-persistence`（`5de74a2`，base #18 的 head）
   → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
   → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
-  → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）。
+  → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
+  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head）。
   ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
   `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19。回滚点：
   `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）。

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/connect_dialog.h"
 
+#include "app/touch_dialog.h"
+
 #include <QClipboard>
 #include <QComboBox>
 #include <QGuiApplication>
@@ -102,6 +104,7 @@ ConnectDialog::ConnectDialog(app::LinkPrefs prefs, QWidget* parent)
   connect(close, &QPushButton::clicked, this, &QDialog::reject);
   rowBtn->addWidget(close);
   root->addLayout(rowBtn);
+  radio::app::touch::fitDialog(this);
 }
 
 app::LinkPrefs ConnectDialog::collect() const {

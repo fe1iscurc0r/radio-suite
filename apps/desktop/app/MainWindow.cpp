@@ -11,15 +11,17 @@
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDialog>
+#include <QEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFont>
 #include <QFrame>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLineEdit>
-#include <QMessageBox>
 #include <QPushButton>
+#include <QScreen>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QStackedWidget>
@@ -33,6 +35,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 
 #include "app/aprs_panel.h"
 #include "app/audio_dialog.h"
@@ -43,6 +46,7 @@
 #include "app/meter_widgets.h"
 #include "app/network_audio.h"
 #include "app/sstv_dialog.h"
+#include "app/touch_dialog.h"
 #include "app/voice_memory.h"
 #include "app/wsjtx_panel.h"
 #include "aprs/aprs.h"
@@ -66,13 +70,19 @@ namespace {
 struct BandButton {
   const char* name;
   uint64_t center_hz;
+  uint64_t low_hz;   // 高亮判定区间 [low, high)
+  uint64_t high_hz;
 };
 
 // 常用频段快捷（中心频率取 CW/SSB 常用段）
 constexpr BandButton kBands[] = {
-    {"40m", 7'100'000},  {"20m", 14'100'000}, {"15m", 21'200'000},
-    {"10m", 28'500'000}, {"6m", 50'150'000},  {"2m", 145'500'000},
-    {"70cm", 433'000'000},
+    {"40m", 7'100'000, 7'000'000, 7'300'000},
+    {"20m", 14'100'000, 14'000'000, 14'350'000},
+    {"15m", 21'200'000, 21'000'000, 21'450'000},
+    {"10m", 28'500'000, 28'000'000, 29'700'000},
+    {"6m", 50'150'000, 50'000'000, 54'000'000},
+    {"2m", 145'500'000, 144'000'000, 148'000'000},
+    {"70cm", 433'000'000, 430'000'000, 440'000'000},
 };
 
 // 步进档（Hz）：互斥按钮组，默认 1 kHz
@@ -213,6 +223,20 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (w != this && w->isVisible()) w->hide();
   }
   QMainWindow::closeEvent(event);
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+  // 手机系统返回键 / 关闭 ✕ 都是直接 hide 顶层窗，按钮不跟着复位就会
+  // 出现「第一下点了没反应、第二下才关」的幻觉
+  if (event->type() == QEvent::Hide) {
+    if (watched == aprs_panel_ && aprs_big_btn_)
+      aprs_big_btn_->setChecked(false);
+    else if (watched == wsjtx_panel_ && wsjtx_big_btn_)
+      wsjtx_big_btn_->setChecked(false);
+    else if (watched == ft8_panel_ && ft8_big_btn_)
+      ft8_big_btn_->setChecked(false);
+  }
+  return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::buildUi() {
@@ -416,6 +440,23 @@ void MainWindow::createPanels() {
   ft8_panel_->setWindowTitle("FT8 本机解码 — radio-suite");
   ft8_panel_->resize(900, 560);
   ft8_panel_->hide();
+
+  // 手机没有系统窗口标题栏/关闭按钮：面板各插一条「标题 + 关闭 ✕」，
+  // 尺寸铺满可用屏幕；隐藏（关闭或系统返回键）时把大按键复位，
+  // 否则再点一下只是把"看不见的已开窗"关掉，表现为切不过去
+  const std::pair<QWidget*, const char*> kPanelTitles[] = {
+      {aprs_panel_, "APRS 工作台"},
+      {wsjtx_panel_, "WSJT-X 接入"},
+      {ft8_panel_, "FT8 本机解码"},
+  };
+  for (const auto& [panel, title] : kPanelTitles) {
+    radio::app::touch::addCloseBar(panel, title);
+#ifdef Q_OS_ANDROID
+    if (const QScreen* screen = QGuiApplication::primaryScreen())
+      panel->resize(screen->availableGeometry().size());
+#endif
+    panel->installEventFilter(this);
+  }
   connect(ft8_panel_, &radio::app::Ft8Panel::statusMessage, this,
           [this](const QString& m, bool err) { flashStatus(m, err); });
   connect(ft8_panel_, &radio::app::Ft8Panel::decodeActivated, this,
@@ -572,7 +613,10 @@ QPushButton* MainWindow::makeBigButton(QWidget* parent, const QString& text,
   f.setPointSize(12);
   f.setBold(true);
   b->setFont(f);
-  b->setStyleSheet(QString("QPushButton { background: %1; color: white; }")
+  b->setStyleSheet(QString("QPushButton { background: %1; color: white; }"
+                           "QPushButton:checked { background: #ffb300;"
+                           " color: #1a1a1a; font-weight: bold;"
+                           " border: 2px solid #ffd54f; }")
                        .arg(c.name()));
   return b;
 }
@@ -623,8 +667,14 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   });
 
   // 面板大按键切换显隐（独立顶层窗）
+  // 三个面板互斥：手机上一屏放不下两扇独立窗，开一个就收掉另外两个
+  const auto close_others = [this](QPushButton* keep) {
+    for (auto* b : {aprs_big_btn_, wsjtx_big_btn_, ft8_big_btn_})
+      if (b && b != keep && b->isChecked()) b->setChecked(false);
+  };
   aprs_big_btn_->setCheckable(true);
-  connect(aprs_big_btn_, &QPushButton::toggled, this, [this](bool on) {
+  connect(aprs_big_btn_, &QPushButton::toggled, this, [this, close_others](bool on) {
+    if (on) close_others(aprs_big_btn_);
     aprs_panel_->setVisible(on);
     if (on) {
       aprs_panel_->raise();
@@ -634,7 +684,8 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   });
 
   wsjtx_big_btn_->setCheckable(true);
-  connect(wsjtx_big_btn_, &QPushButton::toggled, this, [this](bool on) {
+  connect(wsjtx_big_btn_, &QPushButton::toggled, this, [this, close_others](bool on) {
+    if (on) close_others(wsjtx_big_btn_);
     wsjtx_panel_->setVisible(on);
     if (on) {
       wsjtx_panel_->raise();
@@ -644,7 +695,8 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   });
 
   ft8_big_btn_->setCheckable(true);
-  connect(ft8_big_btn_, &QPushButton::toggled, this, [this](bool on) {
+  connect(ft8_big_btn_, &QPushButton::toggled, this, [this, close_others](bool on) {
+    if (on) close_others(ft8_big_btn_);
     ft8_panel_->setVisible(on);
     if (on) {
       ft8_panel_->raise();
@@ -980,30 +1032,42 @@ QHBoxLayout* MainWindow::buildBandsRow(QWidget* parent) {
   for (const auto& b : kBands) {
     auto* btn = new QPushButton(b.name, parent);
     btn->setMinimumSize(54, 28);
+    btn->setCheckable(true);  // 高亮由 refreshState 按当前频率回读，不当互斥组用
     btn->setProperty("center_hz", static_cast<qulonglong>(b.center_hz));
     connect(btn, &QPushButton::clicked, this, &MainWindow::onBandClicked);
     bands->addWidget(btn);
+    band_btns_.push_back(btn);
+    band_low_.push_back(b.low_hz);
+    band_high_.push_back(b.high_hz);
   }
   bands->addStretch(1);
-  auto mk_preset = [&](const QString& text, const QString& tip, auto action) {
+  auto mk_preset = [&](const QString& text, const QString& tip, uint64_t low,
+                       uint64_t high, auto action) {
     auto* btn = new QPushButton(text, parent);
     btn->setToolTip(tip);
     btn->setMinimumSize(64, 28);
+    btn->setCheckable(true);
     connect(btn, &QPushButton::clicked, this, action);
     bands->addWidget(btn);
+    band_btns_.push_back(btn);
+    band_low_.push_back(low);
+    band_high_.push_back(high);
   };
-  mk_preset("AIR", "民航话音 118-137（AM，中点 127.5，可听不可发）", [this] {
-    session_.setMode(radio::core::civ::Mode::AM);
-    session_.tuneTo(127'500'000);
-  });
-  mk_preset("BC-FM", "调频广播 87.5-108（WFM，中点 97.75，可听不可发）", [this] {
-    session_.setMode(radio::core::civ::Mode::WFM);
-    session_.tuneTo(97'750'000);
-  });
-  mk_preset("BC-SW", "短波广播 31m（AM，9.5，可听不可发）", [this] {
-    session_.setMode(radio::core::civ::Mode::AM);
-    session_.tuneTo(9'500'000);
-  });
+  mk_preset("AIR", "民航话音 118-137（AM，中点 127.5，可听不可发）",
+            118'000'000, 137'000'000, [this] {
+              session_.setMode(radio::core::civ::Mode::AM);
+              session_.tuneTo(127'500'000);
+            });
+  mk_preset("BC-FM", "调频广播 87.5-108（WFM，中点 97.75，可听不可发）",
+            87'500'000, 108'000'000, [this] {
+              session_.setMode(radio::core::civ::Mode::WFM);
+              session_.tuneTo(97'750'000);
+            });
+  mk_preset("BC-SW", "短波广播 31m（AM，9.5，可听不可发）", 9'400'000,
+            9'900'000, [this] {
+              session_.setMode(radio::core::civ::Mode::AM);
+              session_.tuneTo(9'500'000);
+            });
   return bands;
 }
 
@@ -1056,7 +1120,7 @@ QHBoxLayout* MainWindow::buildVfoRow(QWidget* parent) {
   dual_info->setStyleSheet(
       "QPushButton { border-color: #546e7a; color: #90caf9; }");
   connect(dual_info, &QPushButton::clicked, this, [this] {
-    QMessageBox::information(
+    radio::app::touch::showInfo(
         this, "双守听 / Dual Watch",
         "IC-705 不支持双守听（Dual Watch）：\n"
         "· 出厂 IC-705.ini 的 DUAL / DUAL_KIND 均为 0；\n"
@@ -1306,6 +1370,7 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
 void MainWindow::refreshState() {
   const auto s = session_.store().snapshot();
   if (ft8_panel_) ft8_panel_->setDialHz(s.freq_hz);
+  syncBandHighlight(s.freq_hz);
   freq_label_->setText(formatFreq(s.freq_hz));
   mode_label_->setText(QString("%1/%2").arg(radio::core::civ::modeName(s.mode)).arg(s.filter));
   smeter_->setDbm(s.smeter_dbm);
@@ -1405,6 +1470,17 @@ void MainWindow::onBandClicked() {
   const auto hz = btn->property("center_hz").toULongLong();
   if (!session_.tuneTo(hz))
     flashStatus(QString("频段 %1 中心频率被拒绝").arg(btn->text()), true);
+  // 点击会把按钮自己切成 checked；以会话当前频率为准重算，别留假高亮
+  syncBandHighlight(session_.store().snapshot().freq_hz);
+}
+
+void MainWindow::syncBandHighlight(uint64_t hz) {
+  for (size_t i = 0; i < band_btns_.size(); ++i) {
+    const bool on = hz >= band_low_[i] && hz < band_high_[i];
+    if (band_btns_[i]->isChecked() == on) continue;
+    QSignalBlocker guard(band_btns_[i]);
+    band_btns_[i]->setChecked(on);
+  }
 }
 
 void MainWindow::onTuneStep(int direction) {

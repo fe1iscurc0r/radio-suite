@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/sstv_dialog.h"
 
+#include "app/touch_dialog.h"
+
 #include <QComboBox>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -86,6 +88,7 @@ SstvDialog::SstvDialog(radio::app::RadioSession* session, QWidget* parent)
   rx_view_->setMinimumHeight(160);
   rx_view_->setStyleSheet("background:#10141c;");
   root->addWidget(rx_view_, 1);
+  radio::app::touch::fitDialog(this);
 }
 
 SstvDialog::~SstvDialog() {

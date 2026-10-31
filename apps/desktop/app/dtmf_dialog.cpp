@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/dtmf_dialog.h"
 
+#include "app/touch_dialog.h"
+
 #include <QDir>
 #include <QFile>
 #include <QGridLayout>
@@ -47,6 +49,7 @@ DtmfDialog::DtmfDialog(QWidget* parent) : QDialog(parent) {
   info_ = new QLabel("回环自校验：16 键编解码单测全绿（core/dtmf）", this);
   info_->setStyleSheet("color:#9fe;");
   root->addWidget(info_);
+  radio::app::touch::fitDialog(this);
 }
 
 void DtmfDialog::onKey(char c) {

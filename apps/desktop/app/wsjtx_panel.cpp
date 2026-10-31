@@ -20,6 +20,7 @@
 #include <QVBoxLayout>
 
 #include "app/decode_target.h"
+#include "app/touch_dialog.h"
 #include "app/wsjtx_client.h"
 #include "ui_common/app_settings.h"
 
@@ -467,6 +468,7 @@ void WsjtxPanel::onSettings() {
   form->addRow(buttons);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  radio::app::touch::fitDialog(&dialog);
   if (dialog.exec() != QDialog::Accepted) return;
 
   const QString new_group = group->text().trimmed();

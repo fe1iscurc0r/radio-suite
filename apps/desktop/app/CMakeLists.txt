@@ -21,6 +21,7 @@ set(APP_SRC
   meter_widgets.cpp
   dial_widget.cpp
   connect_dialog.cpp
+  touch_dialog.cpp
   sstv_dialog.cpp
   dtmf_dialog.cpp
   voice_memory.cpp
