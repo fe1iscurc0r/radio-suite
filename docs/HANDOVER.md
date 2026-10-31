@@ -243,7 +243,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       仍是 checked，再点一下只是关掉「看不见的已开窗」。
       修法：新增 Android-only 的 `apps/desktop/app/touch_dialog.{h,cpp}`——
       `fitDialog` 把根布局整体搬进 `QScrollArea`、底部钉常驻「关闭」（→ reject）、
-      按钮抬到 ≥44dp、窗口压进 `QScreen::availableGeometry()`；`addCloseBar` 给
+      按钮抬到 ≥44dp、窗口压进 `QScreen::availableGeometry()`，并给滚动区挂
+      `QScroller` 左键拖动（QScrollArea 默认不认手指拖动），分页主窗的滚动页同样挂上；`addCloseBar` 给
       APRS/WSJT-X/FT8 三个顶层面板插「标题 + 关闭 ✕」；`showInfo` 替代
       `QMessageBox`（长文案会滚）。接线覆盖 12 个对话框（音频设置、中继/亚音、连接、
       SSTV、DTMF、语音、CW、SET、MEM、APRS 消息、APRS RF、WSJT-X UDP）。

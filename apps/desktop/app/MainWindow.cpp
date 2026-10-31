@@ -23,6 +23,7 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
+#include <QScroller>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QVBoxLayout>
@@ -832,6 +833,8 @@ void MainWindow::buildAndroidUi() {
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setWidget(page);
+    // 手指拖动滚动（QScrollArea 默认只认滚轮/滚动条）
+    QScroller::grabGesture(scroll->viewport(), QScroller::LeftMouseButtonGesture);
     return scroll;
   };
 

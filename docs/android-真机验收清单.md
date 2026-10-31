@@ -501,7 +501,11 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   波段按钮根本没有 `setCheckable`，点完没有任何回读高亮。
   **修法**：新增 `apps/desktop/app/touch_dialog.{h,cpp}`（Android-only 生效）：
   `fitDialog` 把对话框根布局整体搬进 `QScrollArea`，底部钉一条常驻「关闭」（→ reject），
-  按钮抬到 ≥44dp，窗口压进 `QScreen::availableGeometry()`；`addCloseBar` 给三个独立
+  按钮抬到 ≥44dp，窗口压进 `QScreen::availableGeometry()`；滚动区挂
+  `QScroller::grabGesture(viewport, LeftMouseButtonGesture)`——QScrollArea 默认只认滚轮
+  和滚动条，手指拖动根本不会滚（安卓上触摸被合成成鼠标事件，所以选左键拖动这一档）；
+  分页主窗的 `wrapScroll` 同样挂上，调谐/制式页才真能用手拖着滚。
+  `addCloseBar` 给三个独立
   面板各插一条「标题 + 关闭 ✕」顶栏；`QMessageBox` 换成语义相同的可滚动信息框
   `showInfo`（同样常驻关闭）。接线覆盖：音频设置、中继/亚音、连接设置、SSTV、DTMF、
   语音存储、CW、SET、MEM 信道、APRS 消息、APRS RF 设置、WSJT-X UDP 设置。

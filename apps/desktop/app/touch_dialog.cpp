@@ -10,6 +10,7 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
+#include <QScroller>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -60,6 +61,11 @@ void fitDialog(QDialog* dlg) {
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setWidget(content);
+#ifdef Q_OS_ANDROID
+  // QScrollArea 默认只认滚轮/滚动条，手指拖动不会滚；QScroller 把左键拖动
+  // 变成惯性滚动（安卓上触摸会被合成成鼠标事件，所以选 LeftMouseButton）
+  QScroller::grabGesture(scroll->viewport(), QScroller::LeftMouseButtonGesture);
+#endif
 
   auto* footer = new QWidget(dlg);
   auto* bar = new QHBoxLayout(footer);
