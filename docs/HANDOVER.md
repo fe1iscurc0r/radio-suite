@@ -67,7 +67,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 会关掉旧流再开新流，重启后按持久值恢复并自动开采集），不接电台、把喇叭对着麦克风
 就能自收自发；实窗连排三次定时发射，本机把自己那一槽解出来 DT 0.0–0.1 s（`n_lead`
 改 0 后波形顶格起播，不再拖到下一槽），DF 见 §7 的声学口径。 |
-| Android 端口 | ✅ **交叉编译 + APK 出包 + 真机首跑（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI 14）**：NDK AAudio 收发、GLES 瀑布实机出图、`RECORD_AUDIO` 运行时授权保住、minSdk 26 / `org.radiosuite.app`；**设置持久化在手机上真落盘也真读回**（16 处 `QSettings` 并到唯一后端 `ui_common/app_settings.h`，落 `AppDataLocation/radio-suite.ini`，应用自己写出 `[link]`/`[mem]`/`[ft8]` 三段）；「连接…」对话框保存 → force-stop → 重启按偏好建出 UDP 链路，链路连不上时如实报 `transport open failed` + `0.000000 MHz`（不折回 mock）；A7 参数注入在非 debuggable 的 release 包上可用 | 逐项证据与命令：`docs/android-真机验收清单.md` §K4；离屏用例 9 例 `tests/test_launch_config.cpp`（`app_settings_names_its_own_store` 的 **Android 分支桌面不编译**，ctest 绿不覆盖手机）。**竖屏主窗布局判 FAIL**（两列重叠 + 触摸目标 33.8–42.5dp < 48dp），要修先定产品形状，见 §5 第 11 条；AAudio 真出声 / 后台存活 / 一切要真电台的条目仍未验 |
+| Android 端口 | ✅ **交叉编译 + APK 出包 + 真机首跑（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI 14）**：NDK AAudio 收发、GLES 瀑布实机出图、`RECORD_AUDIO` 运行时授权保住、minSdk 26 / `org.radiosuite.app`；**设置持久化在手机上真落盘也真读回**（16 处 `QSettings` 并到唯一后端 `ui_common/app_settings.h`，落 `AppDataLocation/radio-suite.ini`，应用自己写出 `[link]`/`[mem]`/`[ft8]` 三段）；「连接…」对话框保存 → force-stop → 重启按偏好建出 UDP 链路，链路连不上时如实报 `transport open failed` + `0.000000 MHz`（不折回 mock）；A7 参数注入在非 debuggable 的 release 包上可用；**SQLite 驱动已打进 APK**（`065ff83`），APRS 的 `aprs.db` 由应用自己建出（36864 字节、`SQLite format 3`、`stations/track/outbox/inbox` 四张表） | 逐项证据与命令：`docs/android-真机验收清单.md` §K4；离屏用例 9 例 `tests/test_launch_config.cpp`（`app_settings_names_its_own_store` 的 **Android 分支桌面不编译**，ctest 绿不覆盖手机）。**竖屏主窗布局判 FAIL**（两列重叠 + 触摸目标 33.8–42.5dp < 48dp），要修先定产品形状，见 §5 第 11 条；AAudio 真出声 / 后台存活 / 一切要真电台的条目仍未验 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -140,8 +140,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     灵敏度不足时再引）。优先级与工作量见该文档 §3。
 11. **安卓真机验收**（清单 `docs/android-真机验收清单.md`；**2026-10-31 已在真机跑过第一轮**，
     Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6，逐项证据在清单 §K4）：
-    持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、D3 的降级形态、G-0 的配置半条、
-    K1/K3）；**判「链路通不通」的 G-1…G-5 仍是空的**——手上没有可连的电台（只有全盛 UVK6，
+    持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、G-0 的配置半条、K1/K3）；
+    D3 只到「写侧」（顺带把 APK 没打 SQLite 驱动这个打包缺陷修了，见下面那条）；**判「链路通不通」的 G-1…G-5 仍是空的**——手上没有可连的电台（只有全盛 UVK6，
     不是 IC-705、没有 50003 音频口），所以「手机上保存 → 重启 → 真连上电台」只到
     「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D2/D4 本轮没覆盖。
     清单里写「代码事实」的部分只是 PC 静态核对（源码行号、aapt 出包信息、jar 字节码），
@@ -205,6 +205,15 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       或真做一套手机布局（几天，纵向预算要重算）。**这条是产品形状的决定，不要顺手改。**
       顺带一条已修的同类：连接对话框原来的 `setMinimumWidth(460)` 把「保存/关闭」整排挤出
       竖屏屏外（bounds 报 `[0,0][0,0]`），现已按屏幕宽度取小（`app/connect_dialog.cpp`）。
+    - **D3（APRS 在安卓存不了）根因不是路径，是打包**（`065ff83`）：第一包真机给的是真话
+      ——「APRS 保存失败：Qt SQLite 驱动不可用」，`unzip -l` 数过 APK：`libQt6Sql.so` 在，
+      `plugins/sqldrivers/` 不在（插件只跟**可执行目标**挂的插件走，挂在静态库上的驱动进不来）。
+      第二包真机：应用自己建出 `/data/user/0/org.radiosuite.app/files/aprs.db`，36864 字节、
+      `SQLite format 3` 头、`stations/track/outbox/inbox` 四张表，设备侧 md5 与本地取回的字节
+      逐字节对上（前提：先把 `adb shell cat` 插进去的 `\r` 还原）。
+      **读侧仍没验**：库里 0 条站点，而面板顶行「连接 APRS-IS」在竖屏被裁到屏外点不到——
+      又被 C1 挡回去。`pm install -r` 覆盖安装后 `radio-suite.ini` 原样保住，这条顺带说明
+      D1 的落点在应用更新里也是稳的。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
@@ -340,6 +349,14 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
      `qt_add_executable`，否则没有部署设置/apk 目标。
   3. 签名（本机调试）：`apksigner sign --ks <debug.keystore>`，
      `apksigner verify --print-certs` 复核；keystore 别进仓库。
+     本机 `apksigner` 没有 `.exe`，只有 `apksigner.bat`，直接
+     `java -jar D:/Android/Sdk/build-tools/34.0.0/lib/apksigner.jar …` 最省事；
+     debug keystore 用 `C:/Users/ASUS/.android/debug.keystore`
+     （alias `androiddebugkey`，store/key pass 都是 `android`）。
+  4. **插件进没进包要单独验**：Qt 的模块库会跟着链接关系进 APK，插件只跟**可执行目标**
+     挂的插件走；本仓静态库（`radio_aprs_db`/`radio_logbook`）挂的 `Qt6::Sql` 驱动原来进不去，
+     `065ff83` 起在 `apps/desktop/app/CMakeLists.txt` 显式 `qt_import_plugins`。
+     出包后一条命令自查：`unzip -l <apk> | grep sqldrivers`（坑见 §7 第 18 条）。
 - 麦克风权限：`RECORD_AUDIO` 已在清单声明；`MainWindow` 构造时在 Android 上
   `qApp->requestPermission(QMicrophonePermission)` 申请一次（Qt 6.7 没有独立
   `QMicrophonePermission` 头，用 `<QPermissions>`）。
@@ -357,7 +374,7 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 手机上跑：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
   adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
   不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置；**先看 §K4**，
-  里面是 2026-10-31 第一轮真机的实跑结论和「adb 驱动这台手机的五个坑」，
+  里面是 2026-10-31 第一轮真机的实跑结论和「adb 驱动这台手机的六个坑」，
   已打勾的项不必重复劳动，重复做也要换成新证据而不是照抄旧结论。
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
@@ -467,12 +484,23 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     `/data/user/0/<pkg>/files`），回退 `QDir::currentPath()`（`/proc/<pid>/cwd` 也是那里）。
     **怎么判有没有真写进去：只看应用自己写出的 ini 字节**，别拿「点了保存、对话框关了」当证据
     ——`app_settings.h` 是唯一入口，别再在任何一处 `QSettings(...) ` 直接构造。
-16. **adb 驱动 MIUI 14 这台机的坑**（完整五条在 `docs/android-真机验收清单.md` §K4 末尾，
+16. **adb 驱动 MIUI 14 这台机的坑**（完整六条在 `docs/android-真机验收清单.md` §K4 末尾，
     下次照清单跑之前先看那段）：`uiautomator` 报的 **QDialog 按钮 bounds 右偏约 126px**
     （正好一个按钮 + 间距），照 bounds 中心 `input tap` 会点到隔壁——而对话框里两个按钮
     **都会关掉窗**，所以「窗关了」不是判据；密码框 `QLineEdit::Password` 置 FLAG_SECURE 时
     `screencap` 返回 **0 字节**；软键盘弹起会盖住按钮排，`input keyevent 111` 收起 IME 后
     触控才恢复投递；`uiautomator dump` 只报最上层窗口。主窗按钮 bounds 不偏，别把两边结论互抄。
+    还有一条会坑取证：`adb shell … cat` 取二进制文件会插 `\r`（36864 字节的 db 拉回来变
+    36868），跟设备侧 `md5sum` 对账前先把 `\r\n` 还原成 `\n`，否则会误判「文件被改过」。
+18. **Android 的 Qt 插件只认「可执行目标自己挂上的插件」**：挂在**静态库**上的
+    `Qt6::Sql` 不会把 `sqldrivers/qsqlite` 带进 APK —— 包里有 `libQt6Sql.so` 但驱动列表是空的，
+    `QSqlDatabase::isDriverAvailable("QSQLITE")` 恒假（真机 D3 就是这么露出来的）。
+    修法见 `apps/desktop/app/CMakeLists.txt` 的 `qt_import_plugins(radio-suite INCLUDE
+    Qt6::QSQLiteDriverPlugin)`。**别走 `QT_ANDROID_EXTRA_PLUGINS`**：那个键在 androiddeployqt
+    里是「往 `assets/` 拷外部资源」，喂 `.so` 路径或类型名 `sqldrivers` 都会
+    `External resource … does not exist or not a correct directory!` 停建（两种实测过），
+    就算指到目录也只是塞进 assets，Qt 运行时不从那儿找插件。
+    验包只要一条命令：`unzip -l <apk> | grep sqldrivers`。
 17. **MIUI「USB 调试（安全设置）」是安全设置，不要自动化去翻它**：`adb install` 报
     `INSTALL_FAILED_USER_RESTRICTED` 时，走这台机已有的 Magisk root——
     `su -c 'pm install -r /data/local/tmp/xxx.apk'`，把安装这件事留在设备权限之外解决。

@@ -9,6 +9,8 @@ PR #16 之上）——`main`（`5a08fa4`）上还没有 FT8 面板（`apps/deskt
 （`fix/android-settings-persistence`）。上面那个 APK 是
 2026-10-30 21:27 用本分支代码打的，**不含**这些改动。2026-10-31 在本分支重新出过一包并装到
 手机上（含 D1 的落盘路径修复与对话框宽度取小），K4 就是它的实测结果。
+同一天又出了**第二包**（多一条 `065ff83`：APK 里打进 QSQLITE 驱动），`pm install -r` 覆盖安装，
+D1 的 `radio-suite.ini` 原样保住（102 字节，13:46 那份），D3 的结论出自第二包。
 **本清单的状态:** 2026-10-31 手机第一次接上并跑了 K4 那批条目（装包、D1 持久化、G-0 的
 「保存→重启→按偏好建链路」这半条、K3 的离线不谎报）。**除 K4 列出的之外，其余每一条仍是
 PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
@@ -45,8 +47,12 @@ PC 上静态核对的「代码事实」，没有真机结论。** 条目里写�
 - **A7 参数注入**：release 非 debuggable 包上 `am start --es applicationArguments …` 真把参数
   送进了 `QApplication::arguments`，且优先级在偏好之上（当时偏好是 mock，起来却是 udp）。见 A7。
 
-- **D3（只验了降级形态）**：APRS 面板给的是真话——状态栏「APRS 保存失败：Qt SQLite 驱动
-  不可用」，因为包里没打 QSQLITE 插件。不是假成功。
+- **D3（写侧已验，读侧仍空）**：第一包给的是真话——状态栏「APRS 保存失败：Qt SQLite 驱动
+  不可用」，因为包里没打 QSQLITE 插件，不是假成功。顺着这句查到根因在打包（`libQt6Sql.so`
+  在 APK 里、`plugins/sqldrivers/` 不在），`065ff83` 把驱动挂到可执行目标上重出第二包后，
+  应用自己建出 36864 字节的 `aprs.db`（`SQLite format 3` + 四张表）。
+  「有站点 → 重启 → 轨迹还在」还没做到：顶行「连接 APRS-IS」在竖屏被裁到屏外，点不到，
+  库里 0 条数据。详见 D3 正文。
 
 **没跑、也跑不了的：**
 
@@ -58,7 +64,7 @@ PC 上静态核对的「代码事实」，没有真机结论。** 条目里写�
   A8（打包期钉参数——A7 已经通了，这条退路暂时用不上）、D2/D4（HamLog 路径、卸载即清）
   ——这一轮没有覆盖。
 
-** adb 驱动这台手机的五个坑（下次照清单跑之前先看这段）：**
+** adb 驱动这台手机的六个坑（下次照清单跑之前先看这段）：**
 
 1. **MIUI 14 拦 `adb install`**：报 `INSTALL_FAILED_USER_RESTRICTED`。「USB 调试（安全设置）」
    是安全设置，别自动化去翻它；这台机器有 Magisk root，直接
@@ -74,6 +80,10 @@ PC 上静态核对的「代码事实」，没有真机结论。** 条目里写�
    **0 字节**。要截图取证得先让密码框失焦；`uiautomator dump` 不受影响。
 5. **`uiautomator dump` 只报最上层窗口**，弹层（QComboBox 的 view）另算一层。判「对话框
    还在不在」要认里面那句独有的文本，别认「有没有节点」。
+6. **`adb shell … cat` 取二进制文件会做 CRLF 转换**：`adb shell su -c 'cat …/aprs.db' > 本地`
+   拿到的比设备上多 4 字节（每个 `\n` 前插了 `\r`），拿去算 md5 会「对不上」而误判取证失败。
+   对账要用设备侧 `md5sum` 与「本地那份把 `\r\n` 还原成 `\n` 之后」比；或者用
+   `adb exec-out`（本机的 `su` 仍会开 PTY，稳妥起见两条都做一遍）。
 
 
 ---
@@ -443,11 +453,27 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   且不出现「写了 QSO 但其实没落盘」的假成功。
   这条判的是「诚实」，不是「能用」；要能用得换路径策略，属后续工单。
 
-- [ ] **D3 APRS 库落在哪**
+- [x] **D3 APRS 库落在哪**（写侧已验；「收下站点 → 重启 → 轨迹仍在」的读侧仍空，见下）
   代码事实：路径解析顺序 `RADIO_SUITE_APRS_DB` → `APPDATA` → `QStandardPaths::AppDataLocation`
   （[apps/desktop/aprs/persist.cpp](../apps/desktop/aprs/persist.cpp)）。
   判定：收下若干 APRS 站点 → force-stop → 重启，历史轨迹仍在，且能在 `run-as` 列出的
   私有目录里看到那个 `.db` 文件（大小非 0）。
+
+  **2026-10-31 真机（第二包，含 APK 驱动修复 `065ff83`）结论：**
+  - **修掉的根因**：原来 APK 里有 `libQt6Sql.so` 却**没有 sqldrivers 插件**
+    （`unzip -l` 数过），于是 `QSqlDatabase::isDriverAvailable("QSQLITE")` 恒假，
+    面板只会给「APRS 保存失败：Qt SQLite 驱动不可用」那句降级提示——不是路径问题，是打包问题。
+  - **写侧已验**：面板开着过 30 s 存盘周期，应用**自己**建出
+    `/data/user/0/org.radiosuite.app/files/aprs.db`，`su` 读出 36864 字节，
+    头 16 字节是 `SQLite format 3\0`，里面确有 `stations`/`track`/`outbox`/`inbox` 四张表
+    （`CREATE TABLE` 全在）。设备侧 `md5sum` = `e68beb7db007ed9e3126315858e137d4`；
+    本地那份经 `adb shell su -c cat` 取回时多了 4 字节（**adb shell 会做 CRLF 转换**），
+    把 `\r\n` 还原成 `\n` 后长度与 md5 与设备逐字节一致。
+  - **读侧没验**：库里 0 条站点，「有数据 → 重启 → 数据还在」这条还没做到。
+    卡在 C1：面板顶行「连接 APRS-IS」「RF 设置」「发信标」在竖屏下 bounds 全是
+    `[0,0][0,0]`（顶行总宽超出屏宽被裁掉），手机上点不到，也就收不到站点。
+    **别把这条当通过**——桌面 `[aprs_persist]` 用例覆盖的是同一份 load/save 代码，
+    不等于手机上真机跑过。
 
 - [ ] **D4 卸载即清（不留脏数据）**
   命令：`"$ADB" uninstall org.radiosuite.app` 后重装。
