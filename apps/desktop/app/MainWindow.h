@@ -15,6 +15,7 @@ class QVBoxLayout;
 class QCloseEvent;
 
 #include "app/WaterfallWidget.h"
+#include "app/launch_config.h"
 #include "app/session.h"
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
 #include "logbook/logbook.h"
@@ -48,7 +49,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   Q_OBJECT
  public:
   explicit MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
-                      QWidget* parent = nullptr);
+                      radio::app::LinkPrefs link = {}, QWidget* parent = nullptr);
   ~MainWindow() override;
 
  protected:
@@ -79,6 +80,8 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void flashStatus(const QString& text, bool warn);
   void syncTogglesFromState(const radio::core::RadioState& s);
 
+  // 启动链路偏好：状态栏文案的唯一来源，「连接…」对话框的初始值
+  radio::app::LinkPrefs link_;
   radio::app::RadioSession session_;
   radio::app::RadioSession* session_alias_ = nullptr;  // 指向 session_（对话框用，无所有权）
 

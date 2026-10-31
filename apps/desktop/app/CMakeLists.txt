@@ -11,6 +11,7 @@ set(CMAKE_AUTOMOC ON)
 
 set(APP_SRC
   main.cpp
+  launch_config.cpp
   session.cpp
   network_audio.cpp
   audio_stats.cpp
