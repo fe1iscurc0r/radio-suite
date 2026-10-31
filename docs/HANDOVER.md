@@ -137,6 +137,15 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     结论：无可整仓合并项；唯一现实可 vendor 的是 `ft8_lib`（MIT，本地 FT8 解码），
     其次为 Dire Wolf 思路（DCD 监听 / 早迟门比特同步）与 liquid-dsp（MIT，真机
     灵敏度不足时再引）。优先级与工作量见该文档 §3。
+11. **安卓真机验收**（2026-10-31 清单已就绪，**一条都没跑过**——本机无设备）：
+    `docs/android-真机验收清单.md`。其中 **K1 是阻塞级缺口**：APK 目前只能跑 mock——
+    传输层只在 `apps/desktop/app/main.cpp` 里按 `--radio` 命令行开关构造，兜底恒为
+    `MockTransport`，而「连接设置」对话框只把命令行**渲染成一行文本**、自己不建传输；
+    Android 没有命令行输入口 ⇒ 与既定方向「APK 直连电台优先」正面冲突。三条修法见
+    该文档 §7 前置，修好之前第 7 节全部条目按 BLOCKED 处理，**不许拿 mock 行为打勾**。
+    另有 **K3**：状态栏空闲文本硬编码 `transport: mock · radio: IC-705 sim`
+    （`MainWindow.cpp` 初始值 + 一次性提示 3 s 后的复位回调），真连上 UDP 也这么写，
+    所以它不能当链路判据；判链路一律看行为（频率是否随电台变、50003 是否进音频）。
 
 ## 6. 构建与验证（本机环境）
 
@@ -271,6 +280,9 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   `QMicrophonePermission` 头，用 `<QPermissions>`）。
 - **仍未验（无设备）**：APK 未装到手机跑过，AAudio 延迟/回声/后台存活、GLES 实机
   渲染、触屏布局都只有编译级保证；`adb devices` 当前为空。
+- 手机一旦接上：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
+  adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
+  不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置。
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
