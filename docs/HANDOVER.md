@@ -497,6 +497,9 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     触控才恢复投递；`uiautomator dump` 只报最上层窗口。主窗按钮 bounds 不偏，别把两边结论互抄。
     还有一条会坑取证：`adb shell … cat` 取二进制文件会插 `\r`（36864 字节的 db 拉回来变
     36868），跟设备侧 `md5sum` 对账前先把 `\r\n` 还原成 `\n`，否则会误判「文件被改过」。
+    **读「按钮亮没亮」有直路**：这台机上 Qt 把控件标签放进 uiautomator 的 `content-desc`
+    （`text=` 属性全空，别拿它当没渲染），而 `checkable`/`checked` 是真值 —— 判控件状态
+    不必猜像素；主窗 bounds 是准的（右偏那条只在 QDialog）。
 18. **Android 的 Qt 插件只认「可执行目标自己挂上的插件」**：挂在**静态库**上的
     `Qt6::Sql` 不会把 `sqldrivers/qsqlite` 带进 APK —— 包里有 `libQt6Sql.so` 但驱动列表是空的，
     `QSqlDatabase::isDriverAvailable("QSQLITE")` 恒假（真机 D3 就是这么露出来的）。
