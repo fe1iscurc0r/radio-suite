@@ -23,11 +23,15 @@
         android:label="radio-suite"
         android:allowBackup="true"
         android:fullBackupOnly="false">
+        <!-- 手机竖屏上桌面那套两列布局是坏的（两列重叠、波段/制式/内存三行被裁、
+             频率大字显示成「270000」，验收清单 C1/C2 判 FAIL）。2026-10-31 用户亲测后
+             拍板：竖屏放弃、横屏保留。configChanges 仍含 orientation，所以横屏内 90°↔270°
+             翻面还是不重启进程（C3 那条判据依旧成立）。 -->
         <activity
             android:name="org.qtproject.qt.android.bindings.QtActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:launchMode="singleTop"
-            android:screenOrientation="unspecified"
+            android:screenOrientation="sensorLandscape"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
