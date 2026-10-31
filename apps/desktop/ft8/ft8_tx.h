@@ -2,7 +2,8 @@
 // radio-suite · ft8/ft8_tx.h — FT8 本机发射：波形渲染与时隙排期（无 Qt 依赖）
 //
 // 渲染走 ft8_codec 的 GFSK 合成（上游 gen_ft8 同式），时隙对齐由调用方负责：
-// 本模块产出的 PCM 正好是一整个 15 s 槽、波形在槽内居中，「从槽起点开始播」即对齐。
+// 本模块产出的 PCM 正好是一整个 15 s 槽、首个符号贴着槽起点（余量留在槽尾），
+// 「从槽起点开始播」即对齐——居中会让每一发都晚起 0.92 s。
 #pragma once
 
 #include <cstdint>
@@ -13,6 +14,8 @@ namespace radio::ft8 {
 
 // FT8 槽长 15 s；槽序号 = UTC 毫秒 / 槽长，偶序号槽落在每分钟的 :00 与 :30
 inline constexpr int64_t kTxSlotMs = 15'000;
+// 发射 PCM 的采样率：与 50003 下行/声卡标准路径一致
+inline constexpr uint32_t kTxSampleRateHz = 48000;
 
 // 文本 → 一整个 15 s 槽的 48 kHz s16 mono 发射 PCM。peak 为满量程比例，默认 0.7
 // （与上游 gen_ft8 一致）。文本无法按 FT8 规则打包时抛 std::runtime_error。

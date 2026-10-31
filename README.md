@@ -49,7 +49,7 @@ ctest --test-dir build --output-on-failure
 | `apps/desktop/app` | `radio-suite` | M0/M3 | Qt 主窗口（紧凑旋钮台，S 表/Po·SWR 同排，**S 表按 IARU 分段标定**）、QOpenGLWidget 瀑布（网络音频开启时用真实 RX PCM）、CW/Set Mode/记忆信道/中继·亚音对话框、网络音频开关、**APRS 工作台窗口**（OSM 地图 + 台站表 + 消息）、**WSJT-X 接入窗口**（解码 / QSO / WSPR / ADIF + 控制，QSO 自动写入 HamLog）、**FT8 本机解码窗口**（时隙进度 + 解码表，双击回填呼号/网格并按刻度+DF 定频；面板顶部可排期**定时发射**：文本 + 音频频偏 + 时隙奇偶，到下一个槽起点整槽播出、播完自动回 RX） |
 | `apps/desktop/aprs` | `radio_aprs` / `radio_aprs_db` | M4 | APRS 核心（纯 std：TNC2/坐标/对象/气象/遥测/消息 ACK/过滤/通行码）+ AX.25/KISS/Bell202 AFSK + iGate；可选 SQLite 快照（Qt6::Sql） |
 | `apps/desktop/wsjtx` | `radio_wsjtx` | M4 | WSJT-X UDP 协议（schema 3，纯 std 编解码）：心跳 / 状态 / 解码 / QSO / WSPR / ADIF / 客户端事件 + 控制报文（Reply/HaltTx/FreeText/Replay/Location/Clear）；面板双击解码回填主窗口呼号，QSO Logged 映射后写入 HamLog |
-| `apps/desktop/ft8` | `radio_ft8` | M4 | 本机 FT8（不依赖 WSJT-X 进程）：vendored `ft8_lib` 之上的纯 std 编解码封装 + 15 s UTC 槽解码器（48k s16 → 12k 抽取、后台线程解码）+ 发射侧渲染与排期（整槽 48k GFSK、槽序号奇偶），可被 app/Android 复用；UI = 主窗「FT8 本机」面板，吃 50003 下行 RX PCM，发射走主窗声卡出口（PTT 门禁） |
+| `apps/desktop/ft8` | `radio_ft8` | M4 | 本机 FT8（不依赖 WSJT-X 进程）：vendored `ft8_lib` 之上的纯 std 编解码封装 + 15 s UTC 槽解码器（48k s16 → 12k 抽取、后台线程解码）+ 发射侧渲染与排期（整槽 48k GFSK、槽序号奇偶），可被 app/Android 复用；UI = 主窗「FT8 本机」面板，RX 源可选 50003 下行 tap 或**本机麦克风**（不接电台、把喇叭对着麦克风就能自收自发，`QSettings` 键 `ft8/source`），发射走主窗声卡出口（PTT 门禁）；`tools/ft8play.exe` 可脱离 GUI 把一个合成时隙播到指定输出设备 |
 | `apps/desktop/audio` | — | M2 | RtAudio 输入/输出 + 50003 流式播放（AudioSink） |
 | `apps/desktop/logbook` | `radio_logbook` | M4 | HamLog 共库、QtSql CRUD/搜索、ADIF、LoTW 上传 |
 | `apps/desktop/bus` | — | M5 | `--headless --bus` 只读 HTTP + rigctld TCP |
@@ -85,8 +85,14 @@ C++ 用例与之逐字节对照。参考实现只作行为基准与 fixtures 来
   字节按 CI-V 指南实现，mock 与帧级测试已锁定；真机线路搁置，复验清单见
   [docs/original-rsba1-feature-map.md](docs/original-rsba1-feature-map.md) §L.5。
 - **50003 音频真机未验**：RX 播放、PTT 门禁的麦克风上行、半双工静音与真实频谱
-  已接线并有门禁单测；但未在 IC-705 上实际通话。设备固定用系统默认输入/输出，
-  暂无设备选择 UI；音频抖动/丢包统计也尚未上界面。复验清单见功能对照表 §L.6。
+  已接线并有门禁单测；但未在 IC-705 上实际通话。输入/输出设备已可在主窗
+  「音频设置」里选（`QSettings` 键 `audio/in_dev`/`audio/out_dev`，-1 跟随系统），
+  同页每 0.5 s 显示收发与积压计数；音频抖动/丢包统计已有，真机时钟/抖动待复验。
+- **FT8 的 DF 只有走电台才可信**：不接电台、喇叭对着麦克风自收自发时，1000 Hz 那档
+  实测会报成 750 / 1250 / 2250 / 2750（都是 250 Hz 的奇数倍），而 1200 / 1500 Hz 分毫
+  不差。离线渲染→解码的用例在 500/1000/1500/2000 四档逐档精确命中，说明软件算的 DF
+  没错，偏的是喇叭→房间→麦克风这一段（削波、房间响应、采集端回声消除/AGC）。
+  双击解码行按「刻度 + DF」定频，请在 50003 下行或真机通路上用。
 - **APRS RF 真机未验**：KISS 串口/TCP、Bell 202 AFSK 走 50003、iGate 双向均按
   协议实现并有回环/单元测试，但未接真实 TNC、LoRa 网关或空口复验。LoRa 仅按
   KISS 网关形态支持，无原生 LoRa 硬件抽象。地图瓦片需网络；测试时设

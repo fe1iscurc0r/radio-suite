@@ -113,6 +113,14 @@ std::vector<std::string> AudioOut::deviceNames() const {
   return out;
 }
 
+std::vector<uint32_t> AudioOut::outputDeviceIds() const {
+  std::vector<uint32_t> out;
+  auto& rt = impl_->rt;
+  for (uint32_t id : rt.getDeviceIds())
+    if (rt.getDeviceInfo(id).outputChannels > 0) out.push_back(id);
+  return out;
+}
+
 bool AudioOut::play(const std::vector<int16_t>& pcm, uint32_t sample_rate,
                     uint32_t device_id, std::string* error) {
   if (impl_->worker.joinable()) {

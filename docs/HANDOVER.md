@@ -61,7 +61,12 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置；**`delta_frequency` 按上游为有符号 qint32**）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格；**QSO Logged 自动写 HamLog 库**（device=WSJT-X、备注网格）；**双击解码回填主窗口呼号**并按 `dial + ΔF` 显示绝对频率 | tests `[wsjtx]` 11 + offscreen `[wsjtx_ui]` 4（UDP 回环 + 面板渲染 + 激活解析含负频差 + HamLog 映射 + **QDataStream 字节长度前缀互通**：用本机 Qt 6.8 序列化出的 93 字节 Decode 包做金样本）；**消息体已按 QDataStream 字节长度前缀修正**，本机 127.0.0.1:2237 注入真线格式字节可完整进面板（客户端/14.074000 MHz/解码行全中）；**未与真实 WSJT-X / JTDX 进程联调**；自动写库未在真实 HamLog 库上复验 |
 | 音频 | ✅ 本机输出（AudioOut，**后台线程异步播放**，SSTV 36–115 s / Voice Memory 60 s 不冻 GUI；默认输出设备按 WASAPI ID 取）+ 输入（AudioIn，溢出计数不丢缓冲）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行** | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
-| FT8 | ✅ **本机解码 + 定时发射全链路**（不依赖 WSJT-X 进程）：vendored `ft8_lib`（MIT + kiss-fft BSD）+ `radio::ft8::decode/encodeTones/synthesize`（纯 std、不依赖 Qt，可被 app/Android 复用）+ `radio::ft8::SlotDecoder`（48k s16 → 12k 抽取、按 15 s UTC 边界切槽、后台线程解码、解码跟不上宁可丢槽不积压）+ **FT8 面板**（主窗「FT8 本机」按钮开独立窗口：时隙进度条 / 时间·SNR·DT·DF·文本五列表 / 双击行回填呼号·网格并按 `dial + DF` 定频，与 WSJT-X 面板共用 `app/decode_target.h` 解析）；RX 源 = 50003 下行 tap（与 APRS AFSK 同一路）；发射侧 `radio::ft8::renderTxPcm/nextTxSlotStart`（整槽 48k GFSK + 槽序号奇偶排期，无 Qt）+ 面板「文本 / 音频频偏 / 时隙奇偶 / 定时发射」一行：排期到下一个槽起点，到点把整槽交给主窗出口（`beginScriptedTx` → `AudioOut::playAsync` → 播完 `endScriptedTx`，与 SSTV 一键发射同一路声卡直出，**不注 50003 上行**：桥队列 200 ms 满则丢最旧，整槽丢不得） | tests `[ft8]` 3 + `[ft8][slot]` 4 + `[ft8][tx]` 4 + offscreen `[ft8 panel]` 6：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；UTC 对齐边界算术、48k→12k 端到端（合成一槽 PCM 喂进去能解出 `CQ BG5GXO PM01` 且槽号/丢弃计数正确）、stop 丢半槽、对齐等待期仍计采样；发射侧排期算术（提前量/边界/奇偶全覆盖，含「已开始的那槽不许排」）、渲染 PCM 恰为一整槽 48k 且幅度不溢出、**渲染→本机解码器闭环**（自己发的自己能解，DF 命中 1500 Hz）；面板注入行 → 表格 + 激活目标、PCM→解码器→面板全链路、解码表 500 行封顶（淘汰最老且行元数据同步前移，常开不涨）、排期不起播→到点一发只播一遍、空文本/无法打包/重复排期/出口拒绝四条拒绝路径、晚于槽起点 250 ms 以上如实报「这一发对不齐」。**实窗已验**：按钮/面板/状态栏/进度条渲染，发射行五控件与提示行布局正常，空文本点「定时发射」显示「文本为空」，无音频时状态如实显示「等待 50003 下行音频」；**真实空中信号与到点起播未验**（无 IC-705；mock 链路不产 50003 音频，实窗键盘输入被前台锁挡住，没能现场点响一次发射） |
+| FT8 | ✅ **本机解码 + 定时发射全链路**（不依赖 WSJT-X 进程）：vendored `ft8_lib`（MIT + kiss-fft BSD）+ `radio::ft8::decode/encodeTones/synthesize`（纯 std、不依赖 Qt，可被 app/Android 复用）+ `radio::ft8::SlotDecoder`（48k s16 → 12k 抽取、按 15 s UTC 边界切槽、后台线程解码、解码跟不上宁可丢槽不积压）+ **FT8 面板**（主窗「FT8 本机」按钮开独立窗口：时隙进度条 / 时间·SNR·DT·DF·文本五列表 / 双击行回填呼号·网格并按 `dial + DF` 定频，与 WSJT-X 面板共用 `app/decode_target.h` 解析）；RX 源 = 50003 下行 tap（与 APRS AFSK 同一路）；发射侧 `radio::ft8::renderTxPcm/nextTxSlotStart`（整槽 48k GFSK + 槽序号奇偶排期，无 Qt）+ 面板「文本 / 音频频偏 / 时隙奇偶 / 定时发射」一行：排期到下一个槽起点，到点把整槽交给主窗出口（`beginScriptedTx` → `AudioOut::playAsync` → 播完 `endScriptedTx`，与 SSTV 一键发射同一路声卡直出，**不注 50003 上行**：桥队列 200 ms 满则丢最旧，整槽丢不得） | tests `[ft8]` 3 + `[ft8][slot]` 4 + `[ft8][tx]` 5（828 断言）+ offscreen `[ft8][ui]` 10
+（86 断言）：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；UTC 对齐边界算术、48k→12k 端到端（合成一槽 PCM 喂进去能解出 `CQ BG5GXO PM01` 且槽号/丢弃计数正确）、stop 丢半槽、对齐等待期仍计采样；发射侧排期算术（提前量/边界/奇偶全覆盖，含「已开始的那槽不许排」）、渲染 PCM 恰为一整槽 48k 且幅度不溢出、**渲染→本机解码器闭环**（自己发的自己能解，DF 命中 1500 Hz）、**DF 跟着音调偏走**（500/1000/1500/2000 Hz 四档离线渲染后 df 全部逐档命中，双击定频用的就是这个数）；面板注入行 → 表格 + 激活目标、PCM→解码器→面板全链路、解码表 500 行封顶（淘汰最老且行元数据同步前移，常开不涨）、排期不起播→到点一发只播一遍、空文本/无法打包/重复排期/出口拒绝四条拒绝路径、晚于槽起点 250 ms 以上如实报「这一发对不齐」、**按钮标签与 `tx_pending_` 同源**（发射完/被拒/取消后标签必须落回「定时发射」，留着「取消发射」会让下一刀点成排期，见 §7）、换源正在解码时先关旧流再开新流且各发一次 `sourceChanged`、麦克风与 50003 抢同一采集设备时主窗如实拒绝。**实窗已验**：按钮/面板/状态栏/进度条渲染，发射行五控件与提示行布局正常，空文本点「定时发射」显示「文本为空」，无音频时状态如实显示「等待 50003 下行音频」；**真实空中信号仍未验**（无 IC-705），但**声卡环回已验**：面板音源下拉可选
+`50003 下行` / `本机麦克风`（`QSettings` 键 `ft8/source`，1=麦克风；换源时若正在解码
+会关掉旧流再开新流，重启后按持久值恢复并自动开采集），不接电台、把喇叭对着麦克风
+就能自收自发；实窗连排三次定时发射，本机把自己那一槽解出来 DT 0.0–0.1 s（`n_lead`
+改 0 后波形顶格起播，不再拖到下一槽），DF 见 §7 的声学口径。 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -132,14 +137,28 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     结论：无可整仓合并项；唯一现实可 vendor 的是 `ft8_lib`（MIT，本地 FT8 解码），
     其次为 Dire Wolf 思路（DCD 监听 / 早迟门比特同步）与 liquid-dsp（MIT，真机
     灵敏度不足时再引）。优先级与工作量见该文档 §3。
+11. **安卓真机验收**（2026-10-31 清单已就绪，**一条都没跑过**——本机无设备）：
+    `docs/android-真机验收清单.md`。其中 **K1 是阻塞级缺口**：APK 目前只能跑 mock——
+    传输层只在 `apps/desktop/app/main.cpp` 里按 `--radio` 命令行开关构造，兜底恒为
+    `MockTransport`，而「连接设置」对话框只把命令行**渲染成一行文本**、自己不建传输；
+    Android 没有命令行输入口 ⇒ 与既定方向「APK 直连电台优先」正面冲突。三条修法见
+    该文档 §7 前置，修好之前第 7 节全部条目按 BLOCKED 处理，**不许拿 mock 行为打勾**。
+    另有 **K3**：状态栏空闲文本硬编码 `transport: mock · radio: IC-705 sim`
+    （`MainWindow.cpp` 初始值 + 一次性提示 3 s 后的复位回调），真连上 UDP 也这么写，
+    所以它不能当链路判据；判链路一律看行为（频率是否随电台变、50003 是否进音频）。
 
 ## 6. 构建与验证（本机环境）
 
 ```bash
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
-cmd //c "D:\tmp\rs-build.bat configure"   # 需 MSVC 环境（vcvars64）
-cmd //c "D:\tmp\rs-build.bat build"
-cmd //c "D:\tmp\rs-build.bat test"        # 152/152
+cmd //c "build\msvc_build.bat radio-suite radio_tests radio_ft8_ui_tests"   # 仓内脚本，自己 call vcvars64
+QT_QPA_PLATFORM=offscreen cmd //c "build\run_ctest.bat"                     # 172/172
+cmd //c "build\msvc_build.bat"                       # 至少要带一个 target，无参不给全量
+# 单测 exe 直跑要 Qt bin 在 PATH：PATH="/d/Qt/6.8.3/msvc2022_64/bin:$PATH" \
+#   QT_QPA_PLATFORM=offscreen ./build/tests/radio_ft8_ui_tests.exe "[ft8][ui]" -s
+# 注意 exe 真身在 build/apps/desktop/app/radio-suite.exe；build/src/app/ 下那个是
+# 旧 CMake 布局的 5 天前残留，跑了看不到新功能。MSVC 输出是 GBK → 管道过
+# `iconv -f GBK -t UTF-8 -c`，否则中文全成乱码。
 cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 ```
 
@@ -148,7 +167,7 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - python 真身：`C:/Users/ASUS/python-sdk/python3.13.2/python.exe`（PATH 上的
   python 是 WindowsApps 假壳）。
 - 麦克风冒烟：`build/apps/desktop/audio/audio-in-smoke.exe`。
-- 166 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
+- 172 用例包括：session PTT 真实 CI-V 帧序列、bus 真实 HTTP、rigctld 真实 TCP、
   logbook 临时 SQLite，直接调用生产 `scope_wire.*` 的 spike 测试，音频门禁
   （`AudioBridge` 半双工/有界队列/失败重试）单测，DSP 单音/泄漏/Welch 平均与
   S 表 IARU 映射，RS-BA1 本机环回（假电台三信道 + 100 ms 音频重排窗，见
@@ -182,10 +201,29 @@ cmd //c "D:\tmp\rs-build.bat spike-configure && spike-build"   # WO-274 spike
 - 2026-10-30 实窗验证（FT8 定时发射，全程不接电台）：面板顶部发射行渲染正常（文本框
   + 音频频偏 1000 Hz + 任意时隙 + 定时发射 + 提示「等到下一个时隙起点整槽播出（15 s）」），
   空文本点「定时发射」如实显示「文本为空」，关主窗后进程退出（发射出口尚未创建，
-  析构兜底不误触发）。**到点起播没在实窗点响**：Computer Use 报
-  「target window could not be made foreground before native input」，文本框填不进字
-  （UIA Invoke 类点击可用、键盘 SendInput 不可用），故发射出口（门禁 → `playAsync` →
-  回 RX）这一段只有离屏用例与代码走查覆盖，实机待复验；发射链路两条设计口径见 §7 第 11 条。
+  析构兜底不误触发）。发射链路两条设计口径见 §7 第 11 条。
+- 2026-10-30 实窗验证（FT8 音源切到本机麦克风 + 声学环回，不接电台）：**到点起播这次在
+  实窗点响了**。Computer Use 更正：`set_value` 能往 Qt `QLineEdit`/`QSpinBox` 里填值
+  （早前「键盘不可用、填不进字」的结论作废），组合框弹出项点 `element_index` 和点弹层自己的
+  `screenshotId` 都不生效，要拿**父窗口的** screenshotId 点弹层像素。链路：面板音源选
+  「本机麦克风」→ 状态行「本机麦克风 · 已解 N 槽」→ `ft8/source=1` 落 `QSettings`→
+  重启后面板自动按麦克风源恢复并在开解码时自动起采集；网络音频（50003）同时在跑时
+  抢同一采集设备，主窗如实拒绝而不是把两路灌进解码器。喇叭对麦克风播整槽，面板解出
+  `CQ BG5GXO PM01`（SNR 15–19）；面板自己排期自己发射的那几槽 **DT 0.0–0.1 s**，
+  印证 `n_lead` 由 500 ms 改 0 之后波形顶格在槽起点起播（旧值会把整槽推过槽界）。
+  DF 在 1000 Hz 档会跳到 250 Hz 奇数倍、1200/1500 Hz 档精确——离线四档逐档命中，
+  锅在声学信道，详见 §7 第 14 条。同轮实窗还抓出 §7 第 13 条那个「发射完按钮仍写
+  取消发射」的真缺陷（点下去等于再排一发 15 s），已修并用 offscreen 变异验过。
+- 单播一个合成 FT8 时隙到指定输出设备（验发射链路、不依赖 GUI）：
+  `build/tools/ft8play.exe --list` 列设备 id，`build/tools/ft8play.exe "CQ BG5GXO PM01" 1200 0.35 129`
+  = 文本 / 音频频偏 Hz / 峰值 / 设备 id，阻塞播 15 s；**它不对齐槽边界**，要对槽就自己等：
+  `now=$(date +%s%3N); sleep $(awk -v m=$(( 15000 - now % 15000 )) 'BEGIN{printf "%.3f", m/1000}')`。
+- 声学环回用例 `radio_ft8_acoustic_tests`（tag `[ft8][acoustic]`，Test #162）只在
+  `BUILD_GUI=ON` 时注册，且**默认只 WARN 跳过**，要显式 `RADIO_SUITE_FT8_ACOUSTIC=1`
+  才真出声真收声（要真扬声器 + 真麦克风，所以 172 条回归里它永远是跳过的那一条）。
+  2026-10-30 显式开启实测一次通过：采集 839,040 样本、峰值 2799、解出
+  `CQ BG5GXO PM01`，**SNR 16 / DT −0.08 s / DF 1500 精确命中**（f0=1500），解码耗时
+  7.5 ms——一槽 15 s 的收发对齐在自动化用例里也钉住了，不只是手点。
 - 部署目录 `packaging/out-win/`：`cmd //c "build\msvc_build.bat deploy_win"`
   会复制当前 exe 并用 windeployqt 刷新 Qt DLL/插件（含 `Qt6SerialPort.dll`、
   `platforms/qwindows.dll`），双击 exe 即可运行，无需把 Qt `bin` 加进 PATH。
@@ -242,6 +280,9 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   `QMicrophonePermission` 头，用 `<QPermissions>`）。
 - **仍未验（无设备）**：APK 未装到手机跑过，AAudio 延迟/回声/后台存活、GLES 实机
   渲染、触屏布局都只有编译级保证；`adb devices` 当前为空。
+- 手机一旦接上：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
+  adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
+  不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置。
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
@@ -316,6 +357,21 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     就废，要走这条路得先给桥加一条「背压时不丢、拒绝入队」的定长发送通道。
     同理，`~MainWindow` 里对 `ft8_tx_audio_` 先 `wait()` 再 `endScriptedTx()`：播放线程的
     收尾回调排在事件队列里，关窗路上不一定还有机会跑，不能指望它把 PTT 放掉。
+12. **Qt 宏会吃掉标识符 `signals` / `slots`**：在含 Qt 头的源文件里写 `int signals = 0;`
+    编译报 `C2059: 语法错误:"public"`（`signals` 展开成 `public`），错误信息完全指不到真因。
+    计数变量改名 `signal_count` / `xxx_signals` 之类。
+13. **状态标志与按钮标签必须同批改**：`fireTransmit()` 落 `tx_pending_ = false` 却没调
+    `updateTxLabel()`，发射完按钮上还挂着「取消发射」，操作者那一刀点下去是**排下一次
+    15 s 发射**、不是取消（`onTxClicked()` 只看 `tx_pending_`）。`refreshTick()` 也只在
+    pending 时刷标签，救不回来。现在 `fireTransmit` 落标志后立刻刷标签，offscreen 用例
+    把「发完/被拒/取消后标签==「定时发射」」钉住；删掉那行 `updateTxLabel` 两个用例立刻红。
+14. **声学环回的 DF 会跳，别当成解码 bug**：不接电台、喇叭对麦克风自收自发时，
+    1000 Hz 那一档实测报过 750 / 1250 / 2250 / 2750（全是 250 Hz 的奇数倍 = 6.25 Hz 音调
+    间距的整数偏移），同一链路 1200 / 1500 Hz 又分毫不差。离线渲染→解码的用例
+    `ft8 tx: reported DF tracks the tone offset` 在 500/1000/1500/2000 四档逐档精确命中，
+    所以软件路径（`min_bin + freq_offset + freq_sub/osr` 除符号周期）是对的，偏的是
+    喇叭→房间→麦克风这一段（削波、房间响应、Windows 采集端的回声消除/AGC）。
+    **结论：DF 只在 50003 下行或真机通路上可信**，双击定频前别拿声学环回的 DF 当准。
 
 ## 8. 工单脉络
 
