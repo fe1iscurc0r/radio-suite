@@ -7,14 +7,70 @@ PR #16 之上）——`main`（`5a08fa4`）上还没有 FT8 面板（`apps/deskt
 也没有 `tools/ft8play`，用 main 出的包跑这些条目会找不到入口。K1/K3 的代码修和 G-0 那条
 在 `fix/android-link-prefs`（PR #17 之上再叠一层），D1 的统一设置后端再叠它一层
 （`fix/android-settings-persistence`）。上面那个 APK 是
-2026-10-30 21:27 用本分支代码打的，**不含**这些改动——跑 G-0 前要先重新出包。
-**本清单的状态:** ⚠️ **下面每一条都还没在任何真机上跑过**——本机 `adb devices` 列表为空，手上没有可连的手机。条目里写「代码事实」「现状」的部分，只记录我在 PC 上**静态核对**到的东西（源码行号、aapt 出包信息、jar 字节码），不代表真机行为。真机跑通之前，本清单不构成任何验收结论。
+2026-10-30 21:27 用本分支代码打的，**不含**这些改动。2026-10-31 在本分支重新出过一包并装到
+手机上（含 D1 的落盘路径修复与对话框宽度取小），K4 就是它的实测结果。
+**本清单的状态:** 2026-10-31 手机第一次接上并跑了 K4 那批条目（装包、D1 持久化、G-0 的
+「保存→重启→按偏好建链路」这半条、K3 的离线不谎报）。**除 K4 列出的之外，其余每一条仍是
+PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
+出包信息、jar 字节码，不代表真机行为。
+
+## K4 · 真机首跑记录（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6）
+
+装的包 = `fix/android-settings-persistence` 工作树（含 D1 的落盘路径修复 + 对话框宽度按屏
+取小）交叉编译 + `androiddeployqt` 出 APK，`zipalign` 后 `apksigner` 用 debug keystore 签。
+
+**跑通了的：**
+
+- **A1–A6**：设备授权、arm64-v8a、minSdk 26 全对；冷启动不崩，logcat 里 tag `radio-suite`
+  打「链路： mock （来源： 默认 ）」+「设置文件： …」。安装见下面第 1 条坑。
+- **D1 落盘**：应用**自己**写出 `/data/user/0/org.radiosuite.app/files/radio-suite.ini`，
+  `[mem] M1\freq=14270000 M1\mode=1`（点 M1「存」）与 `[ft8] source=1`（FT8 音源切麦克风）
+  都真在文件里。改动前的两个落盘点都写不进去，见 D1 正文。
+- **D1 读回**：`am force-stop` → 不带任何参数 `am start` → FT8 面板音源仍是「本机麦克风」，
+  且状态行是「本机麦克风 · 已解 0 槽」（采集真起来了，B1 的授权也保住了）。
+- **G-0 的配置半条**：对话框链路选「C++ 原生 UDP」→ 保存 → 状态栏闪「链路设置已保存（udp），
+  重启 radio-suite 生效」→ ini 里 `[link] mode=1` → force-stop → 重启 → logcat 打
+  `链路： udp （来源： 持久化偏好 ）`，空闲状态栏 `transport: udp · 192.168.0.31`。
+  重开对话框下拉框回填 UDP（不是回到 mock）。
+- **K3 不谎报**：那个 IP 这里没有电台，logcat 是
+  `W transport open failed: "ctrl 信道无法连接 192.168.0.31"`，主窗显示 `0.000000 MHz` /
+  `USB/0` 而不是 mock 的 14.270 MHz。**没有悄悄折回 mock**，这正是 G-0 要的判据。
+- **C1/C6 竖屏**：连接对话框在竖屏（1080 宽）下「保存」「关闭」都在屏内。加宽度取小之前
+  「关闭」的 bounds 是 `[0,0][0,0]`，即整排被 460 的 `setMinimumWidth` 挤出屏外。
+- **D3（只验了降级形态）**：APRS 面板给的是真话——状态栏「APRS 保存失败：Qt SQLite 驱动
+  不可用」，因为包里没打 QSQLITE 插件。不是假成功。
+
+**没跑、也跑不了的：**
+
+- G-1…G-5（真电台的行为判据）：**手上没有可连的电台**，只有全盛 UVK6（不是 IC-705，
+  没有 50003 音频口）。所以「手机上点保存 → 重启 → 真连上电台」这条只到「按偏好建出了
+  UDP 链路并且老实报连不上」为止。
+- Gate B（AAudio 真出声/真采集）、Gate E（生命周期/音频焦点）、Gate F（FT8 时间基准）、
+  A7/A8（参数注入通道）、D4（卸载即清）——这一轮没有覆盖。
+
+** adb 驱动这台手机的五个坑（下次照清单跑之前先看这段）：**
+
+1. **MIUI 14 拦 `adb install`**：报 `INSTALL_FAILED_USER_RESTRICTED`。「USB 调试（安全设置）」
+   是安全设置，别自动化去翻它；这台机器有 Magisk root，直接
+   `su -c 'pm install -r /data/local/tmp/xxx.apk'` 就过了。
+2. **`uiautomator` 报的对话框按钮 bounds 右偏约 126px**（正好一个按钮 + 间距），照 bounds
+   中心点 `input tap` 会命中「关闭」而不是「保存」。主窗按钮不偏。更阴的是**两个按钮都会
+   关掉对话框**，所以「对话框关了」不能当保存成功的判据——要么看 ini 里 `[link]` 有没有落盘，
+   要么看状态栏那句闪的提示。
+3. **软键盘盖住按钮排**：密码框一获得焦点 IME 就弹起，横屏盖到 y≈709、竖屏盖到 y≈1291–1416，
+   也就是「保存/关闭」整排；这时候 tap 与 BACK 都像没反应。`input keyevent 111`（ESCAPE）
+   收起 IME（`dumpsys input_method` 里 `mInputShown=false`）后触控投递就恢复正常。
+4. **密码框会让截屏失效**：`QLineEdit::Password` 置 FLAG_SECURE，此时 `screencap` 返回
+   **0 字节**。要截图取证得先让密码框失焦；`uiautomator dump` 不受影响。
+5. **`uiautomator dump` 只报最上层窗口**，弹层（QComboBox 的 view）另算一层。判「对话框
+   还在不在」要认里面那句独有的文本，别认「有没有节点」。
+
 
 ---
 
 ## 0. 三条前提：先读这段再动手
 
-### K1 · APK 只能跑 mock —— 代码侧已修（`fix/android-link-prefs`），**真机未验**
+### K1 · APK 只能跑 mock —— 代码侧已修（`fix/android-link-prefs`），真机已验到「按偏好建出 UDP 链路」
 
 原缺口：传输层只在 `main.cpp` 里按命令行开关构造，兜底一律 `MockTransport`；
 「连接设置」对话框只把命令行**渲染成一行文本**，自己不构造任何传输；
@@ -81,6 +137,9 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 但这条字仍然只说明**程序以为自己在跑哪条链路**（偏好折回真话之后的取值），
 不证明电台真的应答。凡是要判「链路通没通」的条目，照旧用行为：
 频率是否随电台变、50003 音频是否进来、PTT 相位是否被电台推着走。
+**真机侧（2026-10-31）确认了它「不谎报」这一半**：偏好为 UDP 且电台不存在时，空闲文本是
+`transport: udp · 192.168.0.31`、主窗 `0.000000 MHz`，不再写回 mock 的 14.270。
+「真连上时也说真话」那一半仍等一台真电台（G-1 起）。
 
 ---
 
@@ -257,7 +316,7 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 ## 4. Gate D — 持久化（Android 上是重灾区）
 
-- [ ] **D1 QSettings 到底存不存**
+- [x] **D1 QSettings 到底存不存** —— **真机过了**（2026-10-31，证据见 K4）
   代码事实（改动前）：全应用有 **16 处**各写各的 QSettings——10 处**默认构造**
   `QSettings st;`（org/app 靠 [main.cpp:19-21](../apps/desktop/app/main.cpp#L19-L21) 设成
   `radio-suite`）：
@@ -268,19 +327,36 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   显式给了名字，但格式仍是 `NativeFormat`，Android 没有原生注册表/plist 后端。
   **代码侧已统一**（`fix/android-settings-persistence`）：这 16 处加上链路偏好那两处，
   现在都走 [ui_common/app_settings.h](../apps/desktop/ui_common/app_settings.h) 里唯一的
-  `radio::ui::appSettings()`——Android 显式 `IniFormat/UserScope`，桌面仍是
-  `HKCU\Software\radio-suite\radio-suite`（与旧路径同址，老设置不挪窝）。
-  **本条要验的是这个统一在手机上真落盘，不是代码逻辑通不通。**
-  操作：设音频设备 + 把 FT8 音源切成麦克风 + 改一次字号 →
-  `"$ADB" shell am force-stop org.radiosuite.app` → 重启 → 回看这三处。
-  判定：**三处重启后仍在** = 通过；任一处回到默认值 = 那个站点还没并进来
-  （先 `grep -n "QSettings st" apps/` 看有没有人又直接构造）。
-  顺手对照：同一次重启里**链路设置应当保住**（它从 PR #18 起就走显式 ini），
-  如果链路也没保住，说明连显式 IniFormat 在这台设备上都没落盘，属更高一级缺陷。
-  辅助命令（只有 debuggable 包能用 `run-as`）：
+  `radio::ui::appSettings()`。
+  **但统一之后真机仍然一个 ini 都不落**——第一版把它修成 `IniFormat/UserScope` 还是不行，
+  因为 Android 上「看起来能写」的落盘点实际有三个，只有一个真能用：
+
+  1. 默认构造的 `NativeFormat`：安卓没有后端，`setValue` 不报错，重启全是默认值（原始缺陷）。
+  2. `IniFormat/UserScope`：应用进程的环境里**没有 `HOME`，也没有 `XDG_CONFIG_HOME`**
+     （`su -c 'cat /proc/<pid>/environ' | tr '\0' '\n'` 里查不到），UserScope 解析出一条
+     不存在的路径，`sync()` 写到一个不存在的目录里，**同样静默**。
+  3. `QCoreApplication::applicationDirPath()`：看着是「应用自己的目录」，实际是 **APK 解出来的
+     native 库目录** `/data/app/~~xxx==/org.radiosuite.app-yyy==/lib/arm64`，root 属主 755，
+     应用连临时文件都建不出来；QSettings 存 ini 走「同目录建临时文件再 rename」的原子替换，
+     所以必然失败——而且**失败不吭声**，logcat 里连一条 QSettings 警告都没有。
+     这一条是踩过才知道的：把 ini 手动塞进 lib 目录（还要 `chcon` 补上 SELinux 的 MLS 类别，
+     否则应用读不到）能读回 `transport: udp · 10.0.0.9`，看起来「路径对了」，其实只读不写。
+
+  现在用的是第 4 个：`QStandardPaths::AppDataLocation`，拿不到再退 `QDir::currentPath()`
+  ——Qt 启动时把工作目录设成应用自己的 files 目录（`/proc/<pid>/cwd` 就是它），两者其实同源，
+  逐个试 `mkpath` + `isWritable()` 取第一个真能写的。启动日志会打实际落点
+  （[main.cpp:98-102](../apps/desktop/app/main.cpp#L98-L102)），设备上排查这类「静默丢失」
+  没有这行日志就只能靠猜。
+  实测结果：`/data/user/0/org.radiosuite.app/files/radio-suite.ini`，`[link]`/`[mem]`/`[ft8]`
+  三组都写进去了，force-stop 重启后 FT8 音源与链路偏好都读回来了。
+  判定收窄：**「三处重启后仍在」= 通过**，这一轮 FT8 音源 + 链路两处真读到，`[mem]` 只验到
+  「文件里还在、重启没丢」（读回要看主窗频率显示，而 UDP 链路连不上电台时显示恒 0，
+  拿它当判据会假阴性）。音频设备那一处没单独验：这台包里没有可用的 RtAudio 后端。
+  顺手对照：同一次重启里**链路设置应当保住**——已保住，见 K4 的 G-0。
+  辅助命令（release 包**不能用 `run-as`**，本机是 root，直接 `su -c`）：
   ```bash
-  "$ADB" exec-out run-as org.radiosuite.app sh -c 'ls -l files/ 2>/dev/null; find . -name "*.conf" -o -name "*.ini" 2>/dev/null'
-  "$ADB" logcat -d | grep -i "qsettings"
+  "$ADB" shell 'su -c "ls -l /data/user/0/org.radiosuite.app/files/; cat /data/user/0/org.radiosuite.app/files/radio-suite.ini"'
+  "$ADB" logcat -d --pid=$("$ADB" shell pidof -s org.radiosuite.app) | grep -E "radio-suite|QSettings"
   ```
   桌面等价验证（2026-10-31，非手机）：往 `HKCU\Software\radio-suite\radio-suite\font`
   写 `family=Consolas` / `size=16` → 不带任何参数起 radio-suite → 全界面字体变成
@@ -383,7 +459,7 @@ transport，见 K1）。第 1 条也顺带做了（对话框真返回表单内�
 第 3 条（A8 打包期钉参数）没做，仍可作为演示包的第二通道。
 所以下面六条**不再因 K1 阻塞**，只等手机接上。
 
-- [ ] **G-0 应用内配置链路**（本节入口，手机上先做这条）
+- [x] **G-0 应用内配置链路**（本节入口，手机上先做这条）—— **配置半条已过**（2026-10-31，见 K4）
   操作：主窗右上「连接…」→ 链路选「C++ 原生 UDP」→ 填电台 IP / 用户名 / 密码 → 保存
   → `"$ADB" shell am force-stop org.radiosuite.app` → 重新 `am start`。
   判定：状态栏空闲文本变成 `transport: udp · <你填的 IP>`（见 K3，这只证明程序按偏好
@@ -392,6 +468,11 @@ transport，见 K1）。第 1 条也顺带做了（对话框真返回表单内�
   口令框不回显但重开对话框仍在（D1 里链路这一项已走显式 ini）。
   填错 IP 保存后重启应表现为**连不上/超时**，不是悄悄跑 mock——若状态栏又写回 mock，
   说明 IP 被折回空（launch_config 的降级判定），属真缺陷。
+  **实跑结论**：三条判据全中——两档下拉、保存写 `[link] mode=1`、重启后
+  `链路： udp （来源： 持久化偏好 ）` + `transport: udp · 192.168.0.31`；故意填了这台机上
+  不存在的 IP，logcat 报 `transport open failed: "ctrl 信道无法连接 …"`、主窗 `0.000000 MHz`，
+  **没有折回 mock**。重开对话框下拉框回填 UDP，不是回到默认。
+  剩下的「真连上电台」要靠 G-1…G-5，而这需要先有一台 IC-705 在同一个网段里。
 
 - [ ] **G-1** 行为判据：mock 的频率会自漂、PTT 自己走完时序；真机链路不会自漂。
 - [ ] **G-2** 读回频率与电台面板一致（差 0 Hz）。
