@@ -67,7 +67,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 会关掉旧流再开新流，重启后按持久值恢复并自动开采集），不接电台、把喇叭对着麦克风
 就能自收自发；实窗连排三次定时发射，本机把自己那一槽解出来 DT 0.0–0.1 s（`n_lead`
 改 0 后波形顶格起播，不再拖到下一槽），DF 见 §7 的声学口径。 |
-| Android 端口 | ✅ **交叉编译 + APK 出包 + 真机首跑（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI 14）**：NDK AAudio 收发、GLES 瀑布实机出图、`RECORD_AUDIO` 运行时授权保住、minSdk 26 / `org.radiosuite.app`；**设置持久化在手机上真落盘也真读回**（16 处 `QSettings` 并到唯一后端 `ui_common/app_settings.h`，落 `AppDataLocation/radio-suite.ini`，应用自己写出 `[link]`/`[mem]`/`[ft8]` 三段）；「连接…」对话框保存 → force-stop → 重启按偏好建出 UDP 链路，链路连不上时如实报 `transport open failed` + `0.000000 MHz`（不折回 mock）；A7 参数注入在非 debuggable 的 release 包上可用；**SQLite 驱动已打进 APK**（`065ff83`），APRS 的 `aprs.db` 由应用自己建出（36864 字节、`SQLite format 3`、`stations/track/outbox/inbox` 四张表） | 逐项证据与命令：`docs/android-真机验收清单.md` §K4；离屏用例 9 例 `tests/test_launch_config.cpp`（`app_settings_names_its_own_store` 的 **Android 分支桌面不编译**，ctest 绿不覆盖手机）。**竖屏主窗布局判 FAIL**（两列重叠 + 触摸目标 33.8–42.5dp < 48dp），要修先定产品形状，见 §5 第 11 条；AAudio 真出声 / 后台存活 / 一切要真电台的条目仍未验 |
+| Android 端口 | ✅ **交叉编译 + APK 出包 + 真机首跑（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI 14）**：NDK AAudio 收发、GLES 瀑布实机出图、`RECORD_AUDIO` 运行时授权保住、minSdk 26 / `org.radiosuite.app`；**设置持久化在手机上真落盘也真读回**（16 处 `QSettings` 并到唯一后端 `ui_common/app_settings.h`，落 `AppDataLocation/radio-suite.ini`，应用自己写出 `[link]`/`[mem]`/`[ft8]` 三段）；「连接…」对话框保存 → force-stop → 重启按偏好建出 UDP 链路，链路连不上时如实报 `transport open failed` + `0.000000 MHz`（不折回 mock）；A7 参数注入在非 debuggable 的 release 包上可用；**SQLite 驱动已打进 APK**（`065ff83`），APRS 的 `aprs.db` 由应用自己建出（36864 字节、`SQLite format 3`、`stations/track/outbox/inbox` 四张表） | 逐项证据与命令：`docs/android-真机验收清单.md` §K4；离屏用例 9 例 `tests/test_launch_config.cpp`（`app_settings_names_its_own_store` 的 **Android 分支桌面不编译**，ctest 绿不覆盖手机）。**竖屏主窗布局判 FAIL**（两列重叠 + 触摸目标 33.8–42.5dp < 48dp），产品形状已定：锁横屏 + 分页重排，见 §5 第 11 条；AAudio 真出声 / 后台存活 / 一切要真电台的条目仍未验 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -203,6 +203,11 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       主窗按键 `setMinimumHeight(64)` 在这台机上量到 33.8dp（横屏）/ 42.5dp（竖屏），
       低于 48dp 触摸目标底线。两条出路：manifest 锁 `sensorLandscape`（一小时级，牺牲竖屏）
       或真做一套手机布局（几天，纵向预算要重算）。**这条是产品形状的决定，不要顺手改。**
+      **2026-10-31 用户亲测后拍板**：竖屏放弃、横屏保留（「固定横屏效果会好很多」），
+      但横屏那套桌面布局在手机上仍不成立——状态行吃掉频谱高度、S 表压 40m 波段行、
+      调谐旋钮被波段按钮盖住、部分按钮直接不在屏内，且「按键太大、界面不够大」（手机端不是平板端）。
+      方向 = 锁横屏 **+ 分页重排**：频谱单独一页、主页只显示当前波段、点开进波段调谐页、
+      制式单独一页或一个入口。见验收清单 C1 末段。
       顺带一条已修的同类：连接对话框原来的 `setMinimumWidth(460)` 把「保存/关闭」整排挤出
       竖屏屏外（bounds 报 `[0,0][0,0]`），现已按屏幕宽度取小（`app/connect_dialog.cpp`）。
     - **D3（APRS 在安卓存不了）根因不是路径，是打包**（`065ff83`）：第一包真机给的是真话
@@ -504,6 +509,15 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 17. **MIUI「USB 调试（安全设置）」是安全设置，不要自动化去翻它**：`adb install` 报
     `INSTALL_FAILED_USER_RESTRICTED` 时，走这台机已有的 Magisk root——
     `su -c 'pm install -r /data/local/tmp/xxx.apk'`，把安装这件事留在设备权限之外解决。
+19. **「回读驱动」的按钮必须在控件层自己互斥**（2026-10-31 用户真机报「六个制式能同时开」）：
+    六个制式按钮 `setCheckable` + 点下 `setChecked(true)`，而唯一的取消路径
+    `syncTogglesFromState()` 只在**有回读帧真的改了状态**时才跑（`RadioSession::onFrame` 末尾
+    才 `emit stateChanged()`）。链路选 UDP 而电台关机 / IP 填错 ⇒ 一帧回读也没有，点几个亮几个
+    且永不纠偏。`setAutoExclusive(true)` 一行才是把不变量放回控件层。同一段循环里还有第二条：
+    `Mode` 枚举有 `RTTY=4` 而按钮行没有 RTTY，拿**数组下标**当枚举值比 ⇒ FM 的回读点亮写着
+    WFM 的那个按钮、WFM 的回读谁都不点。凡是「按钮 ↔ 枚举」，把枚举值存在按钮旁边按值比，
+    别赌下标顺序。**MainWindow 不在任何测试目标里**，这类控件不变量目前只有实窗证据
+    （UIA 读 `selected`），要落成用例得先把 app 源文件编进一个 offscreen 测试目标。
 
 ## 8. 工单脉络
 
