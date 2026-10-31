@@ -468,8 +468,10 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   **构建证据**：MSVC 桌面 `radio-suite` 编译通过、`ctest` **181/181**；Android clang
   交叉编译通过（顺手修了一条 `lambda capture 's' is not used` 警告——只在 clang 报）。
   **未覆盖**：MainWindow 不在任何自动测试目标里，分页布局没有自动化回归，
-  真机截图就是全部证据；桌面布局靠「同一批 builder + 同一份成员指针 + 181 条用例
-  全绿」保证没被改坏，本轮没有再跑一遍桌面实窗截图。
+  真机截图就是全部证据。桌面布局另做了一次实窗核对（`--mock`，1105×768 截图）：
+  顶栏、S 表/旋钮/Po-SWR 同排、波段/VFO/制式/开关/RIT/存储/音频各一行、瀑布、QSO 表、
+  右列大按键、底部 `transport: mock` 状态行全部与重构前一致——但这只是人眼对照，
+  没有像素级基线。
 
 - [ ] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），未修
   `RADIO_SUITE_HAVE_LOGBOOK=1` 确实编进了 Android 包（`build-android/build.ninja` 可查），
