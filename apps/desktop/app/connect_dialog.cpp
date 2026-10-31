@@ -5,9 +5,11 @@
 #include <QComboBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScreen>
 #include <QVBoxLayout>
 
 namespace app = radio::app;
@@ -15,7 +17,11 @@ namespace app = radio::app;
 ConnectDialog::ConnectDialog(app::LinkPrefs prefs, QWidget* parent)
     : QDialog(parent), prefs_(std::move(prefs)) {
   setWindowTitle("连接设置（Connect Setting）");
-  setMinimumWidth(460);
+  // 460 是桌面上的舒适宽度，但竖屏手机可用宽度只有 ~390dp：照写会把
+  // 「保存/关闭」整排挤出屏幕外，只剩横屏能用。按屏幕宽度取小。
+  const int avail =
+      QGuiApplication::primaryScreen()->availableGeometry().width();
+  setMinimumWidth(qMin(460, avail - 24));
   auto* root = new QVBoxLayout(this);
 
   const bool bridge = app::bridgeAvailable();
