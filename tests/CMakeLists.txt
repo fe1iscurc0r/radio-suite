@@ -91,7 +91,8 @@ if(BUILD_GUI AND TARGET radio::aprs_db)
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_panel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_map.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_messages_dialog.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_rf.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_rf.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp")
   target_link_libraries(radio_aprs_ui_tests PRIVATE
     radio::aprs_db
     Qt6::Widgets
@@ -115,7 +116,8 @@ if(BUILD_GUI)
   add_executable(radio_wsjtx_ui_tests
     test_wsjtx_ui.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_client.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp")
   target_link_libraries(radio_wsjtx_ui_tests PRIVATE
     radio::wsjtx
     Qt6::Widgets
@@ -197,6 +199,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/repeater_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_stats.cpp")
   target_include_directories(radio_ui_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

@@ -251,7 +251,9 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       中继/亚音、连接、SSTV、DTMF、语音、CW、SET、MEM、APRS 消息、APRS RF、WSJT-X UDP）。
       主窗侧：三个面板 `QEvent::Hide` → 复位对应大按键；三个面板大按键互斥并加
       `:checked` 琥珀背光；波段/广播预置改 `checkable`，`syncBandHighlight()` 在
-      `refreshState()` 按 `[low, high)` 回读点亮。
+      `refreshState()` 按 `[low, high)` 回读点亮。三个离屏 UI 测试目标补编
+      `touch_dialog.cpp`（原先只构 app 目标没暴露，Windows/macOS CI 链接期
+      `LNK2019 fitDialog` 才抓到）。
       **已验**：桌面 MSVC 构建、`ctest` 181/181、Android clang 交叉编译出新包并
       `adb install -r` 到手机；桌面实窗（`--mock`）14.070 MHz 时 20m 亮琥珀。
       **未验**：装包时手机已灭屏且带安全锁屏（截屏黑图、`wm dismiss-keyguard` 无效），

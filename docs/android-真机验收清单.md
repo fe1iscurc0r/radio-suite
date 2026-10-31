@@ -516,10 +516,14 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   `syncBandHighlight()` 在 `refreshState()` 里按 `[low, high)` 回读点亮（40m 7.000–7.300、
   20m 14.000–14.350、15m 21.000–21.450、10m 28.000–29.700、6m 50–54、2m 144–148、
   70cm 430–440 MHz；AIR 118–137、BC-FM 87.5–108、BC-SW 9.4–9.9）。
-  **已验**：桌面 MSVC 构建通过、`ctest` **181/181**；Android clang 交叉编译通过并
+  **已验**：桌面 MSVC 构建（all 目标，含三个离屏 UI 测试）通过、`ctest` **181/181**；
+  Android clang 交叉编译通过并
   出了新 APK（已 `adb install -r` 装到手机上，含后续补丁：输入控件触控高度 + `showInfo`
   滚动）；桌面实窗（`--mock`，1105×768）截图
   可见 14.070 MHz 时 **20m 亮琥珀**、其余频段暗色，与制式/步进按钮的选中态一致。
+  注：`tests/CMakeLists.txt` 的三个 UI 测试目标原先没编 `touch_dialog.cpp`，
+  Windows/macOS CI 在链接期报 `LNK2019 fitDialog`——已补源并重建验证；此前只构 app
+  目标时 `ctest` 用的是旧测试二进制，这是本轮漏检点。
   **未验**：装包时手机已灭屏且带安全锁屏（`screencap` 黑图、`wm dismiss-keyguard`
   对安全锁屏无效），所以这一轮**没有在手机上点过**——滚动手感、关闭条位置、
   返回键复位、三面板互斥都等下次解锁后复验。`fitDialog` 只对 `QBoxLayout`/`QFormLayout`
