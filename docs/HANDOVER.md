@@ -67,6 +67,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 会关掉旧流再开新流，重启后按持久值恢复并自动开采集），不接电台、把喇叭对着麦克风
 就能自收自发；实窗连排三次定时发射，本机把自己那一槽解出来 DT 0.0–0.1 s（`n_lead`
 改 0 后波形顶格起播，不再拖到下一槽），DF 见 §7 的声学口径。 |
+| Android 端口 | ✅ **交叉编译 + APK 出包 + 真机首跑（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI 14）**：NDK AAudio 收发、GLES 瀑布实机出图、`RECORD_AUDIO` 运行时授权保住、minSdk 26 / `org.radiosuite.app`；**设置持久化在手机上真落盘也真读回**（16 处 `QSettings` 并到唯一后端 `ui_common/app_settings.h`，落 `AppDataLocation/radio-suite.ini`，应用自己写出 `[link]`/`[mem]`/`[ft8]` 三段）；「连接…」对话框保存 → force-stop → 重启按偏好建出 UDP 链路，链路连不上时如实报 `transport open failed` + `0.000000 MHz`（不折回 mock）；A7 参数注入在非 debuggable 的 release 包上可用 | 逐项证据与命令：`docs/android-真机验收清单.md` §K4；离屏用例 9 例 `tests/test_launch_config.cpp`（`app_settings_names_its_own_store` 的 **Android 分支桌面不编译**，ctest 绿不覆盖手机）。**竖屏主窗布局判 FAIL**（两列重叠 + 触摸目标 33.8–42.5dp < 48dp），要修先定产品形状，见 §5 第 11 条；AAudio 真出声 / 后台存活 / 一切要真电台的条目仍未验 |
 | 打包/CI | ✅ windeployqt + 三平台 matrix | `.github/workflows/ci.yml` |
 
 > **双守听**：IC-705 **不支持**（原厂 `IC-705.ini` 为 `DUAL = 0` / `DUAL_KIND = 0`，
@@ -137,16 +138,23 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     结论：无可整仓合并项；唯一现实可 vendor 的是 `ft8_lib`（MIT，本地 FT8 解码），
     其次为 Dire Wolf 思路（DCD 监听 / 早迟门比特同步）与 liquid-dsp（MIT，真机
     灵敏度不足时再引）。优先级与工作量见该文档 §3。
-11. **安卓真机验收**（2026-10-31 清单已就绪，**一条都没跑过**——本机无设备）：
-    `docs/android-真机验收清单.md`。清单里写「代码事实」的部分只做过 PC 静态核对
-    （源码行号、aapt 出包信息、jar 字节码），不构成任何真机结论。
+11. **安卓真机验收**（清单 `docs/android-真机验收清单.md`；**2026-10-31 已在真机跑过第一轮**，
+    Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6，逐项证据在清单 §K4）：
+    持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、D3 的降级形态、G-0 的配置半条、
+    K1/K3）；**判「链路通不通」的 G-1…G-5 仍是空的**——手上没有可连的电台（只有全盛 UVK6，
+    不是 IC-705、没有 50003 音频口），所以「手机上保存 → 重启 → 真连上电台」只到
+    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D2/D4 本轮没覆盖。
+    清单里写「代码事实」的部分只是 PC 静态核对（源码行号、aapt 出包信息、jar 字节码），
+    不构成真机结论——打勾要换成设备上取到的 ini 字节 / logcat / 截屏。
     - **K1（APK 只能跑 mock）代码侧已修**（`fix/android-link-prefs`）：新增
       `apps/desktop/app/launch_config.{h,cpp}`，链路优先级 **命令行 > 持久化偏好 > mock**
       在 `main.cpp` 一处算完，GUI 与 `--headless` 共用同一个 transport 工厂；
       Android 上偏好显式走 `QSettings::IniFormat`（默认构造的 NativeFormat 在安卓没有后端）；
       「连接…」对话框从「只渲染一行命令文本」改成真表单：回填偏好、「保存」写偏好、
       重启生效（**不做会话热切换**）。离屏用例 9 例（`tests/test_launch_config.cpp`）。
-      仍未验的是：手机上点保存 → 重启 → 真连上电台（清单 G-0 起）。
+      **手机上已验到「配置半条」**（2026-10-31，清单 G-0 + §K4）：对话框选 UDP → 保存 →
+      ini 落 `[link] mode=1` → force-stop 重启 → logcat「链路： udp （来源： 持久化偏好 ）」、
+      重开对话框下拉回填 UDP。仍空的是「真连上电台」那半条（G-1…G-5，没有可连的电台）。
     - **K3（状态栏谎报）代码侧已修**：空闲文本改由 `LinkPrefs` 派生，UDP 链路下是
       `transport: udp · <IP>`；但它只反映「程序以为在跑哪条链路」，**链路通不通仍看行为**
       （频率是否随电台变、50003 是否进音频）。
@@ -158,8 +166,9 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       五个值（写侧通）；再把 `link/mode` 手改成 1、`host` 改成 192.0.2.55（TEST-NET，
       不可达）**不带任何命令行参数**重启 → 状态栏 `transport: udp · 192.0.2.55`、
       频率读到 0.000000 MHz、S 表 -999 dBm（读侧通，且连不上时不谎报在线）。
-      这条正是 Android 路线的桌面等价验证，**不等于手机上通**（手机上还差
-      IniFormat 落盘与 `am` 启动两处）。测完已删掉自己建的 `link` 键，其余设置未动。
+      这条正是 Android 路线的桌面等价验证；手机侧那两处（IniFormat 落盘、`am` 启动注入）
+      2026-10-31 已各自拿到真机证据（清单 D1 / A7 / §K4）。测完已删掉自己建的 `link`
+      键，其余设置未动。
     - **顺手挖到的同类缺陷（未修，记此）**：合成谱与链路无关
       （`MainWindow.cpp:1242-1250`，只有网络音频 active 且有下行才切真实 PCM），
       所以 UDP 链路没连上时瀑布照画三个假峰——和 K3 同一类「界面说的不是真话」。
@@ -170,14 +179,32 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       `QT_ANDROID_APPLICATION_ARGUMENTS`。两条都只是调试通道，日常用 G-0 的应用内设置。
     - **D1（其余持久化在安卓必丢）代码侧已统一**（`fix/android-settings-persistence`）：
       新增 `apps/desktop/ui_common/app_settings.h`，全站唯一的
-      `radio::ui::appSettings()`——Android 显式 `IniFormat/UserScope`，桌面仍是
+      `radio::ui::appSettings()`——Android 显式 `IniFormat`，落点取
+      `QStandardPaths::AppDataLocation`（回退 `QDir::currentPath()`），桌面仍是
       `HKCU\Software\radio-suite\radio-suite`（与旧默认构造同址，老设置不挪窝）。
       并进来的 16 处：MainWindow 7 + wsjtx_panel 3 + font_proxy_settings 6，
       加上链路偏好那两处；`launch_config` 自己的 `openSettings()` 已删，不再各写一遍。
+      **中间态 `IniFormat/UserScope` 也是错的**，别照它抄：它绕开了「NativeFormat 在安卓
+      没有后端」，但落点变成 `applicationDirPath()` = APK 解压出的
+      `/data/app/~~…/lib/arm64`（root:root 755），QSettings 的「临时文件 + rename」在那里
+      **静默失败**——logcat 连一条警告都没有。三条死路与唯一可写落点见清单 D1 正文与 §7 第 15 条。
       桌面等价验证（2026-10-31，非手机）：写 `font/family=Consolas` + `font/size=16` →
       **不带任何参数**重启 → 全界面字体变 Consolas 16（截图对照过基线）→ 删键复原；
       用例 `app_settings_names_its_own_store` 锁住「后端自己点名，不靠宿主调过
-      setOrganizationName」（logbook 就没调）。**手机上这条照旧没验**（清单 D1）。
+      setOrganizationName」（logbook 就没调）。**手机上已验（2026-10-31，清单 D1 + §K4）**：
+      应用**自己**写出 `/data/user/0/org.radiosuite.app/files/radio-suite.ini`，里面真有
+      `[mem] M1\freq=14270000 M1\mode=1`（点 M1「存」）、`[ft8] source=1`（FT8 音源切麦克风）、
+      `[link] mode=1`；force-stop → 不带参数重启 → FT8 面板音源仍是「本机麦克风」且状态行
+      走「已解 0 槽」分支（读回 + 采集真起来两件事）。注意：`app_settings_names_its_own_store`
+      的 Android 分支在桌面上根本不参与编译，**ctest 绿不等于手机上也绿**，这条只有真机证据算数。
+    - **竖屏布局判为不通过（C1/C2 FAIL，本轮只记不改）**：手机竖屏 1080×2400、
+      `wm density` 440 → 可用宽度只有 ~393dp，而主窗沿用桌面那套两列布局，实测**右列大按键
+      压住「音频设置」那一行**、频段/模式/内存三行被裁、频率大字显示成「270000」；
+      主窗按键 `setMinimumHeight(64)` 在这台机上量到 33.8dp（横屏）/ 42.5dp（竖屏），
+      低于 48dp 触摸目标底线。两条出路：manifest 锁 `sensorLandscape`（一小时级，牺牲竖屏）
+      或真做一套手机布局（几天，纵向预算要重算）。**这条是产品形状的决定，不要顺手改。**
+      顺带一条已修的同类：连接对话框原来的 `setMinimumWidth(460)` 把「保存/关闭」整排挤出
+      竖屏屏外（bounds 报 `[0,0][0,0]`），现已按屏幕宽度取小（`app/connect_dialog.cpp`）。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
@@ -316,21 +343,42 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 麦克风权限：`RECORD_AUDIO` 已在清单声明；`MainWindow` 构造时在 Android 上
   `qApp->requestPermission(QMicrophonePermission)` 申请一次（Qt 6.7 没有独立
   `QMicrophonePermission` 头，用 `<QPermissions>`）。
-- **仍未验（无设备）**：APK 未装到手机跑过，AAudio 延迟/回声/后台存活、GLES 实机
-  渲染、触屏布局都只有编译级保证；`adb devices` 当前为空。
-- 手机一旦接上：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
+- **已装到真机跑过（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6）**：
+  出包 → `zipalign -f 4` → `apksigner sign --ks <debug.keystore>` → 推
+  `/data/local/tmp/` → `su -c 'pm install -r …'`（MIUI 14 拦 `adb install`，见 §7 第 17 条）→
+  `am start -n org.radiosuite.app/org.qtproject.qt.android.bindings.QtActivity`
+  （可加 `--es applicationArguments "…"` 注入参数）。冷启动不崩，logcat tag `radio-suite`，
+  GLES 实机渲染出图、RECORD_AUDIO 弹窗授权后保住、AAudio 采集进样
+  （FT8 面板「本机麦克风 · 已解 0 槽」+ 进程内 `AudioRecord` 线程吃 CPU）。
+  逐项证据与判据在 `docs/android-真机验收清单.md` §K4。
+- **仍然没验的**：AAudio 真出声与首帧延迟（B3：竖屏下发射按钮在屏外，点不到）、后台存活与
+  音频焦点（Gate E）、FT8 时间基准（Gate F）、以及一切要真电台的 G-1…G-5
+  （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。**竖屏主窗布局是坏的**，见 §5 第 11 条。
+- 手机上跑：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
   adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
-  不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置。
+  不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置；**先看 §K4**，
+  里面是 2026-10-31 第一轮真机的实跑结论和「adb 驱动这台手机的五个坑」，
+  已打勾的项不必重复劳动，重复做也要换成新证据而不是照抄旧结论。
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
-### GitHub 与 CI 现状（2026-10-29 更新）
+### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
   **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
   `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
   `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
   → #6/#7 **均未合并**，合并需逐次授权。
+- **安卓这条线的 PR 栈（2026-10-31 实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
+  **已合并**（远端 main = `5a08fa4`）；以下**全部 open、均未合并**，且是一条链，
+  合的顺序只能从底往上：#15 `fix/wasapi-capture-measurement`（35570c7）、
+  #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
+  （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
+  → #19 `fix/android-settings-persistence`（`9c1c89f`，base #18 的 head）。
+  ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
+  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19。回滚点：
+  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）。
+  **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
 - **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
   WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
@@ -410,6 +458,24 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     所以软件路径（`min_bin + freq_offset + freq_sub/osr` 除符号周期）是对的，偏的是
     喇叭→房间→麦克风这一段（削波、房间响应、Windows 采集端的回声消除/AGC）。
     **结论：DF 只在 50003 下行或真机通路上可信**，双击定频前别拿声学环回的 DF 当准。
+15. **Android 上 QSettings 有三条看着能用、实际静默失败的路**（2026-10-31 逐条真机撞过）：
+    ① 默认构造 = NativeFormat，安卓没有后端，**写了等于没写**；② `IniFormat/UserScope` 要经
+    `HOME`/`XDG_CONFIG_HOME` 解析，而安卓进程的 `/proc/<pid>/environ` 里根本没有这两个变量；
+    ③ 退到 `applicationDirPath()` 会落到 APK 解压出的 `/data/app/~~…/lib/arm64`
+    （root:root 755），QSettings 的「写临时文件 + rename」在那儿失败**且 logcat 一条警告都没有**。
+    唯一可写落点 = `QStandardPaths::writableLocation(AppDataLocation)`（这台机上是
+    `/data/user/0/<pkg>/files`），回退 `QDir::currentPath()`（`/proc/<pid>/cwd` 也是那里）。
+    **怎么判有没有真写进去：只看应用自己写出的 ini 字节**，别拿「点了保存、对话框关了」当证据
+    ——`app_settings.h` 是唯一入口，别再在任何一处 `QSettings(...) ` 直接构造。
+16. **adb 驱动 MIUI 14 这台机的坑**（完整五条在 `docs/android-真机验收清单.md` §K4 末尾，
+    下次照清单跑之前先看那段）：`uiautomator` 报的 **QDialog 按钮 bounds 右偏约 126px**
+    （正好一个按钮 + 间距），照 bounds 中心 `input tap` 会点到隔壁——而对话框里两个按钮
+    **都会关掉窗**，所以「窗关了」不是判据；密码框 `QLineEdit::Password` 置 FLAG_SECURE 时
+    `screencap` 返回 **0 字节**；软键盘弹起会盖住按钮排，`input keyevent 111` 收起 IME 后
+    触控才恢复投递；`uiautomator dump` 只报最上层窗口。主窗按钮 bounds 不偏，别把两边结论互抄。
+17. **MIUI「USB 调试（安全设置）」是安全设置，不要自动化去翻它**：`adb install` 报
+    `INSTALL_FAILED_USER_RESTRICTED` 时，走这台机已有的 Magisk root——
+    `su -c 'pm install -r /data/local/tmp/xxx.apk'`，把安装这件事留在设备权限之外解决。
 
 ## 8. 工单脉络
 
