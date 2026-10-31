@@ -853,6 +853,10 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
   for (const auto& [name, m] : kModes) {
     auto* btn = new QPushButton(name, central);
     btn->setCheckable(true);
+    // 独占：制式互斥这件事不能只靠回读。点了就 setChecked(true)，而唯一的
+    // 取消路径在 syncTogglesFromState()——链路没通（电台关机 / UDP 对端不应答）
+    // 就一帧回读都没有，连点几个就同时亮几个（2026-10-31 真机）。
+    btn->setAutoExclusive(true);
     btn->setMinimumSize(56, 34);
     const auto mode = m;
     connect(btn, &QPushButton::clicked, this, [this, btn, mode] {
@@ -860,6 +864,7 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
       btn->setChecked(true);  // 乐观更新，250ms 回读纠偏
     });
     mode_btns_.push_back(btn);
+    mode_vals_.push_back(m);
     modes->addWidget(btn);
   }
   modes->addSpacing(12);
@@ -1018,8 +1023,10 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
     QSignalBlocker guard(b);
     b->setChecked(checked);
   };
+  // 按按钮自己的制式值比，不能拿数组下标当 Mode 枚举值：Mode 里有 RTTY=4，
+  // 而按钮行没有 RTTY——按下标比会把 FM 的回读点亮成 WFM、WFM 的回读谁都不点。
   for (size_t i = 0; i < mode_btns_.size(); ++i)
-    block(mode_btns_[i], static_cast<int>(s.mode) == static_cast<int>(i));
+    block(mode_btns_[i], s.mode == mode_vals_[i]);
   block(att_btn_, s.att_20db);
   block(nb_btn_, s.nb);
   block(nr_btn_, s.nr);
