@@ -6,6 +6,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDir>
 #include <QLineEdit>
 #include <QMetaObject>
 #include <QSettings>
@@ -19,6 +20,7 @@
 #ifdef RADIO_SUITE_HAVE_UDP
 #include "core/transport_udp.h"
 #endif
+#include "ui_common/app_settings.h"
 
 namespace {
 using namespace radio::app;
@@ -125,6 +127,26 @@ TEST_CASE("link_prefs_round_trip_through_explicit_ini", "[link]") {
 
   QSettings empty(dir.filePath("nothing.conf"), QSettings::IniFormat);
   CHECK(loadLinkPrefs(empty).link == Link::Mock);
+}
+
+// 全站唯一的设置入口必须自己把存储说清楚：主窗、wsjtx 面板、字体/代理对话框
+// 原先各写一遍默认构造，一旦宿主没调 setOrganizationName（logbook 就没调）就散到
+// 另一个存储里；Android 上 NativeFormat 更是直接静默丢失。
+TEST_CASE("app_settings_names_its_own_store", "[settings]") {
+  app();
+  const QSettings st = radio::ui::appSettings();
+#ifdef Q_OS_ANDROID
+  // Android 进程里没有 HOME/XDG_CONFIG_HOME，UserScope 解析出的路径不存在；
+  // applicationDirPath() 又是 APK 的 lib 目录（应用写不进去，且失败是静默的）。
+  // 真机实测两处的结果都是「sync() 之后整个数据目录里一个 ini 都没有」。
+  CHECK(st.format() == QSettings::IniFormat);
+  CHECK(st.fileName().endsWith(QLatin1String("radio-suite.ini")));
+  CHECK(QFileInfo(st.fileName()).dir().isWritable());
+#else
+  CHECK(st.scope() == QSettings::UserScope);
+  CHECK(st.organizationName() == QLatin1String("radio-suite"));
+  CHECK(st.applicationName() == QLatin1String("radio-suite"));
+#endif
 }
 
 // 只建对象不 open：断言工厂按偏好选对了 transport 类型

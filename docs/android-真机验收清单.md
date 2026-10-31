@@ -5,15 +5,92 @@
 **代码基线:** 本清单里的 FT8 条目（B4–B6 / F1–F4）依赖 `feat/ft8-mic-source`（PR #17，栈在
 PR #16 之上）——`main`（`5a08fa4`）上还没有 FT8 面板（`apps/desktop/app/` 无 `ft8_panel.*`）
 也没有 `tools/ft8play`，用 main 出的包跑这些条目会找不到入口。K1/K3 的代码修和 G-0 那条
-在 `fix/android-link-prefs`（PR #17 之上再叠一层）。上面那个 APK 是
-2026-10-30 21:27 用本分支代码打的，**不含**这些改动——跑 G-0 前要先重新出包。
-**本清单的状态:** ⚠️ **下面每一条都还没在任何真机上跑过**——本机 `adb devices` 列表为空，手上没有可连的手机。条目里写「代码事实」「现状」的部分，只记录我在 PC 上**静态核对**到的东西（源码行号、aapt 出包信息、jar 字节码），不代表真机行为。真机跑通之前，本清单不构成任何验收结论。
+在 `fix/android-link-prefs`（PR #17 之上再叠一层），D1 的统一设置后端再叠它一层
+（`fix/android-settings-persistence`）。上面那个 APK 是
+2026-10-30 21:27 用本分支代码打的，**不含**这些改动。2026-10-31 在本分支重新出过一包并装到
+手机上（含 D1 的落盘路径修复与对话框宽度取小），K4 就是它的实测结果。
+同一天又出了**第二包**（多一条 `065ff83`：APK 里打进 QSQLITE 驱动），`pm install -r` 覆盖安装，
+D1 的 `radio-suite.ini` 原样保住（102 字节，13:46 那份），D3 的结论出自第二包。
+**本清单的状态:** 2026-10-31 手机第一次接上并跑了 K4 那批条目（装包、D1 持久化、G-0 的
+「保存→重启→按偏好建链路」这半条、K3 的离线不谎报）。**除 K4 列出的之外，其余每一条仍是
+PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
+出包信息、jar 字节码，不代表真机行为。
+
+## K4 · 真机首跑记录（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6）
+
+装的包 = `fix/android-settings-persistence` 工作树（含 D1 的落盘路径修复 + 对话框宽度按屏
+取小）交叉编译 + `androiddeployqt` 出 APK，`zipalign` 后 `apksigner` 用 debug keystore 签。
+
+**跑通了的：**
+
+- **A1–A6**：设备授权、arm64-v8a、minSdk 26 全对；冷启动不崩，logcat 里 tag `radio-suite`
+  打「链路： mock （来源： 默认 ）」+「设置文件： …」。安装见下面第 1 条坑。
+- **D1 落盘**：应用**自己**写出 `/data/user/0/org.radiosuite.app/files/radio-suite.ini`，
+  `[mem] M1\freq=14270000 M1\mode=1`（点 M1「存」）与 `[ft8] source=1`（FT8 音源切麦克风）
+  都真在文件里。改动前的两个落盘点都写不进去，见 D1 正文。
+- **D1 读回**：`am force-stop` → 不带任何参数 `am start` → FT8 面板音源仍是「本机麦克风」，
+  且状态行是「本机麦克风 · 已解 0 槽」（采集真起来了，B1 的授权也保住了）。
+- **G-0 的配置半条**：对话框链路选「C++ 原生 UDP」→ 保存 → 状态栏闪「链路设置已保存（udp），
+  重启 radio-suite 生效」→ ini 里 `[link] mode=1` → force-stop → 重启 → logcat 打
+  `链路： udp （来源： 持久化偏好 ）`，空闲状态栏 `transport: udp · 192.168.0.31`。
+  重开对话框下拉框回填 UDP（不是回到 mock）。
+- **K3 不谎报**：那个 IP 这里没有电台，logcat 是
+  `W transport open failed: "ctrl 信道无法连接 192.168.0.31"`，主窗显示 `0.000000 MHz` /
+  `USB/0` 而不是 mock 的 14.270 MHz。**没有悄悄折回 mock**，这正是 G-0 要的判据。
+- **C1/C6 竖屏（一半好一半坏）**：连接对话框在竖屏（1080 宽）下「保存」「关闭」都在屏内——
+  加宽度取小之前「关闭」的 bounds 是 `[0,0][0,0]`，即整排被 460 的 `setMinimumWidth` 挤出屏外。
+  但**主窗在竖屏是叠的**：右列大按键压住「音频设置」那一行，频段/模式/内存三行被裁，
+  频率大字显示成「270000」。详见 C1/C2，这一条本轮只记不动代码。
+- **B1 + B4 麦克风这一路**：RECORD_AUDIO 运行时弹窗授权过（重启后仍在），FT8 音源切「本机麦克风」
+  后状态行走的是 `fedSamples()!=0` 那个分支（「本机麦克风 · 已解 0 槽」，不是「设备已打开但没进
+  样本」），进程里 `AudioRecord` 线程在吃 CPU。见 B4。
+- **A7 参数注入**：release 非 debuggable 包上 `am start --es applicationArguments …` 真把参数
+  送进了 `QApplication::arguments`，且优先级在偏好之上（当时偏好是 mock，起来却是 udp）。见 A7。
+
+- **D3（写侧已验，读侧仍空）**：第一包给的是真话——状态栏「APRS 保存失败：Qt SQLite 驱动
+  不可用」，因为包里没打 QSQLITE 插件，不是假成功。顺着这句查到根因在打包（`libQt6Sql.so`
+  在 APK 里、`plugins/sqldrivers/` 不在），`065ff83` 把驱动挂到可执行目标上重出第二包后，
+  应用自己建出 36864 字节的 `aprs.db`（`SQLite format 3` + 四张表）。
+  「有站点 → 重启 → 轨迹还在」还没做到：顶行「连接 APRS-IS」在竖屏被裁到屏外，点不到，
+  库里 0 条数据。详见 D3 正文。
+
+**没跑、也跑不了的：**
+
+- G-1…G-5（真电台的行为判据）：**手上没有可连的电台**，只有全盛 UVK6（不是 IC-705，
+  没有 50003 音频口）。所以「手机上点保存 → 重启 → 真连上电台」这条只到「按偏好建出了
+  UDP 链路并且老实报连不上」为止。
+- **B3**（AAudio 真出声）：竖屏下 FT8 面板的发射按钮在屏外，没人把手机横过来就点不到。
+- B5/B6（首帧延迟、半双工抢占）、Gate E（生命周期/音频焦点）、Gate F（FT8 时间基准）、
+  A8（打包期钉参数——A7 已经通了，这条退路暂时用不上）、D2/D4（HamLog 路径、卸载即清）
+  ——这一轮没有覆盖。
+
+** adb 驱动这台手机的六个坑（下次照清单跑之前先看这段）：**
+
+1. **MIUI 14 拦 `adb install`**：报 `INSTALL_FAILED_USER_RESTRICTED`。「USB 调试（安全设置）」
+   是安全设置，别自动化去翻它；这台机器有 Magisk root，直接
+   `su -c 'pm install -r /data/local/tmp/xxx.apk'` 就过了。
+2. **`uiautomator` 报的对话框按钮 bounds 右偏约 126px**（正好一个按钮 + 间距），照 bounds
+   中心点 `input tap` 会命中「关闭」而不是「保存」。主窗按钮不偏。更阴的是**两个按钮都会
+   关掉对话框**，所以「对话框关了」不能当保存成功的判据——要么看 ini 里 `[link]` 有没有落盘，
+   要么看状态栏那句闪的提示。
+3. **软键盘盖住按钮排**：密码框一获得焦点 IME 就弹起，横屏盖到 y≈709、竖屏盖到 y≈1291–1416，
+   也就是「保存/关闭」整排；这时候 tap 与 BACK 都像没反应。`input keyevent 111`（ESCAPE）
+   收起 IME（`dumpsys input_method` 里 `mInputShown=false`）后触控投递就恢复正常。
+4. **密码框会让截屏失效**：`QLineEdit::Password` 置 FLAG_SECURE，此时 `screencap` 返回
+   **0 字节**。要截图取证得先让密码框失焦；`uiautomator dump` 不受影响。
+5. **`uiautomator dump` 只报最上层窗口**，弹层（QComboBox 的 view）另算一层。判「对话框
+   还在不在」要认里面那句独有的文本，别认「有没有节点」。
+6. **`adb shell … cat` 取二进制文件会做 CRLF 转换**：`adb shell su -c 'cat …/aprs.db' > 本地`
+   拿到的比设备上多 4 字节（每个 `\n` 前插了 `\r`），拿去算 md5 会「对不上」而误判取证失败。
+   对账要用设备侧 `md5sum` 与「本地那份把 `\r\n` 还原成 `\n` 之后」比；或者用
+   `adb exec-out`（本机的 `su` 仍会开 PTY，稳妥起见两条都做一遍）。
+
 
 ---
 
 ## 0. 三条前提：先读这段再动手
 
-### K1 · APK 只能跑 mock —— 代码侧已修（`fix/android-link-prefs`），**真机未验**
+### K1 · APK 只能跑 mock —— 代码侧已修（`fix/android-link-prefs`），真机已验到「按偏好建出 UDP 链路」
 
 原缺口：传输层只在 `main.cpp` 里按命令行开关构造，兜底一律 `MockTransport`；
 「连接设置」对话框只把命令行**渲染成一行文本**，自己不构造任何传输；
@@ -23,18 +100,19 @@ Android 上没有命令行输入口 ⇒ 装完 APK 点遍全应用也到不了�
 
 - 优先级 **命令行 > 持久化偏好 > mock**，在
   [main.cpp:50-56](../apps/desktop/app/main.cpp#L50-L56) 一处算完；
-- 偏好读写在 [launch_config.cpp:23-31](../apps/desktop/app/launch_config.cpp#L23-L31)：
+- 偏好读写在 [launch_config.cpp:69-95](../apps/desktop/app/launch_config.cpp#L69-L95)，
+  存储后端在 [ui_common/app_settings.h:14-22](../apps/desktop/ui_common/app_settings.h#L14-L22)：
   Android 上显式走 `QSettings::IniFormat`（默认构造的 NativeFormat 在安卓没有后端，
   见 D1），键为 `link/mode|host|user|pass|python`；
 - 对话框的「保存」真的落到那套偏好里
   （[connect_dialog.cpp:141](../apps/desktop/app/connect_dialog.cpp#L141) →
   [MainWindow.cpp:290-300](../apps/desktop/app/MainWindow.cpp#L290-L300)），重启生效；
 - 建不出来的链路（本构建缺 Qt6::Network / 电台 IP 为空 / 平台上没有 Python 桥）
-  在 [launch_config.cpp:33-43](../apps/desktop/app/launch_config.cpp#L33-L43) 折回真话，
+  在 [launch_config.cpp:25-33](../apps/desktop/app/launch_config.cpp#L25-L33) 折回真话，
   不让状态栏与实际链路各说各的。
 
 离屏用例覆盖到优先级、空 IP 降级、ini 往返、对话框回填/保存
-（[tests/test_launch_config.cpp](../tests/test_launch_config.cpp)，8 例）；
+（[tests/test_launch_config.cpp](../tests/test_launch_config.cpp)，9 例）；
 Android 交叉编译侧只验证了**编得过、链得上**（`build-android/.../libradio-suite_arm64-v8a.so`）。
 **「手机上点保存 → 重启 → 真连上电台」这一条仍然要靠 A7/A8/G 节实测**，A5 之后照 G 节走。
 
@@ -73,12 +151,15 @@ A7 那条只能算「值得试」，试不通就退到打包注入（A8）。
 现在两处都改成由链路偏好派生
 （[MainWindow.cpp:647](../apps/desktop/app/MainWindow.cpp#L647) 建标签、
 [MainWindow.cpp:177-180](../apps/desktop/app/MainWindow.cpp#L177-L180) 恢复空闲文本，
-内容来自 [launch_config.cpp:153](../apps/desktop/app/launch_config.cpp#L153)），
+内容来自 [launch_config.cpp:144](../apps/desktop/app/launch_config.cpp#L144)），
 UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 但这条字仍然只说明**程序以为自己在跑哪条链路**（偏好折回真话之后的取值），
 不证明电台真的应答。凡是要判「链路通没通」的条目，照旧用行为：
 频率是否随电台变、50003 音频是否进来、PTT 相位是否被电台推着走。
+**真机侧（2026-10-31）确认了它「不谎报」这一半**：偏好为 UDP 且电台不存在时，空闲文本是
+`transport: udp · 192.168.0.31`、主窗 `0.000000 MHz`，不再写回 mock 的 14.270。
+「真连上时也说真话」那一半仍等一台真电台（G-1 起）。
 
 ---
 
@@ -134,12 +215,20 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   判定：`pidof` 有 pid；crash buffer 无 `F DEBUG` / 无 tombstone 引用。
   若 logcat 出现 `QtLoader: Null Intent...` 之类只在无参数启动时才会打的行，记下来但不算失败。
 
-- [ ] **A7 参数注入通道是否真通（K2 的实测）**
+- [x] **A7 参数注入通道是否真通（K2 的实测）** —— 真机过了（2026-10-31，release 非 debuggable 包）
   命令：
   ```bash
   "$ADB" shell am start -n org.radiosuite.app/org.qtproject.qt.android.bindings.QtActivity \
     --es applicationArguments "--radio 192.168.0.31 --user linnan --pass <现场填>"
   ```
+  **实测**（填的是 `--radio 10.0.0.9 --user probe --pass secret`，一个这里不存在的 IP）：
+  logcat 三条连起来就是完整证据链——
+  `链路： udp （来源： 命令行 ）` → `设置文件： "/data/user/0/org.radiosuite.app/files/radio-suite.ini"`
+  → `W transport open failed: "ctrl 信道无法连接 10.0.0.9"`。
+  参数真进了 `QApplication::arguments`，优先级也真在偏好之上（当时偏好是 mock），
+  而且**没有**被降级判定折回。这条通道不需要 root、不需要 debuggable。
+  一个取证坑：`am start` 之后立刻 `logcat -d --pid=$(pidof -s …)` 有概率取到空——Qt 还没打完
+  那几行。别当成「注入没生效」，隔两秒重取，或者不带 `--pid` 直接 `logcat -d | grep radio-suite`。
   判定：
   - 参数**进没进到 `QApplication::arguments`** 这一层现在可以直接看状态栏
     （K3 已修：命令行 > 偏好 > mock，走命令行时文本会长成 `transport: udp · <IP>`）；
@@ -188,7 +277,7 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   命令：`"$ADB" shell pm grant org.radiosuite.app android.permission.RECORD_AUDIO`
   判定：grant 后直接启动不再弹框（用于把 B1 之外的条目和权限弹窗解耦）。
 
-- [ ] **B3 AAudio 输出真实出声**
+- [ ] **B3 AAudio 输出真实出声** —— 仍未验（竖屏够不到触发按钮，见下面「实跑障碍」）
   操作：FT8 面板点「定时发射」（整槽 15 s），或先用 PC 侧同一套渲染逻辑做对照。
   命令：
   ```bash
@@ -197,12 +286,33 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   判定：听得到 15 s 的 FT8 音（约 1500 Hz 一组 tones）；`pidof` 不变；
   underrun 计数不持续上涨。若完全静音，先分清是没权限/设备号错，还是 `AudioOut` 在
   Android 只回 `kDefaultDeviceId` 这条已知简化的后果。
+  **实跑障碍**：竖屏下 FT8 面板的「任意时隙」「定时发射」两个按钮 bounds 都是 `[0,0][0,0]`
+  （面板自己的宽度也超出 1080，和 C1 主窗同一类毛病），所以这条必须在横屏点。手机放在桌上
+  没法物理转屏，而 `settings put system user_rotation` 又转不动 Qt（见 C3）——**要人把手机横过来
+  一次**，或者等 C1 的布局决定落地。
 
-- [ ] **B4 AAudio 采集真拿到样本**
+- [x] **B4 AAudio 采集真拿到样本** —— 真机过了（2026-10-31）
   操作：FT8 面板音源选「本机麦克风」→ 开始解码。
   判定：面板状态行从「等待…」进到「解码中…」，并且**已解槽数每 15 s 递增**。
   代码依据：`SlotDecoder::fedSamples()` 区分「对齐等待」与「真没音频」，所以这条一旦显示
   「已解 N 槽」就是真收到样本，不是界面话术。
+  **原判据要改一句**：「已解 N 槽递增」需要房间里真有 FT8 信号，安静环境下必然一直是 0，
+  拿它当通过条件会假阴性。真正的判据是状态行走哪一个分支
+  （[ft8_panel.cpp:339-344](../apps/desktop/app/ft8_panel.cpp#L339-L344)）：
+  `fedSamples()==0` 时写的是「等待麦克风采样（设备已打开但没进样本）」，非 0 时才写
+  「本机麦克风 · 已解 N 槽」。
+  **实测**：状态行是「本机麦克风 · 已解 0 槽」——即 `fedSamples() != 0`，样本真进来了。
+  独立对照：应用进程里有个名为 `AudioRecord` 的线程，4 s 内 utime 从 218 涨到 223 jiffies
+  （在吃 CPU，不是挂着不动）：
+  ```bash
+  T=$(for t in $("$ADB" shell ls /proc/$(pidof -s org.radiosuite.app)/task); do \
+        "$ADB" shell su -c "grep -q AudioRecord /proc/*/task/$t/comm" 2>/dev/null && echo $t; done | head -1)
+  ```
+  触发方式记一下：面板是从右侧「FT8 本机」大按键开出来的，`toggled` 里就有一句
+  `if (!decoding()) startDecoding()`（[MainWindow.cpp:638](../apps/desktop/app/MainWindow.cpp#L638)），
+  而 `startDecoding()` 在麦克风音源下**开不起采集就直接 return**
+  （[ft8_panel.cpp:147](../apps/desktop/app/ft8_panel.cpp#L147)），按钮不会变成「停止解码」——
+  所以「按钮写着停止解码」本身也是采集打开成功的一个旁证。
 
 - [ ] **B5 首帧延迟与稳态预算**
   操作：起 FT8 麦克风解码后**先让它跑 1 s 预热**，再连续跑 ≥ 4 个时隙（60 s）观察。
@@ -218,34 +328,62 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 ## 3. Gate C — 手机分辨率上的 UI 与触控
 
-- [ ] **C1 窗口尺寸**
+- [ ] **C1 窗口尺寸** —— **真机不通过**（2026-10-31 竖屏实测，见下面「实测」）
   代码事实：[apps/desktop/app/main.cpp:121](../apps/desktop/app/main.cpp#L121) 无条件 `win.resize(1280, 720)`。
   命令：`"$ADB" shell wm size` + `"$ADB" shell wm density`
   判定：截图（`"$ADB" exec-out screencap -p > shot.png`）里频谱全宽、无横向滚动条、
   右侧按钮列不越界、频率大字不被压。桌面验收口径「1105×768 不越界」在手机竖屏上**不成立**，
   这条预期是**要改的**，改法先记问题不先动代码。
+  **实测（`wm size`=1080x2400，`wm density`=440，无 `display_density_forced` ⇒ 2.75x，
+  竖屏可用宽度只有 393dp）**：
+  - **竖屏：主窗两列直接叠在一起。** 「音频设置」的 bounds 是 `[674,949][904,1042]`，
+    右列「CW 键控」是 `[707,977][1064,1094]`，两者交叠；照 bounds 中心点 (789,995) 点下去
+    **开的是 CW 面板**（截图核对过，不是 a11y 报错误差）。频段按钮行、模式行（LS/US/AM/CW/…）、
+    内存行都被右列裁掉一半，频率大字显示成「270000」（`14.270000` 被裁）。
+    也就是说：竖屏下**主窗不能靠 bounds 定位去点**，这一条比 D1 更挡手机日常使用。
+  - **横屏：能开能用**（K4 那批条目全在横屏跑的），但频谱只占左下一小块，
+    且布局明显在压缩自己的最小尺寸（见 C2）。
+  - 连接对话框单独一条：加宽度取小之前竖屏「关闭」的 bounds 是 `[0,0][0,0]`（整排在屏外），
+    加完之后竖屏最右元素落在 x=998（屏宽 1080），保存/关闭都在屏内。
+  **改法留给下一轮拍板**，两条路：① manifest 上 `sensorLandscape`，承认「手机当控制台就是横屏」，
+  一行改动、竖屏不再摆一个点不动的界面给人看；② 真做一套手机布局（右列收成底部标签栏、
+  仪表/调谐压缩），那是独立一轮的活。①便宜但砍掉竖屏使用场景，②才对得上「手机当手持控制台」的
+  初衷——**这条是产品形状的决定，不要顺手改**。
 
-- [ ] **C2 触摸目标 ≥ 48dp**
+- [ ] **C2 触摸目标 ≥ 48dp** —— **真机不通过**（2026-10-31 实测）
   命令：`"$ADB" shell wm density` 取 `densityDPI`，按 `dp = px * 160 / densityDPI` 换算。
   判定：旋钮、CW Set Mode 树、Memory 列表、频段按钮最小可点边长 ≥ 48dp；
   连点 5 次同一目标，命中 5 次（错点一次即记不通过）。
+  **实测（440dpi ⇒ 1dp=2.75px）**：右侧大按键列（PTT/APRS/WSJT-X/FT8/SSTV/DTMF/VOICE/CW/SET/MEM）
+  横屏高 93px = **33.8dp**，竖屏高 117px = **42.5dp**，两档都低于 48dp。代码里这些按钮写的是
+  `setMinimumHeight(64)`（[MainWindow.cpp:488](../apps/desktop/app/MainWindow.cpp#L488) 的 `mk_big`），
+  手机上实际拿不到 64dp ⇒ 布局在纵向预算不够时**先把最小尺寸压掉**，这也正是 C1 竖屏叠列的成因。
+  连点命中率没单独测（横屏大按键都还在屏内，误点风险主要在 C1 说的竖屏叠列上）。
 
-- [ ] **C3 旋转不重启进程**
+- [x] **C3 旋转不重启进程** —— 真机过（2026-10-31）
   代码事实：manifest `android:configChanges` 已含 `orientation|screenSize|density|…`
   （值 `0x40003ff7`），`android:screenOrientation="unspecified"`。
   命令：`pid_before=$("$ADB" shell pidof org.radiosuite.app)` → 转屏 → 再取。
   判定：pid 不变，且频谱/解码表内容延续。pid 变了 = configChanges 没兜住，属真缺陷。
+  **手段坑**：`settings put system user_rotation 3` 转不动这个应用（Qt 侧没跟着转），
+  要验转屏得物理转手机，或者先开 `accelerometer_rotation 1`。测完记得把两个值改回原样
+  （这台机器原来是 `accelerometer_rotation=0`、`user_rotation=0`）。
 
 - [ ] **C4 软键盘输入**
   操作：点频率框 / FT8 文本框，让软键盘起来。
   判定：输入框不被键盘遮住（遮了就是必须滚动的布局缺陷）；能输入、能回删；
   按「完成/回车」不触发误发射。
 
-- [ ] **C5 独立面板窗口**
+- [x] **C5 独立面板窗口** —— 真机过（2026-10-31，FT8 / CW / APRS 三个面板）
   代码事实：APRS / WSJT-X / HamLog 工作台 / FT8 面板都是独立顶层窗口（父为空）。
   Android 上一个进程只有一个 Activity，多顶层窗口通常退化成一个全屏 SurfaceView。
   判定：四个面板都能打开、能操作、返回键只关面板不关主窗；
   **打不开或一开就盖死主窗**→ 记为安卓端结构性缺陷，不是可绕过的小毛病。
+  **实测**：FT8 面板打开后能选音源、能读状态行（K4 的 D1 就是靠它验的）；CW 面板打开后
+  键速/侧音/回读都在；APRS 面板打开后给的是真话「APRS 保存失败：Qt SQLite 驱动不可用」。
+  `keyevent 4`（BACK）只关面板，主窗随后仍可 dump 到、进程不死。
+  取证手段注意：`uiautomator dump` **只报最上层窗口**，判「面板还开着没」要认面板里独有的
+  文本，别拿「有没有节点」当判据。WSJT-X 工作台与 HamLog 没单独点开。
 
 - [ ] **C6 深色底 + 小屏可读性**
   判定：截屏里瀑布、S 表读数、状态行不叠字（桌面 2026-10-29 就抓到过右半屏越界读与表针压字，
@@ -255,26 +393,58 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 ## 4. Gate D — 持久化（Android 上是重灾区）
 
-- [ ] **D1 QSettings 到底存不存**
-  代码事实：全应用另有 **10 处**用**默认构造** `QSettings st;`，org/app 都设成了 `radio-suite`
-  （[apps/desktop/app/main.cpp:19-21](../apps/desktop/app/main.cpp#L19-L21)）：
+- [x] **D1 QSettings 到底存不存** —— **真机过了**（2026-10-31，证据见 K4）
+  代码事实（改动前）：全应用有 **16 处**各写各的 QSettings——10 处**默认构造**
+  `QSettings st;`（org/app 靠 [main.cpp:19-21](../apps/desktop/app/main.cpp#L19-L21) 设成
+  `radio-suite`）：
   [MainWindow.cpp:119/446/473/481/1167/1179/1219](../apps/desktop/app/MainWindow.cpp#L119)、
-  [wsjtx_panel.cpp:233/441/479](../apps/desktop/app/wsjtx_panel.cpp#L233)。
-  默认格式 = `NativeFormat`，Android 没有原生注册表/plist 后端。
-  **链路偏好这一处已经改掉了**（[launch_config.cpp:23-31](../apps/desktop/app/launch_config.cpp#L23-L31)：
-  Android 上显式 `QSettings(IniFormat, UserScope, "radio-suite", "radio-suite")`），
-  上面这 10 处**还是默认构造**——本条测的是它们。
-  操作：设音频设备 + 把 FT8 音源切成麦克风 → `"$ADB" shell am force-stop org.radiosuite.app`
-  → 重启 → 回看两处设置。
-  判定：**重启后仍在** = 通过；回到默认值 = 缺陷（修法照 launch_config 那一处，
-  把这 10 处的 `QSettings st;` 换成同一个显式后端，别再各写一遍）。
-  顺手对照：同一次重启里**链路设置应当保住**（它已经走显式 ini），
-  如果链路也没保住，说明连显式 IniFormat 在这台设备上都没落盘，属更高一级缺陷。
-  辅助命令（只有 debuggable 包能用 `run-as`）：
+  [wsjtx_panel.cpp:233/441/479](../apps/desktop/app/wsjtx_panel.cpp#L233)；
+  另有 6 处 `QSettings st(kOrg, "radio-suite")`
+  （[font_proxy_settings.cpp:47/56/65/91/105/119](../apps/desktop/ui_common/font_proxy_settings.cpp#L47)）——
+  显式给了名字，但格式仍是 `NativeFormat`，Android 没有原生注册表/plist 后端。
+  **代码侧已统一**（`fix/android-settings-persistence`）：这 16 处加上链路偏好那两处，
+  现在都走 [ui_common/app_settings.h](../apps/desktop/ui_common/app_settings.h) 里唯一的
+  `radio::ui::appSettings()`。
+  **但统一之后真机仍然一个 ini 都不落**——第一版把它修成 `IniFormat/UserScope` 还是不行，
+  因为 Android 上「看起来能写」的落盘点实际有三个，只有一个真能用：
+
+  1. 默认构造的 `NativeFormat`：安卓没有后端，`setValue` 不报错，重启全是默认值（原始缺陷）。
+  2. `IniFormat/UserScope`：应用进程的环境里**没有 `HOME`，也没有 `XDG_CONFIG_HOME`**
+     （`su -c 'cat /proc/<pid>/environ' | tr '\0' '\n'` 里查不到），UserScope 解析出一条
+     不存在的路径，`sync()` 写到一个不存在的目录里，**同样静默**。
+  3. `QCoreApplication::applicationDirPath()`：看着是「应用自己的目录」，实际是 **APK 解出来的
+     native 库目录** `/data/app/~~xxx==/org.radiosuite.app-yyy==/lib/arm64`，root 属主 755，
+     应用连临时文件都建不出来；QSettings 存 ini 走「同目录建临时文件再 rename」的原子替换，
+     所以必然失败——而且**失败不吭声**，logcat 里连一条 QSettings 警告都没有。
+     这一条是踩过才知道的：把 ini 手动塞进 lib 目录（还要 `chcon` 补上 SELinux 的 MLS 类别，
+     否则应用读不到）能读回 `transport: udp · 10.0.0.9`，看起来「路径对了」，其实只读不写。
+
+  现在用的是第 4 个：`QStandardPaths::AppDataLocation`，拿不到再退 `QDir::currentPath()`
+  ——Qt 启动时把工作目录设成应用自己的 files 目录（`/proc/<pid>/cwd` 就是它），两者其实同源，
+  逐个试 `mkpath` + `isWritable()` 取第一个真能写的。启动日志会打实际落点
+  （[main.cpp:98-102](../apps/desktop/app/main.cpp#L98-L102)），设备上排查这类「静默丢失」
+  没有这行日志就只能靠猜。
+  实测结果：`/data/user/0/org.radiosuite.app/files/radio-suite.ini`，`[link]`/`[mem]`/`[ft8]`
+  三组都写进去了，force-stop 重启后 FT8 音源与链路偏好都读回来了。
+  判定收窄：**「三处重启后仍在」= 通过**，这一轮 FT8 音源 + 链路两处真读到，`[mem]` 只验到
+  「文件里还在、重启没丢」（读回要看主窗频率显示，而 UDP 链路连不上电台时显示恒 0，
+  拿它当判据会假阴性）。音频设备那一处没单独验：这台包里没有可用的 RtAudio 后端。
+  顺手对照：同一次重启里**链路设置应当保住**——已保住，见 K4 的 G-0。
+  辅助命令（release 包**不能用 `run-as`**，本机是 root，直接 `su -c`）：
   ```bash
-  "$ADB" exec-out run-as org.radiosuite.app sh -c 'ls -l files/ 2>/dev/null; find . -name "*.conf" -o -name "*.ini" 2>/dev/null'
-  "$ADB" logcat -d | grep -i "qsettings"
+  "$ADB" shell 'su -c "ls -l /data/user/0/org.radiosuite.app/files/; cat /data/user/0/org.radiosuite.app/files/radio-suite.ini"'
+  "$ADB" logcat -d --pid=$("$ADB" shell pidof -s org.radiosuite.app) | grep -E "radio-suite|QSettings"
   ```
+  桌面等价验证（2026-10-31，非手机）：往 `HKCU\Software\radio-suite\radio-suite\font`
+  写 `family=Consolas` / `size=16` → 不带任何参数起 radio-suite → 全界面字体变成
+  Consolas 16（截图对照过），删键复原。这证明**改过的 `applySaved()` 仍从同一存储读到值**；
+  它不证明 Android 的 ini 落盘，D1 照跑不误。
+  顺带挖到的坑（**不是**本次改动引入，桌面实测）：手工 `reg add` 写出的
+  `wsjtx/group`（值名带斜杠、平铺在 app 键下）**应用读不到**——QSettings 把
+  `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，得落在子键 `wsjtx` 下才算。
+  本机就留着这么一对平铺值（`wsjtx/group=127.0.0.1`、`wsjtx/port=2237`），
+  所以 WSJT-X 面板照旧按默认组播 224.0.0.1 去 join 并报「加入组播失败」。
+  要改监听地址请走面板里的「设置」，别用 `reg add`。
 
 - [ ] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级**
   代码事实：[apps/desktop/logbook/logbook.cpp:21-25](../apps/desktop/logbook/logbook.cpp#L21-L25) 读 `APPDATA`，
@@ -283,11 +453,27 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   且不出现「写了 QSO 但其实没落盘」的假成功。
   这条判的是「诚实」，不是「能用」；要能用得换路径策略，属后续工单。
 
-- [ ] **D3 APRS 库落在哪**
+- [x] **D3 APRS 库落在哪**（写侧已验；「收下站点 → 重启 → 轨迹仍在」的读侧仍空，见下）
   代码事实：路径解析顺序 `RADIO_SUITE_APRS_DB` → `APPDATA` → `QStandardPaths::AppDataLocation`
   （[apps/desktop/aprs/persist.cpp](../apps/desktop/aprs/persist.cpp)）。
   判定：收下若干 APRS 站点 → force-stop → 重启，历史轨迹仍在，且能在 `run-as` 列出的
   私有目录里看到那个 `.db` 文件（大小非 0）。
+
+  **2026-10-31 真机（第二包，含 APK 驱动修复 `065ff83`）结论：**
+  - **修掉的根因**：原来 APK 里有 `libQt6Sql.so` 却**没有 sqldrivers 插件**
+    （`unzip -l` 数过），于是 `QSqlDatabase::isDriverAvailable("QSQLITE")` 恒假，
+    面板只会给「APRS 保存失败：Qt SQLite 驱动不可用」那句降级提示——不是路径问题，是打包问题。
+  - **写侧已验**：面板开着过 30 s 存盘周期，应用**自己**建出
+    `/data/user/0/org.radiosuite.app/files/aprs.db`，`su` 读出 36864 字节，
+    头 16 字节是 `SQLite format 3\0`，里面确有 `stations`/`track`/`outbox`/`inbox` 四张表
+    （`CREATE TABLE` 全在）。设备侧 `md5sum` = `e68beb7db007ed9e3126315858e137d4`；
+    本地那份经 `adb shell su -c cat` 取回时多了 4 字节（**adb shell 会做 CRLF 转换**），
+    把 `\r\n` 还原成 `\n` 后长度与 md5 与设备逐字节一致。
+  - **读侧没验**：库里 0 条站点，「有数据 → 重启 → 数据还在」这条还没做到。
+    卡在 C1：面板顶行「连接 APRS-IS」「RF 设置」「发信标」在竖屏下 bounds 全是
+    `[0,0][0,0]`（顶行总宽超出屏宽被裁掉），手机上点不到，也就收不到站点。
+    **别把这条当通过**——桌面 `[aprs_persist]` 用例覆盖的是同一份 load/save 代码，
+    不等于手机上真机跑过。
 
 - [ ] **D4 卸载即清（不留脏数据）**
   命令：`"$ADB" uninstall org.radiosuite.app` 后重装。
@@ -366,7 +552,7 @@ transport，见 K1）。第 1 条也顺带做了（对话框真返回表单内�
 第 3 条（A8 打包期钉参数）没做，仍可作为演示包的第二通道。
 所以下面六条**不再因 K1 阻塞**，只等手机接上。
 
-- [ ] **G-0 应用内配置链路**（本节入口，手机上先做这条）
+- [x] **G-0 应用内配置链路**（本节入口，手机上先做这条）—— **配置半条已过**（2026-10-31，见 K4）
   操作：主窗右上「连接…」→ 链路选「C++ 原生 UDP」→ 填电台 IP / 用户名 / 密码 → 保存
   → `"$ADB" shell am force-stop org.radiosuite.app` → 重新 `am start`。
   判定：状态栏空闲文本变成 `transport: udp · <你填的 IP>`（见 K3，这只证明程序按偏好
@@ -375,6 +561,11 @@ transport，见 K1）。第 1 条也顺带做了（对话框真返回表单内�
   口令框不回显但重开对话框仍在（D1 里链路这一项已走显式 ini）。
   填错 IP 保存后重启应表现为**连不上/超时**，不是悄悄跑 mock——若状态栏又写回 mock，
   说明 IP 被折回空（launch_config 的降级判定），属真缺陷。
+  **实跑结论**：三条判据全中——两档下拉、保存写 `[link] mode=1`、重启后
+  `链路： udp （来源： 持久化偏好 ）` + `transport: udp · 192.168.0.31`；故意填了这台机上
+  不存在的 IP，logcat 报 `transport open failed: "ctrl 信道无法连接 …"`、主窗 `0.000000 MHz`，
+  **没有折回 mock**。重开对话框下拉框回填 UDP，不是回到默认。
+  剩下的「真连上电台」要靠 G-1…G-5，而这需要先有一台 IC-705 在同一个网段里。
 
 - [ ] **G-1** 行为判据：mock 的频率会自漂、PTT 自己走完时序；真机链路不会自漂。
 - [ ] **G-2** 读回频率与电台面板一致（差 0 Hz）。

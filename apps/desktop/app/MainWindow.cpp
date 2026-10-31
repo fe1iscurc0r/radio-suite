@@ -46,10 +46,10 @@
 #include <QComboBox>
 #include <QListWidget>
 #include <QRegularExpression>
-#include <QSettings>
 
 #include "audio/audio_in.h"
 #include "audio/audio_out.h"
+#include "ui_common/app_settings.h"
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
 #include "app/wsjtx_client.h"
@@ -116,7 +116,7 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
   network_audio_ = std::make_unique<radio::app::NetworkAudio>(&session_);
   {
     // 上次在「音频设置」里选的设备（-1 = 系统默认）
-    QSettings st;
+    auto st = radio::ui::appSettings();
     network_audio_->setDevices(st.value("audio/in_dev", -1).toInt(),
                                st.value("audio/out_dev", -1).toInt());
   }
@@ -443,7 +443,7 @@ void MainWindow::buildUi() {
         }
         if (!ft8_capture_)
           ft8_capture_ = std::make_unique<radio::audio::AudioIn>();
-        QSettings st;
+        auto st = radio::ui::appSettings();
         int dev = st.value("audio/in_dev", -1).toInt();
         if (dev < 0) dev = ft8_capture_->defaultInputDevice();
         if (dev < 0) {
@@ -470,7 +470,7 @@ void MainWindow::buildUi() {
 
   // 音源选择记住（-1/未设 = 50003 下行）：麦克风监听是「整晚挂着听」的用法
   {
-    QSettings st;
+    auto st = radio::ui::appSettings();
     ft8_panel_->setSource(
         st.value("ft8/source", 0).toInt() == 1
             ? radio::app::Ft8Panel::Source::Microphone
@@ -478,7 +478,7 @@ void MainWindow::buildUi() {
   }
   connect(ft8_panel_, &radio::app::Ft8Panel::sourceChanged, this,
           [](radio::app::Ft8Panel::Source source) {
-            QSettings st;
+            auto st = radio::ui::appSettings();
             st.setValue("ft8/source",
                         source == radio::app::Ft8Panel::Source::Microphone ? 1 : 0);
           });
@@ -1164,7 +1164,7 @@ void MainWindow::onTuneStep(int direction) {
 void MainWindow::onMemSave() {
   const auto s = session_.store().snapshot();
   const QString key = QString("mem/%1").arg(mem_slot_->currentText());
-  QSettings st;
+  auto st = radio::ui::appSettings();
   st.setValue(key + "/freq", qulonglong(s.freq_hz));
   st.setValue(key + "/mode", int(s.mode));
   flashStatus(QString("%1 已存 %2 MHz %3")
@@ -1176,7 +1176,7 @@ void MainWindow::onMemSave() {
 
 void MainWindow::onMemRecall() {
   const QString key = QString("mem/%1").arg(mem_slot_->currentText());
-  QSettings st;
+  auto st = radio::ui::appSettings();
   const auto freq = st.value(key + "/freq").toULongLong();
   const int mode = st.value(key + "/mode").toInt();
   if (freq == 0) {
@@ -1216,7 +1216,7 @@ void MainWindow::onAudioSettings() {
   const int in_id = dlg.chosenInputId();
   const int out_id = dlg.chosenOutputId();
   {
-    QSettings st;
+    auto st = radio::ui::appSettings();
     st.setValue("audio/in_dev", in_id);
     st.setValue("audio/out_dev", out_id);
   }

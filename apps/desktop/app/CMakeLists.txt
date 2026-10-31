@@ -86,6 +86,30 @@ if(ANDROID)
     QT_ANDROID_VERSION_CODE "1"
     QT_ANDROID_MIN_SDK_VERSION "26"
     QT_ANDROID_TARGET_SDK_VERSION "34")
+
+  # Qt6::Sql 只挂在 radio_aprs_db / radio_logbook 两个**静态库**上，androiddeployqt
+  # 的插件清单（deployment json 里的 android-deploy-plugins）按可执行目标的依赖链
+  # 收集，静态库带的插件进不来：APK 里有 libQt6Sql.so 却没有 sqldrivers/qsqlite，
+  # 手机上 QSQLITE 驱动不可用，APRS 持久化与 HamLog 整体失效（2026-10-31 真机 D3：
+  # 状态栏「APRS 保存失败：Qt SQLite 驱动不可用」）。修法是把驱动插件直接挂到
+  # 可执行目标上。
+  # 别用 QT_ANDROID_EXTRA_PLUGINS：那个键在 androiddeployqt 里是「往 assets/ 拷外部
+  # 资源」，喂 .so 路径或类型名都会 "External resource … does not exist or not a
+  # correct directory!" 停建（两种都实测过），指向插件目录则只会把插件塞进 assets，
+  # Qt 运行时不从那儿加载插件。
+  find_package(Qt6 QUIET COMPONENTS Sql)
+  if(TARGET Qt6::QSQLiteDriverPlugin)
+    qt_import_plugins(radio-suite INCLUDE Qt6::QSQLiteDriverPlugin)
+    get_target_property(_rs_qt_plugins radio-suite QT_PLUGINS)
+    message(STATUS "radio-suite(Android): 可执行目标挂上的插件 = ${_rs_qt_plugins}")
+  else()
+    # Qt6_DIR = <Qt>/lib/cmake/Qt6，往上三层才是 Qt 根（少算一层指到 lib，glob 会落空）
+    get_filename_component(RADIO_QT_ROOT "${Qt6_DIR}/../../.." ABSOLUTE)
+    message(WARNING
+      "radio-suite(Android): 看不到 Qt6::QSQLiteDriverPlugin 目标（Qt6_DIR=${Qt6_DIR}，"
+      "实盘插件在 ${RADIO_QT_ROOT}/plugins/sqldrivers），APK 不会带 SQLite 驱动，"
+      "手机上 APRS 持久化与 HamLog 仍不可用")
+  endif()
 endif()
 
 # Windows 运行部署：刷新 packaging/out-win（exe + Qt DLL/插件），双击即可运行

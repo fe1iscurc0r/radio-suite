@@ -8,6 +8,7 @@
 #include "app/MainWindow.h"
 #include "app/launch_config.h"
 #include "app/session.h"
+#include "ui_common/app_settings.h"
 #include "ui_common/font_proxy_settings.h"
 #ifdef RADIO_SUITE_HAVE_BUS
 #include "bus/bus_server.h"
@@ -94,6 +95,11 @@ int main(int argc, char* argv[]) {
       : prefs.link == radio::app::Link::Mock ? "默认"
                                              : "持久化偏好";
   qInfo() << "链路：" << radio::app::linkName(prefs.link) << "（来源：" << origin << "）";
+#ifdef Q_OS_ANDROID
+  // 设备上「设置没保住」是最难查的一类问题，而 Android 的可选落盘点里有两个是写不进去
+  // 的（APK 的 lib 目录、HomeScope 解析出的 XDG 路径），所以把真实路径打在启动日志里。
+  qInfo() << "设置文件：" << radio::ui::appSettings().fileName();
+#endif
 
   MainWindow win(transport, prefs);
   win.resize(1280, 720);
