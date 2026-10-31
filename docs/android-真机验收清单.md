@@ -39,6 +39,12 @@ PC 上静态核对的「代码事实」，没有真机结论。** 条目里写�
   加宽度取小之前「关闭」的 bounds 是 `[0,0][0,0]`，即整排被 460 的 `setMinimumWidth` 挤出屏外。
   但**主窗在竖屏是叠的**：右列大按键压住「音频设置」那一行，频段/模式/内存三行被裁，
   频率大字显示成「270000」。详见 C1/C2，这一条本轮只记不动代码。
+- **B1 + B4 麦克风这一路**：RECORD_AUDIO 运行时弹窗授权过（重启后仍在），FT8 音源切「本机麦克风」
+  后状态行走的是 `fedSamples()!=0` 那个分支（「本机麦克风 · 已解 0 槽」，不是「设备已打开但没进
+  样本」），进程里 `AudioRecord` 线程在吃 CPU。见 B4。
+- **A7 参数注入**：release 非 debuggable 包上 `am start --es applicationArguments …` 真把参数
+  送进了 `QApplication::arguments`，且优先级在偏好之上（当时偏好是 mock，起来却是 udp）。见 A7。
+
 - **D3（只验了降级形态）**：APRS 面板给的是真话——状态栏「APRS 保存失败：Qt SQLite 驱动
   不可用」，因为包里没打 QSQLITE 插件。不是假成功。
 
@@ -47,8 +53,10 @@ PC 上静态核对的「代码事实」，没有真机结论。** 条目里写�
 - G-1…G-5（真电台的行为判据）：**手上没有可连的电台**，只有全盛 UVK6（不是 IC-705，
   没有 50003 音频口）。所以「手机上点保存 → 重启 → 真连上电台」这条只到「按偏好建出了
   UDP 链路并且老实报连不上」为止。
-- Gate B（AAudio 真出声/真采集）、Gate E（生命周期/音频焦点）、Gate F（FT8 时间基准）、
-  A7/A8（参数注入通道）、D4（卸载即清）——这一轮没有覆盖。
+- **B3**（AAudio 真出声）：竖屏下 FT8 面板的发射按钮在屏外，没人把手机横过来就点不到。
+- B5/B6（首帧延迟、半双工抢占）、Gate E（生命周期/音频焦点）、Gate F（FT8 时间基准）、
+  A8（打包期钉参数——A7 已经通了，这条退路暂时用不上）、D2/D4（HamLog 路径、卸载即清）
+  ——这一轮没有覆盖。
 
 ** adb 驱动这台手机的五个坑（下次照清单跑之前先看这段）：**
 
@@ -197,12 +205,20 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   判定：`pidof` 有 pid；crash buffer 无 `F DEBUG` / 无 tombstone 引用。
   若 logcat 出现 `QtLoader: Null Intent...` 之类只在无参数启动时才会打的行，记下来但不算失败。
 
-- [ ] **A7 参数注入通道是否真通（K2 的实测）**
+- [x] **A7 参数注入通道是否真通（K2 的实测）** —— 真机过了（2026-10-31，release 非 debuggable 包）
   命令：
   ```bash
   "$ADB" shell am start -n org.radiosuite.app/org.qtproject.qt.android.bindings.QtActivity \
     --es applicationArguments "--radio 192.168.0.31 --user linnan --pass <现场填>"
   ```
+  **实测**（填的是 `--radio 10.0.0.9 --user probe --pass secret`，一个这里不存在的 IP）：
+  logcat 三条连起来就是完整证据链——
+  `链路： udp （来源： 命令行 ）` → `设置文件： "/data/user/0/org.radiosuite.app/files/radio-suite.ini"`
+  → `W transport open failed: "ctrl 信道无法连接 10.0.0.9"`。
+  参数真进了 `QApplication::arguments`，优先级也真在偏好之上（当时偏好是 mock），
+  而且**没有**被降级判定折回。这条通道不需要 root、不需要 debuggable。
+  一个取证坑：`am start` 之后立刻 `logcat -d --pid=$(pidof -s …)` 有概率取到空——Qt 还没打完
+  那几行。别当成「注入没生效」，隔两秒重取，或者不带 `--pid` 直接 `logcat -d | grep radio-suite`。
   判定：
   - 参数**进没进到 `QApplication::arguments`** 这一层现在可以直接看状态栏
     （K3 已修：命令行 > 偏好 > mock，走命令行时文本会长成 `transport: udp · <IP>`）；
@@ -251,7 +267,7 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   命令：`"$ADB" shell pm grant org.radiosuite.app android.permission.RECORD_AUDIO`
   判定：grant 后直接启动不再弹框（用于把 B1 之外的条目和权限弹窗解耦）。
 
-- [ ] **B3 AAudio 输出真实出声**
+- [ ] **B3 AAudio 输出真实出声** —— 仍未验（竖屏够不到触发按钮，见下面「实跑障碍」）
   操作：FT8 面板点「定时发射」（整槽 15 s），或先用 PC 侧同一套渲染逻辑做对照。
   命令：
   ```bash
@@ -260,12 +276,33 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   判定：听得到 15 s 的 FT8 音（约 1500 Hz 一组 tones）；`pidof` 不变；
   underrun 计数不持续上涨。若完全静音，先分清是没权限/设备号错，还是 `AudioOut` 在
   Android 只回 `kDefaultDeviceId` 这条已知简化的后果。
+  **实跑障碍**：竖屏下 FT8 面板的「任意时隙」「定时发射」两个按钮 bounds 都是 `[0,0][0,0]`
+  （面板自己的宽度也超出 1080，和 C1 主窗同一类毛病），所以这条必须在横屏点。手机放在桌上
+  没法物理转屏，而 `settings put system user_rotation` 又转不动 Qt（见 C3）——**要人把手机横过来
+  一次**，或者等 C1 的布局决定落地。
 
-- [ ] **B4 AAudio 采集真拿到样本**
+- [x] **B4 AAudio 采集真拿到样本** —— 真机过了（2026-10-31）
   操作：FT8 面板音源选「本机麦克风」→ 开始解码。
   判定：面板状态行从「等待…」进到「解码中…」，并且**已解槽数每 15 s 递增**。
   代码依据：`SlotDecoder::fedSamples()` 区分「对齐等待」与「真没音频」，所以这条一旦显示
   「已解 N 槽」就是真收到样本，不是界面话术。
+  **原判据要改一句**：「已解 N 槽递增」需要房间里真有 FT8 信号，安静环境下必然一直是 0，
+  拿它当通过条件会假阴性。真正的判据是状态行走哪一个分支
+  （[ft8_panel.cpp:339-344](../apps/desktop/app/ft8_panel.cpp#L339-L344)）：
+  `fedSamples()==0` 时写的是「等待麦克风采样（设备已打开但没进样本）」，非 0 时才写
+  「本机麦克风 · 已解 N 槽」。
+  **实测**：状态行是「本机麦克风 · 已解 0 槽」——即 `fedSamples() != 0`，样本真进来了。
+  独立对照：应用进程里有个名为 `AudioRecord` 的线程，4 s 内 utime 从 218 涨到 223 jiffies
+  （在吃 CPU，不是挂着不动）：
+  ```bash
+  T=$(for t in $("$ADB" shell ls /proc/$(pidof -s org.radiosuite.app)/task); do \
+        "$ADB" shell su -c "grep -q AudioRecord /proc/*/task/$t/comm" 2>/dev/null && echo $t; done | head -1)
+  ```
+  触发方式记一下：面板是从右侧「FT8 本机」大按键开出来的，`toggled` 里就有一句
+  `if (!decoding()) startDecoding()`（[MainWindow.cpp:638](../apps/desktop/app/MainWindow.cpp#L638)），
+  而 `startDecoding()` 在麦克风音源下**开不起采集就直接 return**
+  （[ft8_panel.cpp:147](../apps/desktop/app/ft8_panel.cpp#L147)），按钮不会变成「停止解码」——
+  所以「按钮写着停止解码」本身也是采集打开成功的一个旁证。
 
 - [ ] **B5 首帧延迟与稳态预算**
   操作：起 FT8 麦克风解码后**先让它跑 1 s 预热**，再连续跑 ≥ 4 个时隙（60 s）观察。
