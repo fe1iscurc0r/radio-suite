@@ -501,21 +501,24 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   波段按钮根本没有 `setCheckable`，点完没有任何回读高亮。
   **修法**：新增 `apps/desktop/app/touch_dialog.{h,cpp}`（Android-only 生效）：
   `fitDialog` 把对话框根布局整体搬进 `QScrollArea`，底部钉一条常驻「关闭」（→ reject），
-  按钮抬到 ≥44dp，窗口压进 `QScreen::availableGeometry()`；滚动区挂
+  交互控件（按钮、下拉框、数字框、输入框、勾选）统一抬到 ≥44dp，窗口压进
+  `QScreen::availableGeometry()`；滚动区挂
   `QScroller::grabGesture(viewport, LeftMouseButtonGesture)`——QScrollArea 默认只认滚轮
   和滚动条，手指拖动根本不会滚（安卓上触摸被合成成鼠标事件，所以选左键拖动这一档）；
   分页主窗的 `wrapScroll` 同样挂上，调谐/制式页才真能用手拖着滚。
   `addCloseBar` 给三个独立
   面板各插一条「标题 + 关闭 ✕」顶栏；`QMessageBox` 换成语义相同的可滚动信息框
-  `showInfo`（同样常驻关闭）。接线覆盖：音频设置、中继/亚音、连接设置、SSTV、DTMF、
-  语音存储、CW、SET、MEM 信道、APRS 消息、APRS RF 设置、WSJT-X UDP 设置。
+  `showInfo`（同样常驻关闭，滚动区同样挂 QScroller）。接线覆盖：音频设置、中继/亚音、
+  连接设置、SSTV、DTMF、语音存储、CW、SET、MEM 信道、APRS 消息、APRS RF 设置、
+  WSJT-X UDP 设置。
   主窗侧：三个面板事件过滤器收 `QEvent::Hide` → 复位对应大按键；三个面板大按键改为
   互斥（开一个收掉另两个）并给 `:checked` 琥珀背光；波段/广播预置按钮改 `checkable`，
   `syncBandHighlight()` 在 `refreshState()` 里按 `[low, high)` 回读点亮（40m 7.000–7.300、
   20m 14.000–14.350、15m 21.000–21.450、10m 28.000–29.700、6m 50–54、2m 144–148、
   70cm 430–440 MHz；AIR 118–137、BC-FM 87.5–108、BC-SW 9.4–9.9）。
   **已验**：桌面 MSVC 构建通过、`ctest` **181/181**；Android clang 交叉编译通过并
-  出了新 APK（已 `adb install -r` 装到手机上）；桌面实窗（`--mock`，1105×768）截图
+  出了新 APK（已 `adb install -r` 装到手机上，含后续补丁：输入控件触控高度 + `showInfo`
+  滚动）；桌面实窗（`--mock`，1105×768）截图
   可见 14.070 MHz 时 **20m 亮琥珀**、其余频段暗色，与制式/步进按钮的选中态一致。
   **未验**：装包时手机已灭屏且带安全锁屏（`screencap` 黑图、`wm dismiss-keyguard`
   对安全锁屏无效），所以这一轮**没有在手机上点过**——滚动手感、关闭条位置、

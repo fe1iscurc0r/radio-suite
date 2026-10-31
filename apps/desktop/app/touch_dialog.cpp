@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/touch_dialog.h"
 
+#include <QAbstractSpinBox>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QFormLayout>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLayout>
+#include <QLineEdit>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QScreen>
 #include <QScrollArea>
 #include <QScroller>
@@ -19,11 +24,20 @@ namespace radio::app::touch {
 #ifdef Q_OS_ANDROID
 namespace {
 
-// 手机上没有鼠标，按钮触不到 44dp 就是误触/点不中
-void restyleButtons(QWidget* root) {
-  for (auto* b : root->findChildren<QPushButton*>())
-    if (b->minimumHeight() < 44) b->setMinimumHeight(44);
+// 手机上没有鼠标，按钮/输入控件触不到 44dp 就是误触/点不中
+void bumpHeight(QWidget* root, int min_h) {
+  for (auto* w : root->findChildren<QWidget*>()) {
+    const bool interactive = qobject_cast<QPushButton*>(w) ||
+                             qobject_cast<QComboBox*>(w) ||
+                             qobject_cast<QAbstractSpinBox*>(w) ||
+                             qobject_cast<QLineEdit*>(w) ||
+                             qobject_cast<QCheckBox*>(w) ||
+                             qobject_cast<QRadioButton*>(w);
+    if (interactive && w->minimumHeight() < min_h) w->setMinimumHeight(min_h);
+  }
 }
+
+void restyleButtons(QWidget* root) { bumpHeight(root, 44); }
 
 }  // namespace
 #endif
@@ -140,6 +154,9 @@ void showInfo(QWidget* parent, const QString& title, const QString& text) {
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   scroll->setWidget(label);
+#ifdef Q_OS_ANDROID
+  QScroller::grabGesture(scroll->viewport(), QScroller::LeftMouseButtonGesture);
+#endif
   root->addWidget(scroll, 1);
   auto* row = new QHBoxLayout();
   row->addStretch(1);
