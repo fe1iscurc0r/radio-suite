@@ -8,11 +8,14 @@
 #include <QPushButton>
 #include <QTimer>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 class QHBoxLayout;
 class QVBoxLayout;
 class QCloseEvent;
+class QStackedWidget;
+class QWidget;
 
 #include "app/WaterfallWidget.h"
 #include "app/launch_config.h"
@@ -75,8 +78,33 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
 
  private:
   void buildUi();
-  QVBoxLayout* buildTuneBlock(QWidget* central);  // 旋钮调谐台 + 频段 + 双 VFO
-  QVBoxLayout* buildFuncBlock(QWidget* central);  // 模式/中继 + 功能开关两行
+  void applyTheme();
+  void openConnectDialog();
+  void createPanels();               // APRS/WSJT-X/FT8 面板对象与信号接线（不排版）
+  void createMeters(QWidget* parent);
+  void buildDesktopUi();             // 桌面：一屏两列（原布局，逐行保持）
+#ifdef Q_OS_ANDROID
+  // 手机：843×376dp 一屏塞不下原两列布局（C1/C2 真机 FAIL），改分页。
+  // 页面：频谱 / 调谐 / 制式 / 面板 / 日志，顶栏常驻频率+制式+状态+PTT。
+  void buildAndroidUi();
+#endif
+  // ---- 共用控件构造：桌面与手机只是排法不同，控件本身只建一次 ----
+  QWidget* buildLcdBand(QWidget* parent, bool compact);
+  QWidget* buildDeckWidget(QWidget* parent);       // 旋钮 + 步进档 + 升降频/手输
+  QHBoxLayout* buildBandsRow(QWidget* parent);     // 频段快捷 + 广播预置
+  QHBoxLayout* buildVfoRow(QWidget* parent);       // SUB 带 + A/B 选择
+  QHBoxLayout* buildModeRow(QWidget* parent);      // 制式组 + 中继频差/入口
+  QHBoxLayout* buildTogglesRow(QWidget* parent);   // ATT/NB/NR/MONI/NOTCH/VOX/PAMP/AGC
+  QHBoxLayout* buildRitRow(QWidget* parent);       // RIT / ΔTX / SPLIT
+  QHBoxLayout* buildMemRow(QWidget* parent);       // 本地记忆槽 存/取
+  QHBoxLayout* buildAudioRow(QWidget* parent);     // 网络音频 + 音频设置
+  QPushButton* makeBigButton(QWidget* parent, const QString& text, const QColor& c);
+  std::vector<QPushButton*> buildBigButtons(QWidget* parent);  // 面板大按键（已接线）
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  void createQsoWidgets(QWidget* parent, const std::function<void(QWidget*)>& place);
+  QListWidget* ensureQsoList(QWidget* parent);
+  void wireHamlogPanels();
+#endif
   void flashStatus(const QString& text, bool warn);
   void syncTogglesFromState(const radio::core::RadioState& s);
 
@@ -126,6 +154,9 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QLineEdit* freq_edit_ = nullptr;       // 手动输频（MHz）
   QPushButton* audio_btn_ = nullptr;     // 50003 网络音频开关（mock 下禁用）
   QPushButton* audio_setup_btn_ = nullptr;  // 音频设备/诊断
+#ifdef Q_OS_ANDROID
+  QStackedWidget* pages_ = nullptr;      // 手机分页容器
+#endif
 
   // 50003 音频链（created after buildUi；销毁顺序在 session_ 之前）
   std::unique_ptr<radio::app::NetworkAudio> network_audio_;

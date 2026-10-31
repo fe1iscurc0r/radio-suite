@@ -7,6 +7,7 @@
 #include "app/set_mode_dialog.h"
 
 #include <QApplication>
+#include <QButtonGroup>
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDialog>
@@ -14,11 +15,14 @@
 #include <QFileDialog>
 #include <QFont>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStackedWidget>
 #include <QVBoxLayout>
 
 #ifdef Q_OS_ANDROID
@@ -212,9 +216,18 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void MainWindow::buildUi() {
-  auto* central = new QWidget(this);
-  auto* root = new QVBoxLayout(central);
+  applyTheme();
+  createPanels();
+#ifdef Q_OS_ANDROID
+  // 手机锁横屏后内容区只有 843×376dp：原两列一屏布局必然出界（C1/C2/C6 真机
+  // FAIL），这里走分页版；桌面仍走原布局。
+  buildAndroidUi();
+#else
+  buildDesktopUi();
+#endif
+}
 
+void MainWindow::applyTheme() {
   // 全局配色：原厂 Icom 遥控视觉语言（深灰炭黑 + 琥珀强调 + 激活背光）
   setStyleSheet(
       "QWidget { background: #1c1f24; color: #d8dde4; font-size: 10pt; }"
@@ -235,45 +248,27 @@ void MainWindow::buildUi() {
       "QToolTip { background: #0d0f13; color: #ffb300; }"
       "QFrame#tuneDeck { background: #15181d; border: 1px solid #333a44;"
       " border-radius: 10px; }");
+}
+
+void MainWindow::openConnectDialog() {
+  ConnectDialog dlg(radio::app::loadLinkPrefs(), this);
+  if (dlg.exec() != QDialog::Accepted) return;
+  radio::app::saveLinkPrefs(dlg.prefs());
+  // 本次会话的 transport 已经建好，不能假装切了链路：文案只说已保存
+  flashStatus(
+      QString("链路设置已保存（%1），重启 radio-suite 生效")
+          .arg(radio::app::linkName(dlg.prefs().link)),
+      false);
+}
+
+// 桌面：一屏两列（C1/C2 量过，手机宽度放不下这套，手机上走 buildAndroidUi）
+void MainWindow::buildDesktopUi() {
+  auto* central = new QWidget(this);
+  auto* root = new QVBoxLayout(central);
 
   // ---- 顶栏（主）：LCD 风频率带（原厂琥珀屏）+ PTT + 连接 ----
   auto* top = new QHBoxLayout();
-  auto* lcd = new QFrame(central);
-  lcd->setObjectName("lcdBand");
-  lcd->setStyleSheet(
-      "QFrame#lcdBand { background: #060804; border: 2px solid #2c313a;"
-      " border-radius: 4px; }");
-  auto* lcd_lay = new QHBoxLayout(lcd);
-  lcd_lay->setContentsMargins(16, 6, 16, 6);
-  freq_label_ = new QLabel("__.__._ MHz", lcd);
-  QFont mono("Cascadia Mono");
-  mono.setStyleHint(QFont::Monospace);
-  mono.setPointSize(44);
-  mono.setBold(true);
-  freq_label_->setFont(mono);
-  freq_label_->setStyleSheet("color: #ffb300; background: transparent;"
-                             " qproperty-alignment: AlignCenter;");
-  lcd_lay->addWidget(freq_label_, 1);
-  mode_label_ = new QLabel("--", lcd);
-  QFont moded = mode_label_->font();
-  moded.setPointSize(17);
-  moded.setBold(true);
-  mode_label_->setFont(moded);
-  mode_label_->setStyleSheet("color: #7ee0a0; background: transparent;");
-  mode_label_->setAlignment(Qt::AlignCenter);
-  mode_label_->setMinimumWidth(104);
-  lcd_lay->addWidget(mode_label_);
-  // 中继双频副显示：DUP± 时显示真实 TX 频率（offset 0x0C 读回，不猜惯例值）
-  tx_label_ = new QLabel("", lcd);
-  QFont txf = tx_label_->font();
-  txf.setPointSize(18);
-  txf.setBold(true);
-  tx_label_->setFont(txf);
-  tx_label_->setStyleSheet("color:#ff8a65; background: transparent;");
-  tx_label_->setAlignment(Qt::AlignCenter);
-  tx_label_->setMinimumWidth(250);
-  lcd_lay->addWidget(tx_label_);
-  top->addWidget(lcd, 1);
+  top->addWidget(buildLcdBand(central, false), 1);
 
   ptt_btn_ = new QPushButton("PTT", central);
   ptt_btn_->setMinimumHeight(84);
@@ -289,16 +284,7 @@ void MainWindow::buildUi() {
   // 连接设置（原厂 Connect Setting 件）：保存写持久化偏好，重启后由 launch_config 建链路
   auto* conn_btn = new QPushButton("连接…", central);
   conn_btn->setMinimumSize(88, 40);
-  connect(conn_btn, &QPushButton::clicked, this, [this] {
-    ConnectDialog dlg(radio::app::loadLinkPrefs(), this);
-    if (dlg.exec() != QDialog::Accepted) return;
-    radio::app::saveLinkPrefs(dlg.prefs());
-    // 本次会话的 transport 已经建好，不能假装切了链路：文案只说已保存
-    flashStatus(
-        QString("链路设置已保存（%1），重启 radio-suite 生效")
-            .arg(radio::app::linkName(dlg.prefs().link)),
-        false);
-  });
+  connect(conn_btn, &QPushButton::clicked, this, &MainWindow::openConnectDialog);
   top->addWidget(conn_btn);
   root->addLayout(top, 0);
 
@@ -307,8 +293,34 @@ void MainWindow::buildUi() {
   auto* main_col = new QVBoxLayout();
 
   // 仪表 + 调谐同排：S 表靠左、旋钮居中、Po/SWR 缩到右侧
-  main_col->addLayout(buildTuneBlock(central));
-  main_col->addLayout(buildFuncBlock(central));
+  auto* console_row = new QHBoxLayout();
+  console_row->setSpacing(10);
+  createMeters(central);
+  console_row->addWidget(smeter_, 0, Qt::AlignVCenter);
+  console_row->addWidget(buildDeckWidget(central), 1);
+  console_row->addWidget(poswr_, 0, Qt::AlignVCenter);
+  main_col->addLayout(console_row);
+  main_col->addLayout(buildBandsRow(central));
+  main_col->addLayout(buildVfoRow(central));
+
+  // 制式/中继一行 + 功能开关一行
+  auto* func_block = new QVBoxLayout();
+  func_block->setSpacing(8);
+  func_block->addLayout(buildModeRow(central));
+  {
+    auto* funcs = new QHBoxLayout();
+    funcs->setSpacing(6);
+    funcs->addLayout(buildTogglesRow(central));
+    funcs->addSpacing(12);
+    funcs->addLayout(buildRitRow(central));
+    funcs->addSpacing(12);
+    funcs->addLayout(buildMemRow(central));
+    funcs->addSpacing(12);
+    funcs->addLayout(buildAudioRow(central));
+    funcs->addStretch(1);
+    func_block->addLayout(funcs);
+  }
+  main_col->addLayout(func_block);
 
   waterfall_ = new WaterfallWidget(central);
   waterfall_->setDbRange(-110.0f, -10.0f);
@@ -348,7 +360,27 @@ void MainWindow::buildUi() {
   // ---- 右竖大按键列（显眼件：APRS / SSTV / 日志）----
   auto* side = new QVBoxLayout();
 
-  // APRS 面板先建（下面 hamlog 块要用它 setLoginCall）
+  for (auto* b : buildBigButtons(central)) side->addWidget(b);
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  if (hamlog_.available()) {
+    createQsoWidgets(central, [side](QWidget* w) { side->addWidget(w); });
+    wireHamlogPanels();
+  }
+#endif
+  side->addStretch(1);
+  body->addLayout(side);
+  root->addLayout(body, 1);
+
+  status_label_ = new QLabel(radio::app::linkStatusText(link_), central);
+  root->addWidget(status_label_);
+
+  setCentralWidget(central);
+  setMinimumSize(1180, 860);
+  setWindowTitle("radio-suite — IC-705 控制台");
+}
+
+void MainWindow::createPanels() {
+  // APRS 面板先建（hamlog 块要用它 setLoginCall）
   // 独立窗口：地图 + 台站表 + 消息需要横向空间，右列放不下
   aprs_panel_ = new radio::app::AprsPanel(nullptr);
   aprs_panel_->setWindowFlag(Qt::Window);
@@ -482,46 +514,88 @@ void MainWindow::buildUi() {
             st.setValue("ft8/source",
                         source == radio::app::Ft8Panel::Source::Microphone ? 1 : 0);
           });
+}
 
-  auto mk_big = [central](const QString& text, const QColor& c) {
-    auto* b = new QPushButton(text, central);
-    b->setMinimumHeight(64);
-    b->setMinimumWidth(130);
-    QFont f = b->font();
-    f.setPointSize(12);
-    f.setBold(true);
-    b->setFont(f);
-    b->setStyleSheet(QString("QPushButton { background: %1; color: white; }")
-                         .arg(c.name()));
-    return b;
-  };
-  aprs_big_btn_ = mk_big("APRS\n台流", QColor(0x00, 0x69, 0x7c));
+void MainWindow::createMeters(QWidget* parent) {
+  smeter_ = new SMeterWidget(parent);
+  poswr_ = new PoSwrWidget(parent);
+}
+
+QWidget* MainWindow::buildLcdBand(QWidget* parent, bool compact) {
+  // compact = 手机顶栏：字号/内边距收一档，376dp 高的横屏才有频谱的地儿
+  auto* lcd = new QFrame(parent);
+  lcd->setObjectName("lcdBand");
+  lcd->setStyleSheet(
+      "QFrame#lcdBand { background: #060804; border: 2px solid #2c313a;"
+      " border-radius: 4px; }");
+  auto* lcd_lay = new QHBoxLayout(lcd);
+  lcd_lay->setContentsMargins(compact ? 6 : 16, compact ? 2 : 6,
+                              compact ? 6 : 16, compact ? 2 : 6);
+  if (compact) lcd_lay->setSpacing(6);
+  freq_label_ = new QLabel("__.__._ MHz", lcd);
+  QFont mono("Cascadia Mono");
+  mono.setStyleHint(QFont::Monospace);
+  mono.setPointSize(compact ? 24 : 44);
+  mono.setBold(true);
+  freq_label_->setFont(mono);
+  freq_label_->setStyleSheet("color: #ffb300; background: transparent;"
+                             " qproperty-alignment: AlignCenter;");
+  lcd_lay->addWidget(freq_label_, 1);
+  mode_label_ = new QLabel("--", lcd);
+  QFont moded = mode_label_->font();
+  moded.setPointSize(compact ? 12 : 17);
+  moded.setBold(true);
+  mode_label_->setFont(moded);
+  mode_label_->setStyleSheet("color: #7ee0a0; background: transparent;");
+  mode_label_->setAlignment(Qt::AlignCenter);
+  mode_label_->setMinimumWidth(compact ? 64 : 104);
+  lcd_lay->addWidget(mode_label_);
+  // 中继双频副显示：DUP± 时显示真实 TX 频率（offset 0x0C 读回，不猜惯例值）
+  tx_label_ = new QLabel("", lcd);
+  QFont txf = tx_label_->font();
+  txf.setPointSize(compact ? 10 : 18);
+  txf.setBold(true);
+  tx_label_->setFont(txf);
+  tx_label_->setStyleSheet("color:#ff8a65; background: transparent;");
+  tx_label_->setAlignment(Qt::AlignCenter);
+  tx_label_->setMinimumWidth(compact ? 0 : 250);
+  lcd_lay->addWidget(tx_label_);
+  return lcd;
+}
+
+QPushButton* MainWindow::makeBigButton(QWidget* parent, const QString& text,
+                                       const QColor& c) {
+  auto* b = new QPushButton(text, parent);
+  b->setMinimumHeight(64);
+  b->setMinimumWidth(130);
+  QFont f = b->font();
+  f.setPointSize(12);
+  f.setBold(true);
+  b->setFont(f);
+  b->setStyleSheet(QString("QPushButton { background: %1; color: white; }")
+                       .arg(c.name()));
+  return b;
+}
+
+std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
+  aprs_big_btn_ = makeBigButton(parent, "APRS\n台流", QColor(0x00, 0x69, 0x7c));
   aprs_big_btn_->setToolTip("APRS 工作台：地图/台站/消息/过滤器/RF+iGate");
-  wsjtx_big_btn_ = mk_big("WSJT-X\n接入", QColor(0x1a, 0x23, 0x7e));
+  wsjtx_big_btn_ = makeBigButton(parent, "WSJT-X\n接入", QColor(0x1a, 0x23, 0x7e));
   wsjtx_big_btn_->setToolTip("WSJT-X UDP：解码/QSO/WSPR + Reply/Halt/FreeText");
-  ft8_big_btn_ = mk_big("FT8\n本机", QColor(0x10, 0x51, 0x6b));
+  ft8_big_btn_ = makeBigButton(parent, "FT8\n本机", QColor(0x10, 0x51, 0x6b));
   ft8_big_btn_->setToolTip("FT8 本机解码：50003 下行音频直接解，不需要 WSJT-X");
-  sstv_big_btn_ = mk_big("SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
+  sstv_big_btn_ = makeBigButton(parent, "SSTV\n发送", QColor(0x8e, 0x24, 0xaa));
   sstv_big_btn_->setToolTip("慢扫描电视：图片→Robot36 音频（发送/接收解码）");
-  dtmf_big_btn_ = mk_big("DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
+  dtmf_big_btn_ = makeBigButton(parent, "DTMF\n拨号", QColor(0x00, 0x69, 0x5c));
   dtmf_big_btn_->setToolTip("双音多频小键盘（ITU Q.23，生成 .wav）");
-  auto* voice_big_btn_ = mk_big("VOICE\n录音", QColor(0x4a, 0x14, 0x8c));
+  auto* voice_big_btn_ = makeBigButton(parent, "VOICE\n录音", QColor(0x4a, 0x14, 0x8c));
   voice_big_btn_->setToolTip("Voice Memory：录音/列表/播放/门禁编排发射（原厂件）");
-  auto* cw_big_btn_ = mk_big("CW\n键控", QColor(0x5d, 0x40, 0x37));
+  auto* cw_big_btn_ = makeBigButton(parent, "CW\n键控", QColor(0x5d, 0x40, 0x37));
   cw_big_btn_->setToolTip("CW Keyer：0x17 文本发送 + 键速/侧音/半插入（原厂件）");
-  auto* set_big_btn_ = mk_big("SET\n设置", QColor(0x37, 0x47, 0x4f));
+  auto* set_big_btn_ = makeBigButton(parent, "SET\n设置", QColor(0x37, 0x47, 0x4f));
   set_big_btn_->setToolTip("Set Mode 深设置树：0x1A 0x05 菜单项读写（原厂件）");
-  auto* memch_big_btn_ = mk_big("MEM\n信道", QColor(0x00, 0x69, 0x5c));
+  auto* memch_big_btn_ = makeBigButton(parent, "MEM\n信道", QColor(0x00, 0x69, 0x5c));
   memch_big_btn_->setToolTip("记忆信道：0x1A 0x00 内容读写 + 0x08 组/信道选择（原厂件）");
-  side->addWidget(aprs_big_btn_);
-  side->addWidget(wsjtx_big_btn_);
-  side->addWidget(ft8_big_btn_);
-  side->addWidget(sstv_big_btn_);
-  side->addWidget(dtmf_big_btn_);
-  side->addWidget(voice_big_btn_);
-  side->addWidget(cw_big_btn_);
-  side->addWidget(set_big_btn_);
-  side->addWidget(memch_big_btn_);
   connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
     // 与主会话共享（真机时同一条链）；SstvDialog 改持裸指针+父窗口生命周期
     SstvDialog dlg(&session_, this);
@@ -548,67 +622,7 @@ void MainWindow::buildUi() {
     dlg.exec();
   });
 
-#ifdef RADIO_SUITE_HAVE_LOGBOOK
-  if (hamlog_.available()) {
-    qso_call_edit_ = new QLineEdit(central);
-    qso_call_edit_->setPlaceholderText("对方呼号");
-    side->addWidget(qso_call_edit_);
-    auto* log_btn = mk_big("记 QSO", QColor(0x2e, 0x7d, 0x32));
-    log_btn->setMinimumHeight(48);
-    side->addWidget(log_btn);
-    connect(log_btn, &QPushButton::clicked, this, &MainWindow::onLogQso);
-    auto* adif_btn = mk_big("ADIF 导出", QColor(0x37, 0x47, 0x4f));
-    adif_btn->setMinimumHeight(40);
-    side->addWidget(adif_btn);
-    connect(adif_btn, &QPushButton::clicked, this, &MainWindow::onExportAdif);
-    aprs_panel_->setLoginCall(hamlog_.myCallsign());
-    {
-      bool has = false;
-      radio::aprs::LatLon pos;
-      const QString grid = hamlog_.getSetting("my_grid");
-      if (!grid.trimmed().isEmpty()) {
-        bool ok = false;
-        pos = radio::aprs::maidenheadToLatLon(grid.trimmed().toStdString(), &ok);
-        has = ok;
-      }
-      if (!has) {
-        const QString qth = hamlog_.getSetting("my_qth");
-        const QStringList parts =
-            qth.split(QRegularExpression("[,;\\s]+"), Qt::SkipEmptyParts);
-        if (parts.size() >= 2) {
-          bool ok1 = false, ok2 = false;
-          const double lat = parts[0].toDouble(&ok1);
-          const double lon = parts[1].toDouble(&ok2);
-          if (ok1 && ok2) {
-            pos = radio::aprs::LatLon{lat, lon};
-            has = pos.valid();
-          }
-        }
-      }
-      aprs_panel_->setMyPosition(has, pos.lat, pos.lon);
-      wsjtx_panel_->setMyGrid(grid.trimmed());
-    }
-
-    // WSJT-X 记完 QSO 直接落 HamLog（与手记 QSO 同一张 log 表）
-    connect(wsjtx_panel_->client(), &radio::app::WsjtxClient::qsoLogged, this,
-            [this](const radio::wsjtx::QsoLogged& logged, const QString&) {
-              const auto record = radio::app::qsoFromWsjtx(logged);
-              if (!hamlog_.insert(record)) {
-                flashStatus("WSJT-X QSO 写入 HamLog 失败：" + hamlog_.lastError(),
-                            true);
-                return;
-              }
-              flashStatus(QString("WSJT-X QSO 已写入 HamLog：%1 %2 MHz %3")
-                              .arg(record.callsign)
-                              .arg(record.freq_mhz, 0, 'f', 4)
-                              .arg(record.mode),
-                          false);
-              refreshQsoList();
-            });
-  }
-#endif
-
-  // APRS 面板挂右列（大按键切换显隐）
+  // 面板大按键切换显隐（独立顶层窗）
   aprs_big_btn_->setCheckable(true);
   connect(aprs_big_btn_, &QPushButton::toggled, this, [this](bool on) {
     aprs_panel_->setVisible(on);
@@ -640,30 +654,252 @@ void MainWindow::buildUi() {
       ft8_panel_->stopDecoding();
     }
   });
-  side->addStretch(1);
-  body->addLayout(side);
-  root->addLayout(body, 1);
-
-  status_label_ = new QLabel(radio::app::linkStatusText(link_), central);
-  root->addWidget(status_label_);
-
-  setCentralWidget(central);
-  setMinimumSize(1180, 860);
-  setWindowTitle("radio-suite — IC-705 控制台");
+  return {aprs_big_btn_, wsjtx_big_btn_, ft8_big_btn_, sstv_big_btn_,
+          dtmf_big_btn_, voice_big_btn_, cw_big_btn_, set_big_btn_,
+          memch_big_btn_};
 }
 
-QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
-  auto* block = new QVBoxLayout();
-  block->setSpacing(6);
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+void MainWindow::createQsoWidgets(QWidget* parent,
+                                  const std::function<void(QWidget*)>& place) {
+  qso_call_edit_ = new QLineEdit(parent);
+  qso_call_edit_->setPlaceholderText("对方呼号");
+  place(qso_call_edit_);
+  auto* log_btn = makeBigButton(parent, "记 QSO", QColor(0x2e, 0x7d, 0x32));
+  log_btn->setMinimumHeight(48);
+  place(log_btn);
+  connect(log_btn, &QPushButton::clicked, this, &MainWindow::onLogQso);
+  auto* adif_btn = makeBigButton(parent, "ADIF 导出", QColor(0x37, 0x47, 0x4f));
+  adif_btn->setMinimumHeight(40);
+  place(adif_btn);
+  connect(adif_btn, &QPushButton::clicked, this, &MainWindow::onExportAdif);
+}
 
-  // ---- 第一行：S 表（左）+ 紧凑旋钮台（中）+ Po/SWR（右）----
-  auto* console_row = new QHBoxLayout();
-  console_row->setSpacing(10);
+QListWidget* MainWindow::ensureQsoList(QWidget* parent) {
+  if (qso_list_) return qso_list_;
+  qso_list_ = new QListWidget(parent);
+  refreshQsoList();
+  return qso_list_;
+}
 
-  smeter_ = new SMeterWidget(central);
-  console_row->addWidget(smeter_, 0, Qt::AlignVCenter);
+void MainWindow::wireHamlogPanels() {
+  aprs_panel_->setLoginCall(hamlog_.myCallsign());
+  {
+    bool has = false;
+    radio::aprs::LatLon pos;
+    const QString grid = hamlog_.getSetting("my_grid");
+    if (!grid.trimmed().isEmpty()) {
+      bool ok = false;
+      pos = radio::aprs::maidenheadToLatLon(grid.trimmed().toStdString(), &ok);
+      has = ok;
+    }
+    if (!has) {
+      const QString qth = hamlog_.getSetting("my_qth");
+      const QStringList parts =
+          qth.split(QRegularExpression("[,;\\s]+"), Qt::SkipEmptyParts);
+      if (parts.size() >= 2) {
+        bool ok1 = false, ok2 = false;
+        const double lat = parts[0].toDouble(&ok1);
+        const double lon = parts[1].toDouble(&ok2);
+        if (ok1 && ok2) {
+          pos = radio::aprs::LatLon{lat, lon};
+          has = pos.valid();
+        }
+      }
+    }
+    aprs_panel_->setMyPosition(has, pos.lat, pos.lon);
+    wsjtx_panel_->setMyGrid(grid.trimmed());
+  }
 
-  auto* deck = new QFrame(central);
+  // WSJT-X 记完 QSO 直接落 HamLog（与手记 QSO 同一张 log 表）
+  connect(wsjtx_panel_->client(), &radio::app::WsjtxClient::qsoLogged, this,
+          [this](const radio::wsjtx::QsoLogged& logged, const QString&) {
+            const auto record = radio::app::qsoFromWsjtx(logged);
+            if (!hamlog_.insert(record)) {
+              flashStatus("WSJT-X QSO 写入 HamLog 失败：" + hamlog_.lastError(),
+                          true);
+              return;
+            }
+            flashStatus(QString("WSJT-X QSO 已写入 HamLog：%1 %2 MHz %3")
+                            .arg(record.callsign)
+                            .arg(record.freq_mhz, 0, 'f', 4)
+                            .arg(record.mode),
+                        false);
+            refreshQsoList();
+          });
+}
+#endif
+
+#ifdef Q_OS_ANDROID
+void MainWindow::buildAndroidUi() {
+  // 手机：内容区 843×376dp（锁横屏后实测），原两列布局必出界。
+  // 这里只保留一条常驻顶栏 + 五个整页，页与页之间不共享纵向空间。
+  auto* central = new QWidget(this);
+  auto* root = new QVBoxLayout(central);
+  root->setContentsMargins(4, 4, 4, 4);
+  root->setSpacing(4);
+
+  // ---- 常驻顶栏：LCD 频率/制式 + 状态 + PTT + 连接 ----
+  // 状态行原先独占一行，在 376dp 高的屏幕上白吃一条频谱高度（用户原话）；
+  // 现在并进顶栏。窄条放不下长句时裁掉尾部，完整文案仍在 flashStatus 的源头。
+  auto* top = new QHBoxLayout();
+  top->setSpacing(6);
+  top->addWidget(buildLcdBand(central, true), 1);
+
+  status_label_ = new QLabel(radio::app::linkStatusText(link_), central);
+  status_label_->setStyleSheet("color: #aeb6c0; font-size: 8pt;");
+  status_label_->setMinimumWidth(96);
+  status_label_->setMaximumWidth(220);
+  top->addWidget(status_label_);
+
+  ptt_btn_ = new QPushButton("PTT", central);
+  ptt_btn_->setMinimumSize(92, 56);
+  ptt_btn_->setMaximumWidth(120);
+  QFont bold = ptt_btn_->font();
+  bold.setBold(true);
+  bold.setPointSize(11);
+  ptt_btn_->setFont(bold);
+  connect(ptt_btn_, &QPushButton::clicked, this,
+          [this] { session_.pttButtonPressed(); });
+  top->addWidget(ptt_btn_);
+
+  auto* conn_btn = new QPushButton("连接…", central);
+  conn_btn->setMinimumSize(72, 48);
+  conn_btn->setMaximumWidth(88);
+  connect(conn_btn, &QPushButton::clicked, this, &MainWindow::openConnectDialog);
+  top->addWidget(conn_btn);
+  root->addLayout(top);
+
+  pages_ = new QStackedWidget(central);
+  root->addWidget(pages_, 1);
+
+  // 比一屏高的页面套滚动：宁可滚，也不许再出现「按键被裁掉」（C1 原始症状）
+  auto wrapScroll = [this](QWidget* page) -> QWidget* {
+    auto* scroll = new QScrollArea(pages_);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(page);
+    return scroll;
+  };
+
+  // 1) 频谱：S 表 / Po-SWR 压成一条，其余高度全给瀑布
+  {
+    auto* page = new QWidget(pages_);
+    auto* lay = new QVBoxLayout(page);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(4);
+    auto* meters = new QHBoxLayout();
+    meters->setSpacing(8);
+    createMeters(page);
+    meters->addWidget(smeter_, 0, Qt::AlignVCenter);
+    meters->addStretch(1);
+    meters->addWidget(poswr_, 0, Qt::AlignVCenter);
+    lay->addLayout(meters);
+    waterfall_ = new WaterfallWidget(page);
+    waterfall_->setDbRange(-110.0f, -10.0f);
+    waterfall_->setMinimumHeight(120);
+    waterfall_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    lay->addWidget(waterfall_, 1);
+    pages_->addWidget(page);
+  }
+
+  // 2) 调谐：旋钮台 + 频段（点频段就在本页调谐）+ 双 VFO
+  {
+    auto* page = new QWidget(pages_);
+    auto* lay = new QVBoxLayout(page);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(6);
+    lay->addWidget(buildDeckWidget(page));
+    lay->addLayout(buildBandsRow(page));
+    lay->addLayout(buildVfoRow(page));
+    lay->addStretch(1);
+    pages_->addWidget(wrapScroll(page));
+  }
+
+  // 3) 制式：制式组 + 中继 + 功能开关 + 记忆 + 音频
+  {
+    auto* page = new QWidget(pages_);
+    auto* lay = new QVBoxLayout(page);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(8);
+    lay->addLayout(buildModeRow(page));
+    lay->addLayout(buildTogglesRow(page));
+    lay->addLayout(buildRitRow(page));
+    lay->addLayout(buildMemRow(page));
+    lay->addLayout(buildAudioRow(page));
+    lay->addStretch(1);
+    pages_->addWidget(wrapScroll(page));
+  }
+
+  // 4) 面板：独立工作台入口，3 列网格（比桌面竖列矮一半）
+  {
+    auto* page = new QWidget(pages_);
+    auto* grid = new QGridLayout(page);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setSpacing(6);
+    const auto big = buildBigButtons(page);
+    for (size_t i = 0; i < big.size(); ++i)
+      grid->addWidget(big[i], static_cast<int>(i / 3),
+                      static_cast<int>(i % 3));
+    grid->setRowStretch(3, 1);
+    pages_->addWidget(page);
+  }
+
+  // 5) 日志：HamLog 最近 QSO + 记 QSO / ADIF
+  //    真机上 HamLog 默认库不存在时这一页整个不出现：宁可只有四个页签，
+  //    也不摆一个永远打不开的死页面（手机上 HamLog 从未可用，待单独补）
+  bool have_log_page = false;
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  if (hamlog_.available()) {
+    have_log_page = true;
+    auto* page = new QWidget(pages_);
+    auto* lay = new QVBoxLayout(page);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(6);
+    lay->addWidget(ensureQsoList(page), 1);
+    auto* entry = new QHBoxLayout();
+    entry->setSpacing(6);
+    createQsoWidgets(page, [entry](QWidget* w) { entry->addWidget(w); });
+    lay->addLayout(entry);
+    wireHamlogPanels();
+    pages_->addWidget(page);
+  }
+#endif
+
+  // ---- 底部页签 ----
+  auto* tab_row = new QHBoxLayout();
+  tab_row->setSpacing(4);
+  auto* group = new QButtonGroup(central);
+  group->setExclusive(true);
+  QStringList tabs{"频谱", "调谐", "制式", "面板"};
+  if (have_log_page) tabs << "日志";
+  for (int i = 0; i < tabs.size(); ++i) {
+    auto* b = new QPushButton(tabs[i], central);
+    b->setCheckable(true);
+    b->setChecked(i == 0);
+    b->setMinimumHeight(44);
+    b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    connect(b, &QPushButton::clicked, this,
+            [this, i] { pages_->setCurrentIndex(i); });
+    group->addButton(b, i);
+    tab_row->addWidget(b, 1);
+  }
+  root->addLayout(tab_row);
+
+  // 触摸目标：桌面那套 28-34dp 是鼠标尺寸，手机上统一抬到 44dp
+  for (auto* b : central->findChildren<QPushButton*>()) {
+    if (b->minimumHeight() < 44) b->setMinimumHeight(44);
+  }
+
+  setCentralWidget(central);
+  setWindowTitle("radio-suite — IC-705 控制台");
+}
+#endif
+
+QWidget* MainWindow::buildDeckWidget(QWidget* parent) {
+  // ---- 紧凑旋钮台：旋钮 + 步进档 + 升降频/手动输频 ----
+  auto* deck = new QFrame(parent);
   deck->setObjectName("tuneDeck");
   auto* deck_lay = new QHBoxLayout(deck);
   deck_lay->setContentsMargins(10, 6, 10, 6);
@@ -732,18 +968,17 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   knob_col->addLayout(entry_row);
   knob_col->addStretch(1);
   deck_lay->addLayout(knob_col, 1);
-  console_row->addWidget(deck, 1);
+  step_label_->setText(
+      QString("步进 %1（旋钮 / ▼▲ 每格）").arg(stepCaption(kSteps[kDefaultStep])));
+  return deck;
+}
 
-  poswr_ = new PoSwrWidget(central);
-  console_row->addWidget(poswr_, 0, Qt::AlignVCenter);
-
-  block->addLayout(console_row);
-
+QHBoxLayout* MainWindow::buildBandsRow(QWidget* parent) {
   // ---- 频段快捷 + 接收波段（可听不可发）----
   auto* bands = new QHBoxLayout();
   bands->setSpacing(5);
   for (const auto& b : kBands) {
-    auto* btn = new QPushButton(b.name, central);
+    auto* btn = new QPushButton(b.name, parent);
     btn->setMinimumSize(54, 28);
     btn->setProperty("center_hz", static_cast<qulonglong>(b.center_hz));
     connect(btn, &QPushButton::clicked, this, &MainWindow::onBandClicked);
@@ -751,7 +986,7 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   }
   bands->addStretch(1);
   auto mk_preset = [&](const QString& text, const QString& tip, auto action) {
-    auto* btn = new QPushButton(text, central);
+    auto* btn = new QPushButton(text, parent);
     btn->setToolTip(tip);
     btn->setMinimumSize(64, 28);
     connect(btn, &QPushButton::clicked, this, action);
@@ -769,13 +1004,15 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
     session_.setMode(radio::core::civ::Mode::AM);
     session_.tuneTo(9'500'000);
   });
-  block->addLayout(bands);
+  return bands;
+}
 
+QHBoxLayout* MainWindow::buildVfoRow(QWidget* parent) {
   // ---- 双 VFO（SUB 带）----
   auto* vfo = new QHBoxLayout();
   vfo->setSpacing(5);
-  vfo->addWidget(new QLabel("双 VFO", central));
-  sub_label_ = new QLabel("—", central);
+  vfo->addWidget(new QLabel("双 VFO", parent));
+  sub_label_ = new QLabel("—", parent);
   sub_label_->setMinimumWidth(190);
   QFont subf("Cascadia Mono");
   subf.setStyleHint(QFont::Monospace);
@@ -785,7 +1022,7 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   vfo->addWidget(sub_label_);
 
   auto mk_vfo = [&](const QString& text, const QString& tip) {
-    auto* b = new QPushButton(text, central);
+    auto* b = new QPushButton(text, parent);
     b->setToolTip(tip);
     b->setMinimumSize(48, 28);
     vfo->addWidget(b);
@@ -813,7 +1050,7 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   });
 
   // 双守听：IC-705 单接收机，不摆假按钮；如实说明替代方案
-  auto* dual_info = new QPushButton("双守听？", central);
+  auto* dual_info = new QPushButton("双守听？", parent);
   dual_info->setToolTip("IC-705 无 DUAL 双守听：单接收机。用 A/B 双 VFO 手动守听 SUB 带。");
   dual_info->setMinimumSize(84, 28);
   dual_info->setStyleSheet(
@@ -832,17 +1069,10 @@ QVBoxLayout* MainWindow::buildTuneBlock(QWidget* central) {
   });
   vfo->addWidget(dual_info);
   vfo->addStretch(1);
-  block->addLayout(vfo);
-
-  step_label_->setText(
-      QString("步进 %1（旋钮 / ▼▲ 每格）").arg(stepCaption(kSteps[kDefaultStep])));
-  return block;
+  return vfo;
 }
 
-QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
-  auto* block = new QVBoxLayout();
-  block->setSpacing(8);
-
+QHBoxLayout* MainWindow::buildModeRow(QWidget* parent) {
   // 行 1：模式组（回读驱动）+ 中继频差方向 + 中继/亚音对话框
   auto* modes = new QHBoxLayout();
   modes->setSpacing(6);
@@ -851,7 +1081,7 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
       {"AM", radio::core::civ::Mode::AM},   {"CW", radio::core::civ::Mode::CW},
       {"FM", radio::core::civ::Mode::FM},   {"WFM", radio::core::civ::Mode::WFM}};
   for (const auto& [name, m] : kModes) {
-    auto* btn = new QPushButton(name, central);
+    auto* btn = new QPushButton(name, parent);
     btn->setCheckable(true);
     // 独占：制式互斥这件事不能只靠回读。点了就 setChecked(true)，而唯一的
     // 取消路径在 syncTogglesFromState()——链路没通（电台关机 / UDP 对端不应答）
@@ -868,7 +1098,7 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
     modes->addWidget(btn);
   }
   modes->addSpacing(12);
-  dup_btn_ = new QPushButton("SPLX", central);
+  dup_btn_ = new QPushButton("SPLX", parent);
   dup_btn_->setToolTip("中继频差方向：SPLX → DUP− → DUP+（0x0F）");
   dup_btn_->setMinimumSize(72, 34);
   connect(dup_btn_, &QPushButton::clicked, this, [this] {
@@ -877,7 +1107,7 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
     session_.setDuplex(next);
   });
   modes->addWidget(dup_btn_);
-  repeater_btn_ = new QPushButton("中继/亚音…", central);
+  repeater_btn_ = new QPushButton("中继/亚音…", parent);
   repeater_btn_->setToolTip(
       "频差 0x0D + 模拟亚音 CTCSS/TSQL + 数字亚音 DTCS（含 RX/TX 双频显示）");
   repeater_btn_->setMinimumSize(150, 34);
@@ -890,18 +1120,20 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
   });
   modes->addWidget(repeater_btn_);
   modes->addStretch(1);
-  block->addLayout(modes);
+  return modes;
+}
 
-  // 行 2：功能开关（回读驱动）+ RIT/ΔTX/SPLIT + 本地记忆
-  auto* funcs = new QHBoxLayout();
-  funcs->setSpacing(6);
+QHBoxLayout* MainWindow::buildTogglesRow(QWidget* parent) {
+  // 行 2：功能开关（回读驱动）
+  auto* row = new QHBoxLayout();
+  row->setSpacing(6);
   auto mk_toggle = [&](const QString& name, const QString& tip, auto setter) {
-    auto* btn = new QPushButton(name, central);
+    auto* btn = new QPushButton(name, parent);
     btn->setCheckable(true);
     btn->setToolTip(tip);
     btn->setMinimumSize(56, 32);
     connect(btn, &QPushButton::clicked, this, [btn, setter] { setter(btn->isChecked()); });
-    funcs->addWidget(btn);
+    row->addWidget(btn);
     return btn;
   };
   att_btn_ = mk_toggle("ATT", "20dB 衰减器（电台仅 HF/50MHz 生效）",
@@ -921,7 +1153,7 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
   vox_btn_ = mk_toggle("VOX", "声控发射 0x16", [this](bool on) {
     session_.setSw16(radio::core::civ::kSub16Vox, on ? 1 : 0);
   });
-  pamp_btn_ = new QPushButton("PAMP", central);
+  pamp_btn_ = new QPushButton("PAMP", parent);
   pamp_btn_->setToolTip("前置放大器循环：OFF → P1 → P2");
   pamp_btn_->setMinimumSize(88, 32);
   connect(pamp_btn_, &QPushButton::clicked, this, [this] {
@@ -929,8 +1161,8 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
     session_.setSw16(radio::core::civ::kSub16Pamp,
                      static_cast<uint8_t>((cur + 1) % 3));
   });
-  funcs->addWidget(pamp_btn_);
-  agc_btn_ = new QPushButton("AGC", central);
+  row->addWidget(pamp_btn_);
+  agc_btn_ = new QPushButton("AGC", parent);
   agc_btn_->setToolTip("AGC 循环：F → M → S");
   agc_btn_->setMinimumSize(74, 32);
   connect(agc_btn_, &QPushButton::clicked, this, [this] {
@@ -938,16 +1170,20 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
     session_.setSw16(radio::core::civ::kSub16Agc,
                      static_cast<uint8_t>(cur >= 3 ? 1 : cur + 1));
   });
-  funcs->addWidget(agc_btn_);
+  row->addWidget(agc_btn_);
+  return row;
+}
 
-  funcs->addSpacing(12);
+QHBoxLayout* MainWindow::buildRitRow(QWidget* parent) {
+  auto* row = new QHBoxLayout();
+  row->setSpacing(6);
   auto mk_rit_toggle = [&](const QString& name, const QString& tip, auto setter) {
-    auto* btn = new QPushButton(name, central);
+    auto* btn = new QPushButton(name, parent);
     btn->setCheckable(true);
     btn->setToolTip(tip);
     btn->setMinimumSize(58, 32);
     connect(btn, &QPushButton::clicked, this, [btn, setter] { setter(btn->isChecked()); });
-    funcs->addWidget(btn);
+    row->addWidget(btn);
     return btn;
   };
   rit_btn_ = mk_rit_toggle("RIT", "接收增量调谐 0x21",
@@ -958,27 +1194,35 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
     flashStatus(on ? "Split 已开：发射频率=另一 VFO，注意合规" : "Split 关", !on);
     session_.setSplit(on);
   });
+  return row;
+}
 
+QHBoxLayout* MainWindow::buildMemRow(QWidget* parent) {
   // 本地记忆（电台内存信道 M3 接；本地槽即刻可用）
-  funcs->addSpacing(12);
-  mem_slot_ = new QComboBox(central);
+  auto* row = new QHBoxLayout();
+  row->setSpacing(6);
+  mem_slot_ = new QComboBox(parent);
   mem_slot_->setMinimumSize(76, 32);
   for (int i = 1; i <= 8; ++i) mem_slot_->addItem(QString("M%1").arg(i));
-  funcs->addWidget(mem_slot_);
-  auto* mem_save = new QPushButton("存", central);
+  row->addWidget(mem_slot_);
+  auto* mem_save = new QPushButton("存", parent);
   mem_save->setToolTip("当前频率/模式存入所选槽（本地）");
   mem_save->setMinimumSize(48, 32);
   connect(mem_save, &QPushButton::clicked, this, &MainWindow::onMemSave);
-  funcs->addWidget(mem_save);
-  auto* mem_recall = new QPushButton("取", central);
+  row->addWidget(mem_save);
+  auto* mem_recall = new QPushButton("取", parent);
   mem_recall->setToolTip("取出所选槽的频率/模式");
   mem_recall->setMinimumSize(48, 32);
   connect(mem_recall, &QPushButton::clicked, this, &MainWindow::onMemRecall);
-  funcs->addWidget(mem_recall);
+  row->addWidget(mem_recall);
+  return row;
+}
 
+QHBoxLayout* MainWindow::buildAudioRow(QWidget* parent) {
   // 网络音频（RS-BA1 50003）：RX→扬声器、麦克风→PTT 上行
-  funcs->addSpacing(12);
-  audio_btn_ = new QPushButton("网络音频", central);
+  auto* row = new QHBoxLayout();
+  row->setSpacing(6);
+  audio_btn_ = new QPushButton("网络音频", parent);
   audio_btn_->setCheckable(true);
   audio_btn_->setMinimumSize(96, 32);
   const bool has_audio = session_.audioLink() != nullptr;
@@ -1004,16 +1248,14 @@ QVBoxLayout* MainWindow::buildFuncBlock(QWidget* central) {
       network_audio_->stop();
     }
   });
-  funcs->addWidget(audio_btn_);
-  audio_setup_btn_ = new QPushButton("音频设置", central);
+  row->addWidget(audio_btn_);
+  audio_setup_btn_ = new QPushButton("音频设置", parent);
   audio_setup_btn_->setToolTip("选择麦克风/扬声器，并查看 50003 下行丢包与设备欠载计数");
   audio_setup_btn_->setMinimumSize(84, 32);
   connect(audio_setup_btn_, &QPushButton::clicked, this,
           &MainWindow::onAudioSettings);
-  funcs->addWidget(audio_setup_btn_);
-  funcs->addStretch(1);
-  block->addLayout(funcs);
-  return block;
+  row->addWidget(audio_setup_btn_);
+  return row;
 }
 
 void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
@@ -1049,7 +1291,7 @@ void MainWindow::syncTogglesFromState(const radio::core::RadioState& s) {
     if (tone) rpt += QString(" [%1]").arg(radio::core::civ::toneSquelchName(*tone));
   }
   repeater_btn_->setText(rpt);
-  const auto rb = [&s](QPushButton* b, bool on) { QSignalBlocker g(b); b->setChecked(on); };
+  const auto rb = [](QPushButton* b, bool on) { QSignalBlocker g(b); b->setChecked(on); };
   rb(rit_btn_, s.rit);
   rb(dtx_btn_, s.dtx);
   rb(split_btn_, s.split);
@@ -1083,6 +1325,11 @@ void MainWindow::refreshState() {
     tx_label_->setText(QString("TX = %1 MHz").arg(tx_hz / 1e6, 0, 'f', 6));
     tx_label_->setToolTip("同频（simplex）：收发同频");
   }
+#ifdef Q_OS_ANDROID
+  // 手机顶栏只给双频（DUP±）留位置：simplex 时「TX = RX」不携带信息，
+  // 常驻会白占一百多 dp，把频率大字挤到折行
+  tx_label_->setVisible(s.duplex_raw == 0x11 || s.duplex_raw == 0x12);
+#endif
   sub_label_->setText(QString("SUB %1 %2")
                           .arg(formatFreq(s.sub_freq_hz))
                           .arg(radio::core::civ::modeName(s.sub_mode)));

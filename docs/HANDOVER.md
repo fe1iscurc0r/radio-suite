@@ -219,6 +219,21 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       **读侧仍没验**：库里 0 条站点，而面板顶行「连接 APRS-IS」在竖屏被裁到屏外点不到——
       又被 C1 挡回去。`pm install -r` 覆盖安装后 `radio-suite.ini` 原样保住，这条顺带说明
       D1 的落点在应用更新里也是稳的。
+    - **手机分页重排已落地（C8，2026-11-01 交付，`feat/android-paged-ui`）**：只动 Android——
+      `buildUi()` 拆成 `buildDesktopUi()`（原两列布局逐行保留）与 `buildAndroidUi()`
+      （顶栏 + `QStackedWidget` 五页 + 底部互斥页签）；所有控件由同一组 builder 各构造一次，
+      不存在桌面/安卓两套实例。页签：频谱 / 调谐 / 制式 / 面板 / 日志。
+      状态行从底部一行挪进顶栏（用户报的「Transport UDP 吃频谱高度」），手机顶栏
+      `TX = RX` 只在 DUP−/DUP+ 时出现；全部按钮最小高度抬到 44dp。
+      **真机五页逐页截图过（2026-10-31 23:5x，横屏 843×376dp）**，C1/C6 那批碰撞全部消失。
+      交付前最后一改（HamLog 不可用时不出「日志」页签，手机变四页签）装包后进程存活无崩溃，
+      但**那一版没截到图**：手机午夜自动锁屏，MIUI 在锁屏状态拒绝截屏（`screencap` 回 0 字节，
+      `wm dismiss-keyguard` 无效）——四页签版式的真机视觉证据待补，其余构建证据
+      （MSVC `ctest` 181/181、Android clang 交叉编译通过）齐全。
+    - **C9（HamLog 在 Android 上从未可用）**：`RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，
+      但真机 `hamlog_.available()` 恒假——`HamLogDb::defaultDbPath()` 指的文件不存在，
+      `available()` 要求「库在且 log 表可读」。旧布局里这组控件静默隐藏，分页版第一稿
+      才把它摆成一页死内容；现处置为**不可用就不建这一页**，另开条目待补建库逻辑。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
@@ -396,7 +411,10 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   合的顺序只能从底往上：#15 `fix/wasapi-capture-measurement`（35570c7）、
   #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
   （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
-  → #19 `fix/android-settings-persistence`（`9c1c89f`，base #18 的 head）。
+  → #19 `fix/android-settings-persistence`（`5de74a2`，base #18 的 head）
+  → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
+  → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
+  → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）。
   ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
   `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19。回滚点：
   `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）。
