@@ -42,6 +42,7 @@ struct ReportInput {
   bool usb_host_feature = false;
 
   bool rig_udp_built = false;       // 这个构建里编进了 UDP 传输
+  bool rig_tcp_built = false;       // 编进了 CI-V over TCP 传输
   bool rig_bridge_available = false;  // 本机跑得动 Python 桥
   bool rig_serial_built = false;    // 编进了 Qt6::SerialPort
   bool rig_http_bus_built = false;  // 编进了 HTTP 总线 / rigctld 服务端

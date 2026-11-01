@@ -86,24 +86,36 @@ TEST_CASE("link_status_text_tracks_the_actual_link", "[link]") {
   CHECK(QString::fromLatin1(linkName(Link::PyBridge)) == "python-bridge");
 }
 
-TEST_CASE("mode_index_and_link_mapping_without_python_bridge", "[link]") {
+TEST_CASE("mode_index_and_link_mapping_covers_tcp_and_python_bridge", "[link]") {
   app();
+  // 下拉顺序：mock / UDP / TCP /（桌面多一档）Python 桥
   CHECK(linkFromModeIndex(0, true) == static_cast<int>(Link::Mock));
   CHECK(linkFromModeIndex(1, true) == static_cast<int>(Link::Udp));
-  CHECK(linkFromModeIndex(2, true) == static_cast<int>(Link::PyBridge));
-  // Android：下拉框只有两档，越界也不许冒出 PyBridge
-  CHECK(linkFromModeIndex(2, false) == static_cast<int>(Link::Udp));
+  CHECK(linkFromModeIndex(2, true) == static_cast<int>(Link::Tcp));
+  CHECK(linkFromModeIndex(3, true) == static_cast<int>(Link::PyBridge));
+  // Android 上根本没有桥那一档：越界也不许冒出 PyBridge
+  CHECK(linkFromModeIndex(2, false) == static_cast<int>(Link::Tcp));
+  CHECK(linkFromModeIndex(3, false) == static_cast<int>(Link::Tcp));
   CHECK(modeIndexFromLink(Link::Mock, true) == 0);
   CHECK(modeIndexFromLink(Link::Udp, true) == 1);
-  CHECK(modeIndexFromLink(Link::PyBridge, true) == 2);
+  CHECK(modeIndexFromLink(Link::Tcp, true) == 2);
+  CHECK(modeIndexFromLink(Link::PyBridge, true) == 3);
+  // 没有桥的平台上存过 PyBridge 偏好：回落到 UDP（第 2 档现在是 TCP，不能串位）
   CHECK(modeIndexFromLink(Link::PyBridge, false) == 1);
   for (bool bridge : {true, false}) {
-    for (int i = 0; i <= 2; ++i) {
-      if (i == 2 && !bridge) continue;  // 没有 Python 桥的下拉框根本没有第 3 档
+    const int top = bridge ? 3 : 2;
+    for (int i = 0; i <= top; ++i) {
       const int link = linkFromModeIndex(i, bridge);
       CHECK(modeIndexFromLink(static_cast<Link>(link), bridge) == i);
     }
   }
+  CHECK(QString::fromLatin1(linkName(Link::Tcp)) == "tcp");
+  // TCP 的状态栏必须带端口，光一个 IP 分不清是电台还是网关
+  LinkPrefs tcp;
+  tcp.link = Link::Tcp;
+  tcp.host = "192.0.2.9";
+  tcp.port = 4533;
+  CHECK(linkStatusText(tcp).contains("192.0.2.9:4533"));
 }
 
 // Android 的 QSettings 默认格式（NativeFormat）没有后端：偏好必须走显式 IniFormat

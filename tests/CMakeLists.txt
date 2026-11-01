@@ -44,7 +44,8 @@ catch_discover_tests(radio_tests)
 # transport_udp.cpp，即 RADIO_SUITE_UDP=ON 且找到 Qt6::Network。
 find_package(Qt6 QUIET COMPONENTS Network)
 if(RADIO_SUITE_UDP AND Qt6Network_FOUND)
-  target_sources(radio_tests PRIVATE test_rsba1_loopback.cpp fake_rsba1_server.cpp)
+  target_sources(radio_tests PRIVATE test_rsba1_loopback.cpp fake_rsba1_server.cpp
+                                     test_transport_tcp.cpp)
   target_link_libraries(radio_tests PRIVATE Qt6::Network)
 endif()
 

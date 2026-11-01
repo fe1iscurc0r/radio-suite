@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QVBoxLayout>
+#include <QWidget>
 
 namespace app = radio::app;
 
@@ -32,20 +33,33 @@ ConnectDialog::ConnectDialog(app::LinkPrefs prefs, QWidget* parent)
   row1->addWidget(new QLabel("链路", this));
   mode_ = new QComboBox(this);
   mode_->addItem("mock（内置模拟电台）");
-  mode_->addItem(bridge ? "C++ 原生 UDP（主线）"
-                        : "C++ 原生 UDP（手机上唯一可用的真机链路）");
+  mode_->addItem(bridge ? "C++ 原生 UDP（RS-BA1 直连电台）"
+                        : "C++ 原生 UDP（RS-BA1，电台侧要有网口/RS-BA1）");
+  mode_->addItem("CI-V over TCP（串口网关透传）");
   if (bridge) mode_->addItem("rsba1-core Python 桥（后手兜底）");
   mode_->setCurrentIndex(app::modeIndexFromLink(prefs_.link, bridge));
   row1->addWidget(mode_, 1);
   root->addLayout(row1);
 
   auto* row2 = new QHBoxLayout();
-  row2->addWidget(new QLabel("电台 IP", this));
+  row2->addWidget(new QLabel("电台 / 网关 IP", this));
   host_ = new QLineEdit(prefs_.host.empty() ? QStringLiteral("192.168.0.31")
                                             : QString::fromStdString(prefs_.host),
                         this);
   row2->addWidget(host_, 1);
   root->addLayout(row2);
+
+  // 端口只有 CI-V over TCP 用得上：RS-BA1 的端口是协议里写死的三信道，
+  // 摆一个填了也不生效的输入框只会让人以为能改。
+  port_row_ = new QWidget(this);
+  auto* port_lay = new QHBoxLayout(port_row_);
+  port_lay->setContentsMargins(0, 0, 0, 0);
+  port_lay->addWidget(new QLabel("网关端口", port_row_));
+  port_ = new QLineEdit(QString::number(prefs_.port), port_row_);
+  port_->setPlaceholderText("例：4533");
+  port_lay->addWidget(port_, 1);
+  root->addWidget(port_row_);
+  port_row_->setVisible(app::modeIndexFromLink(prefs_.link, bridge) == 2);
 
   auto* row3 = new QHBoxLayout();
   row3->addWidget(new QLabel("用户名", this));
@@ -81,9 +95,13 @@ ConnectDialog::ConnectDialog(app::LinkPrefs prefs, QWidget* parent)
   hint->setStyleSheet("color:#8a93a5;");
   root->addWidget(hint);
 
-  connect(mode_, &QComboBox::currentTextChanged, this,
-          [this] { syncPreview(); });
+  connect(mode_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+          [this](int index) {
+            port_row_->setVisible(index == 2);
+            syncPreview();
+          });
   connect(host_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
+  connect(port_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
   connect(user_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
   connect(pass_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
   syncPreview();
@@ -115,6 +133,8 @@ app::LinkPrefs ConnectDialog::collect() const {
   // resolveLink，可以让同一套降级判定（缺 UDP / IP 为空 / 没有 python）生效
   p.explicit_cli = true;
   p.host = host_->text().toStdString();
+  p.port = port_->text().toUShort();
+  if (p.port == 0) p.port = app::LinkPrefs{}.port;  // 填了个不存在的端口：回默认
   p.user = user_->text().toStdString();
   p.pass = pass_->text().toStdString();
   p.python_exe = python_ ? python_->text().toStdString() : std::string{};
@@ -129,20 +149,25 @@ void ConnectDialog::syncPreview() {
     text += QString("（所选链路在本机建不出来，实际落到 %1）")
                 .arg(app::linkName(eff.link));
 #ifndef Q_OS_ANDROID
-  QString cmd = "radio-suite.exe";
-  if (eff.link == app::Link::Udp)
-    cmd += QString(" --radio %1 --user %2 --pass %3")
-               .arg(QString::fromStdString(wanted.host),
-                    QString::fromStdString(wanted.user),
-                    QString::fromStdString(wanted.pass));
-  else if (eff.link == app::Link::PyBridge)
-    cmd += QString(" --radio %1 --user %2 --pass %3 --radio-py")
-               .arg(QString::fromStdString(wanted.host),
-                    QString::fromStdString(wanted.user),
-                    QString::fromStdString(wanted.pass));
-  else
-    cmd += " --mock";
-  text += "\n" + cmd;
+  if (eff.link == app::Link::Tcp) {
+    text += QStringLiteral(
+        "\nCI-V over TCP 没有命令行开关：保存后重启 radio-suite 生效");
+  } else {
+    QString cmd = "radio-suite.exe";
+    if (eff.link == app::Link::Udp)
+      cmd += QString(" --radio %1 --user %2 --pass %3")
+                 .arg(QString::fromStdString(wanted.host),
+                      QString::fromStdString(wanted.user),
+                      QString::fromStdString(wanted.pass));
+    else if (eff.link == app::Link::PyBridge)
+      cmd += QString(" --radio %1 --user %2 --pass %3 --radio-py")
+                 .arg(QString::fromStdString(wanted.host),
+                      QString::fromStdString(wanted.user),
+                      QString::fromStdString(wanted.pass));
+    else
+      cmd += " --mock";
+    text += "\n" + cmd;
+  }
 #endif
   cmdline_->setText(text);
 }

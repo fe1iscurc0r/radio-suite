@@ -32,6 +32,8 @@ class ConnectDialog : public QDialog {
   radio::app::LinkPrefs prefs_;
   QComboBox* mode_ = nullptr;
   QLineEdit* host_ = nullptr;
+  QLineEdit* port_ = nullptr;
+  QWidget* port_row_ = nullptr;  // 只有 CI-V over TCP 需要端口，别占着手机的纵向预算
   QLineEdit* user_ = nullptr;
   QLineEdit* pass_ = nullptr;
   QLineEdit* python_ = nullptr;
