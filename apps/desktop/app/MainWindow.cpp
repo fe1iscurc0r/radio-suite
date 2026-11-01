@@ -1551,6 +1551,7 @@ radio::app::ReportInput MainWindow::selfCheckInput() {
   in.platform = QSysInfo::productType();
   in.storage_dir = radio::ui::appSettings().fileName();  // 桌面=注册表键，安卓=真能写的 ini 路径
   in.rig_udp_built = radio::app::udpLinkBuilt();
+  in.rig_tcp_built = radio::app::tcpLinkBuilt();
   in.rig_bridge_available = radio::app::bridgeAvailable();
 #ifdef RADIO_SUITE_HAVE_SERIALPORT
   in.rig_serial_built = true;
@@ -1560,6 +1561,8 @@ radio::app::ReportInput MainWindow::selfCheckInput() {
 #endif
   in.link_name = QString::fromLatin1(radio::app::linkName(link_.link));
   in.rig_host = QString::fromStdString(link_.host);
+  if (link_.link == radio::app::Link::Tcp && !link_.host.empty())
+    in.rig_host += QStringLiteral(":%1").arg(link_.port);
   if (wsjtx_panel_ && wsjtx_panel_->client()) {
     auto* client = wsjtx_panel_->client();
     in.wsjtx_listening = client->isListening();

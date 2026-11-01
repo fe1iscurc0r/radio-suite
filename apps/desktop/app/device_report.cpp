@@ -95,6 +95,13 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
                   in.rig_udp_built
                       ? QStringLiteral("已编入；真用还需要电台侧有 RS-BA1 或等价网关")
                       : QStringLiteral("本构建没编 Qt6::Network，只能跑 mock"));
+  rows << makeRow("电台链路", "CI-V over TCP 网关",
+                  in.rig_tcp_built ? ProbeState::Ok : ProbeState::Missing,
+                  in.rig_tcp_built
+                      ? QStringLiteral("已编入；对端要的是「一条 TCP 连接 = 一根串口线」"
+                                       "的透传网关，不是 rigctld（文本协议，套不进 CI-V "
+                                       "专有命令）")
+                      : QStringLiteral("本构建没编 Qt6::Network"));
   rows << makeRow("电台链路", "Python 桥（rsba1-core）",
                   android ? ProbeState::NotApplicable
                           : (in.rig_bridge_available ? ProbeState::Ok
