@@ -415,6 +415,42 @@ grep Qt6SerialPort_DIR build-android/CMakeCache.txt
 
 ---
 
+### 2b.1 真机第二轮（21:43–22:40，装的是含 #27/#28 的包）
+
+**权限矩阵从「静态核对」升级成实测**（`dumpsys package org.radiosuite.app`，新包
+`lastUpdateTime=2026-11-01 21:43`）：`RECORD_AUDIO granted=true`、
+**`CHANGE_WIFI_MULTICAST_STATE granted=true`**（normal 权限，装机即给）、
+`INTERNET`/`ACCESS_NETWORK_STATE` 同装即给、两条 `*_EXTERNAL_STORAGE granted=false
+[RESTRICTION_INSTALLER_EXEMPT]` —— 上面那张表里「未复测」的两格现在都有值了，
+「存储是死权限」这条也从推断变成了实测。
+
+**组播锁判据①：通。** logcat 记到 `WifiService: acquireMulticastLock uid=10332`
+（10332 就是本应用的 uid，`dumpsys package` 对得上），全程**没有** `SecurityException`。
+紧跟的那次 `releaseMulticastLock` 不是泄漏，是 join 失败后 `stop()` 正常收尾。
+
+**组播锁判据②：没通，而且卡的原因不在代码。** 手机 Wi-Fi 开关是开的，但没连任何 AP
+（`ip addr show wlan0` → `NO-CARRIER ... state DOWN`），没有可加入组播的接口，
+面板如实报「加入组播失败（224.0.0.1）：Unknown error」。**要证「包真进来了」，
+必须先让手机连上和 PC 同网段的 AP**——在那之前这条不许打勾。
+
+**台账页逐行核对过（截图）**：`android · API 33 · arm64-v8a`、机型 `M2012K11AC`、
+设置落点 `/data/user/0/org.radiosuite.app/files/radio-suite.ini`、
+`当前链路 降级（mock）`、`串口 缺失（点名 UsbManager）`、`对外总线 不适用`、
+`HamLog 本地库 可用 · .../files/HamLog/Log.db`、`日志记录 可用`。
+**新事实：`USB Host 特性 可用`** —— K40 报告支持 USB Host，D 线（OTG 串口）的
+硬件前提成立，缺的确实只有后端代码。
+
+**⚠️ B1 撤销分支的走法要改**：运行中 `pm revoke RECORD_AUDIO` 会被系统**直接杀掉进程**
+（截图掉回桌面）。这是 Android 撤销运行时权限的既定行为，不是本应用崩溃。所以这条判据
+必须按「**撤销 → 冷启动 → 进 FT8 选本机麦克风**」走；边跑边撤只会看到进程没了，
+把它当成本应用的稳定性缺陷就是误判。
+
+**「申请麦克风」出口验过**：撤销后冷启动，台账该行判 `缺失`（文案指向系统设置路径）；
+点按钮能重新唤起系统三选弹窗（拒绝 / 本次运行允许 / 仅在使用中允许）。取证时用
+**返回键取消 + `pm grant` 还原**，不替用户点隐私授权。
+
+---
+
 ## 3. Gate C — 手机分辨率上的 UI 与触控
 
 - [ ] **C1 窗口尺寸** —— **真机不通过**（2026-10-31 竖屏实测，见下面「实测」）
