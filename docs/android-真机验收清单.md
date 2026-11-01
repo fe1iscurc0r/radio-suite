@@ -353,7 +353,7 @@ grep Qt6SerialPort_DIR build-android/CMakeCache.txt
 | `RECORD_AUDIO` | 我们（`packaging/android/AndroidManifest.xml:11`） | `granted=true` | 启动时按 B1 申请，行为对 |
 | `INTERNET` / `ACCESS_NETWORK_STATE` | androiddeployqt 注入 | 安装期权限 | 无需弹窗 |
 | `WRITE_EXTERNAL_STORAGE`（隐含 `READ_`） | **Qt6Core 的 `lib/Qt6Core_arm64-v8a-android-dependencies.xml` 注入，不是我们写的** | 两条都 `granted=false`（`RESTRICTION_INSTALLER_EXEMPT`） | targetSdk 34 上这是**死权限**，见下 |
-| `CHANGE_WIFI_MULTICAST_STATE` | 未声明 | — | WSJT-X 组播缺它，见下 |
+| `CHANGE_WIFI_MULTICAST_STATE` | 我们（`packaging/android/AndroidManifest.xml`，11-01 补） | 未复测 | normal 权限，装机即授；锁已在代码里取（见下） |
 | `android.hardware.usb.host` / USB 权限 | 未声明（包里只有 microphone[not-required] + 两条 implied） | — | 缺口不在弹窗，在后端 |
 
 **存储：不该问，也问不出东西。** Android 13 / targetSdk 34 已经没有「存储」这个运行时权限，
@@ -374,16 +374,32 @@ grep Qt6SerialPort_DIR build-android/CMakeCache.txt
 或 vendor `usb-serial-for-android`（Apache-2.0）。**今天证不了**：手机唯一的 USB 口被 adb
 占着，台架上也没有可插的串口设备/电台；只加清单声明、不加后端是自欺，所以整条按工单排。
 
-**组播：只声明权限不拿锁等于没做。** WSJT-X 面板默认监听 `224.0.0.1:2237`
-（`apps/desktop/app/wsjtx_client.cpp:44` `joinMulticastGroup`），Android 上不持
-`WifiManager.MulticastLock` 时组播帧一般收不到，而拿锁要 JNI。单播不受影响：
-把地址指成手机可达的单播地址就能先证数据通路——**这条是能做的，且不需要电台**。
+**组播：只声明权限不拿锁等于没做——这轮把锁补上了，但真机还没验。** WSJT-X 面板默认监听
+`224.0.0.1:2237`（`apps/desktop/app/wsjtx_client.cpp` `joinMulticastGroup`），Android 上不持
+`WifiManager.MulticastLock` 时组播帧一般收不到（**join 会返回成功，一个包都不来**，所以这条
+缺陷的表象是「没数据」而不是「报错」）。11-01 深夜代码落地：新增
+`apps/desktop/app/multicast_lock.{h,cpp}`（JNI 走
+`QNativeInterface::QAndroidApplication::context()` → `getSystemService("wifi")` →
+`createMulticastLock(tag)`，`setReferenceCounted(false)` 后 `acquire()`），
+`WsjtxClient::start()` 在 `joinMulticastGroup` **之前**取锁、`stop()` 释放，取锁失败时把原因
+写进错误串并提示改单播；manifest 补 `CHANGE_WIFI_MULTICAST_STATE`（新包
+`aapt2 dump permissions` 实测已在）。非 Android 上这类是空实现且 `held()` 保持 false，
+不会假装持有。**未验的部分**：真机上锁是否真的拿到（`SecurityException` 路径没跑过）、
+拿到后组播帧是否真的进来——见下面判据。单播不受影响：把地址指成手机可达的单播地址就能
+先证数据通路——**这条是能做的，且不需要电台**。
 
 判据（下次真机补，别照抄本节结论）：
-- 新包 `aapt2 dump permissions` 的期望集合仍是上面那五项，多出来的一项要能说出谁注入的；
+- 新包 `aapt2 dump permissions` 的期望集合（11-01 构建后实测这七项）：`RECORD_AUDIO`、
+  **`CHANGE_WIFI_MULTICAST_STATE`**、`INTERNET`、`ACCESS_NETWORK_STATE`、
+  `WRITE_EXTERNAL_STORAGE`、`READ_EXTERNAL_STORAGE`、
+  `org.radiosuite.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`。前两条是我们自己声明的，
+  其余都要能说出谁注入的；对不上就当场查，别写「大概」；
 - 撤销 `RECORD_AUDIO` 后 FT8 选「本机麦克风」要如实失败（B1 的撤销分支至今没走过）；
 - 若做了 OTG：插上设备弹 `UsbManager` 授权框，点拒绝后面板如实报错、不崩；
-- 若做了组播锁：同一网段 PC 发 Decode 包 → 手机面板出解码行。
+- **组播锁（代码已落地，真机两条分支都要走）**：① `logcat` 里不该出现
+  `SecurityException ... CHANGE_WIFI_MULTICAST_STATE`；WSJT-X 面板按默认组播启动后不报错；
+  ② 同一网段 PC 发 Decode 包 → 手机面板出解码行（这才是锁真起作用的证据；只「没报错」
+  不算，因为不持锁时 join 也成功）；③ 对照：同机器改单播地址仍能出解码行。
 
 ---
 
