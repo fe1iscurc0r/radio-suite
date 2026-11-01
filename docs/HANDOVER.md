@@ -280,6 +280,9 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       修法是对话框内每次 `MouseButtonRelease` 后 60ms 补一次整窗 `update()` +
       `QWindow::requestUpdate()`，`QScroller` 回 `Inactive` 后再补一帧，并把滚动页横向
       范围钉死为 0（手指横向抖动不再把整页拖偏切掉左侧标签）。
+      **11-01 15:28 又补点了 SET / MEM / CW / DTMF / VOICE 五个对话框**：都按全屏贴边
+      打开、底部常驻「关闭」一点即回面板页；SET 内容一屏放得下，MEM/CW/DTMF 滑到底
+      分别能见到名称与选组/选信道、回读提示与应用设置/发送、生成 .wav，左侧标签不被切。
       另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
       这类 Qt 自带文件框不在范围内。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
@@ -443,8 +446,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （HamLog 不可用时不出日志页签）的真机截图还欠着，见 §5 第 11 条。
   手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已在 11-01 13:30 真机复验通过
   （频差/亚音下拉、音频设置 Cancel、连接/中继/APRS/WSJT-X 关闭、返回键、SSTV 滚动），
-  两个新根因（下拉弹窗触摸错位、第二顶层窗口丢帧）已修，证据见
-  `docs/android-真机验收清单.md` C10 正文与 §5 第 11 条。
+  15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框，两个新根因（下拉弹窗触摸错位、
+  第二顶层窗口丢帧）已修，证据见 `docs/android-真机验收清单.md` C10 正文与 §5 第 11 条。
 - 手机上跑：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
   adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
   不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置；**先看 §K4**，
