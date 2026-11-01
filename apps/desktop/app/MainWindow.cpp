@@ -53,6 +53,7 @@
 #include "aprs/aprs.h"
 
 #include <QComboBox>
+#include <QDebug>
 #include <QListWidget>
 #include <QRegularExpression>
 
@@ -109,6 +110,17 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
     : QMainWindow(parent), link_(std::move(link)), session_(std::move(transport)) {
   // 下拉弹窗的触摸坐标修复要在任何弹窗弹出前装好（桌面空操作）
   radio::app::touch::installPopupOriginFix();
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+#ifdef Q_OS_ANDROID
+  // buildUi() 里靠 hamlog_.available() 决定「日志」页出不出现，而 available()
+  // 只看文件在不在：Android 上没有 HamLog 桌面程序来建这个库，不自己建就永远只有四页。
+  {
+    QString err;
+    if (!radio::logbook::HamLogDb::ensureLocalDb(&err))
+      qWarning() << "radio-suite: 本地日志库建库失败" << err;
+  }
+#endif
+#endif
   buildUi();
 
 #ifdef Q_OS_ANDROID
@@ -904,8 +916,8 @@ void MainWindow::buildAndroidUi() {
   }
 
   // 5) 日志：HamLog 最近 QSO + 记 QSO / ADIF
-  //    真机上 HamLog 默认库不存在时这一页整个不出现：宁可只有四个页签，
-  //    也不摆一个永远打不开的死页面（手机上 HamLog 从未可用，待单独补）
+  //    库不在就整页不出现：宁可只有四个页签，也不摆一个永远打不开的死页面。
+  //    Android 上构造里已 ensureLocalDb() 自建本地库，所以这一页是第五个页签。
   bool have_log_page = false;
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   if (hamlog_.available()) {
