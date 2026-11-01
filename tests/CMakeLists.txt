@@ -188,12 +188,13 @@ endif()
 
 # 对话框接线测试：需要 Widgets（BUILD_GUI=OFF 的 CI 任务自动跳过）
 if(BUILD_GUI AND TARGET radio::ui_common)
-  find_package(Qt6 REQUIRED COMPONENTS Widgets)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
   add_executable(radio_ui_tests
     test_dialogs.cpp
     test_audio_ui.cpp
     test_touch_dialog.cpp
     test_launch_config.cpp
+    test_device_report.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
@@ -202,6 +203,8 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/repeater_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/device_report.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/self_check_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_stats.cpp")
   target_include_directories(radio_ui_tests PRIVATE
@@ -210,6 +213,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
   target_link_libraries(radio_ui_tests PRIVATE
     radio::core
     Qt6::Widgets
+    Qt6::Network
     Catch2::Catch2WithMain)
   set_target_properties(radio_ui_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_ui_tests)

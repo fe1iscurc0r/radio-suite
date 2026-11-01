@@ -46,6 +46,7 @@
 #include "app/ft8_panel.h"
 #include "app/meter_widgets.h"
 #include "app/network_audio.h"
+#include "app/self_check_dialog.h"
 #include "app/sstv_dialog.h"
 #include "app/touch_dialog.h"
 #include "app/voice_memory.h"
@@ -655,6 +656,9 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   set_big_btn_->setToolTip("Set Mode 深设置树：0x1A 0x05 菜单项读写（原厂件）");
   auto* memch_big_btn_ = makeBigButton(parent, "MEM\n信道", QColor(0x00, 0x69, 0x5c));
   memch_big_btn_->setToolTip("记忆信道：0x1A 0x00 内容读写 + 0x08 组/信道选择（原厂件）");
+  auto* check_big_btn_ = makeBigButton(parent, "自检\n台账", QColor(0x33, 0x2a, 0x1f));
+  check_big_btn_->setToolTip(
+      "链路与权限台账：这台设备上每条能力是真能用、被降级还是压根没编进来");
   connect(sstv_big_btn_, &QPushButton::clicked, this, [this] {
     // 与主会话共享（真机时同一条链）；SstvDialog 改持裸指针+父窗口生命周期
     SstvDialog dlg(&session_, this);
@@ -678,6 +682,10 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   });
   connect(memch_big_btn_, &QPushButton::clicked, this, [this] {
     radio::app::MemoryChannelDialog dlg(&session_, this);
+    dlg.exec();
+  });
+  connect(check_big_btn_, &QPushButton::clicked, this, [this] {
+    radio::app::SelfCheckDialog dlg([this] { return selfCheckInput(); }, this);
     dlg.exec();
   });
 
@@ -1532,6 +1540,41 @@ void MainWindow::onMemRecall() {
   }
   session_.setMode(static_cast<radio::core::civ::Mode>(mode));
   session_.tuneTo(freq);
+}
+
+radio::app::ReportInput MainWindow::selfCheckInput() {
+  // 台账只收集「现场能读到的事实」，判定与措辞都在 buildDeviceReport 里，
+  // 所以这里不许出现任何猜测性文案。
+  radio::app::ReportInput in;
+  in.platform = QSysInfo::productType();
+  in.storage_dir = radio::ui::appSettings().fileName();  // 桌面=注册表键，安卓=真能写的 ini 路径
+  in.rig_udp_built = radio::app::udpLinkBuilt();
+  in.rig_bridge_available = radio::app::bridgeAvailable();
+#ifdef RADIO_SUITE_HAVE_SERIALPORT
+  in.rig_serial_built = true;
+#endif
+#ifdef RADIO_SUITE_HAVE_BUS
+  in.rig_http_bus_built = true;
+#endif
+  in.link_name = QString::fromLatin1(radio::app::linkName(link_.link));
+  in.rig_host = QString::fromStdString(link_.host);
+  if (wsjtx_panel_ && wsjtx_panel_->client()) {
+    auto* client = wsjtx_panel_->client();
+    in.wsjtx_listening = client->isListening();
+    in.wsjtx_group = client->group();
+    in.wsjtx_port = client->port();
+    in.multicast_lock_held = client->multicastLockHeld();
+  }
+  radio::audio::AudioSink sink_enum;  // 现场枚举，USB 声卡插拔后不用重启
+  in.audio_output_devices = static_cast<int>(sink_enum.outputDeviceIds().size());
+  in.net_audio_active = network_audio_ && network_audio_->active();
+#ifdef RADIO_SUITE_HAVE_LOGBOOK
+  in.logbook_available = hamlog_.available();
+  in.logbook_path = radio::logbook::HamLogDb::defaultDbPath();
+  in.logbook_error = hamlog_.lastError();
+  in.logbook_has_rows = !hamlog_.recent(1).empty();
+#endif
+  return in;
 }
 
 void MainWindow::onAudioSettings() {
