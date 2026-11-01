@@ -107,6 +107,8 @@ QString stepCaption(qint64 hz) {
 MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
                        radio::app::LinkPrefs link, QWidget* parent)
     : QMainWindow(parent), link_(std::move(link)), session_(std::move(transport)) {
+  // 下拉弹窗的触摸坐标修复要在任何弹窗弹出前装好（桌面空操作）
+  radio::app::touch::installPopupOriginFix();
   buildUi();
 
 #ifdef Q_OS_ANDROID

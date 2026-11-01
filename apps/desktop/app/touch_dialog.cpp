@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/touch_dialog.h"
 
+#include <QAbstractItemView>
 #include <QAbstractSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
@@ -11,13 +12,17 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScreen>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QScroller>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QWindow>
 
 namespace radio::app::touch {
 
@@ -48,6 +53,39 @@ void bumpHeight(QWidget* root, int min_h) {
 void restyleButtons(QWidget* root) { bumpHeight(root, 44); }
 
 }  // namespace
+
+#ifdef Q_OS_ANDROID
+namespace {
+
+// Qt 6.7 安卓上第二个顶层窗口（触摸对话框）经常把上一帧留在屏幕上：点一下
+// 按钮，控件状态和新帧都对了，画面却还是旧的，要再点一下才刷新（真机实测：
+// 应用频差后 TX 标签迟一步，下拉选完也常这样）。抬手后隔一拍再补一次整窗
+// 重绘，第二帧才真正合成上屏。只装在触摸对话框上，桌面不受影响。
+class TapRepaint : public QObject {
+ public:
+  explicit TapRepaint(QWidget* w) : QObject(w), w_(w) {}
+
+  bool eventFilter(QObject* obj, QEvent* ev) override {
+    // 控件自己的过滤器收不到子控件的输入事件（都被窗口派发给命中的子控件），
+    // show 之后再挂到顶层窗口上，才看得到整个对话框里的每次抬手
+    if (obj == w_ && ev->type() == QEvent::Show) {
+      if (QWindow* wh = w_->windowHandle()) wh->installEventFilter(this);
+      return false;
+    }
+    if (ev->type() == QEvent::MouseButtonRelease) {
+      QTimer::singleShot(60, w_, [w = w_] {
+        w->update();
+        if (QWindow* wh = w->windowHandle()) wh->requestUpdate();
+      });
+    }
+    return false;
+  }
+
+ private:
+  QWidget* w_;
+};
+}  // namespace
+#endif
 
 void fitDialog(QDialog* dlg) {
   if (!touchEnabled()) return;
@@ -88,6 +126,27 @@ void fitDialog(QDialog* dlg) {
   // QScrollArea 默认只认滚轮/滚动条，手指拖动不会滚；QScroller 把左键拖动
   // 变成惯性滚动（安卓上触摸会被合成成鼠标事件，所以选 LeftMouseButton）
   QScroller::grabGesture(scroll->viewport(), QScroller::LeftMouseButtonGesture);
+  // 手指拖动是二维的，横向会跟着乱窜把左侧标签挤出屏幕；只保纵向。
+  // 光藏滚动条不够：内容最小宽度常比视口多几十 dp，横向范围还在，手指带点
+  // 横向抖动整页就被拖偏且不会自己回去。直接把这个范围钉死为 0。
+  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  auto* hbar = scroll->horizontalScrollBar();
+  QObject::connect(hbar, &QScrollBar::rangeChanged, hbar,
+                   [hbar](int, int) { hbar->setRange(0, 0); });
+  hbar->setRange(0, 0);
+  // 甩动结束时橡皮筋回弹的那一帧也常丢：手指带出的横向偏移留在屏上，要再点
+  // 一下才回正（真机：SSTV/中继对话框滚完左侧标签被切掉）。回到 Inactive 后
+  // 补一帧，画面才落在最终位置。
+  QObject::connect(QScroller::scroller(scroll->viewport()),
+                   &QScroller::stateChanged, scroll,
+                   [scroll](QScroller::State state) {
+                     if (state != QScroller::Inactive) return;
+                     QTimer::singleShot(80, scroll, [scroll] {
+                       scroll->viewport()->update();
+                       if (QWindow* wh = scroll->window()->windowHandle())
+                         wh->requestUpdate();
+                     });
+                   });
 #endif
 
   auto* footer = new QWidget(dlg);
@@ -95,6 +154,7 @@ void fitDialog(QDialog* dlg) {
   bar->setContentsMargins(0, 0, 0, 0);
   bar->addStretch(1);
   auto* close = new QPushButton("关闭", footer);
+  close->setObjectName("rs_pinned_close");
   close->setMinimumSize(110, 48);
   bar->addWidget(close);
   QDialog* self = dlg;
@@ -121,9 +181,112 @@ void fitDialog(QDialog* dlg) {
   if (dlg->minimumHeight() > avail.height())
     dlg->setMinimumHeight(qMax(0, avail.height() - 8));
   dlg->setMaximumSize(avail.width(), avail.height());
-  // 高度吃满可用区：手机上滚动内容比压缩按钮可靠
-  dlg->resize(qMin(qMax(360, dlg->minimumSizeHint().width()), avail.width()),
-              avail.height());
+  // 铺满可用区域，并且**定位在 (0,0)**。Qt 6.7 安卓对多顶层窗口的触摸换算
+  // 把窗口位置按 dp/dpr 多减了一次：窗口 x=242dp 时点击坐标整体偏 88dp，
+  // 按钮右半永远点不到（真机实测）。位置归零后换算才和画面对得上；
+  // 对话框本来也该是整屏 sheet，手机上没有窗口管理器可拖。
+  dlg->setGeometry(avail.x(), avail.y(), avail.width(), avail.height());
+  // show 时 QDialog 还会按尺寸再居中一次，必须显式钉住位置/尺寸
+  dlg->setAttribute(Qt::WA_Moved, true);
+  dlg->setAttribute(Qt::WA_Resized, true);
+#ifdef Q_OS_ANDROID
+  dlg->installEventFilter(new TapRepaint(dlg));
+#endif
+}
+
+#ifdef Q_OS_ANDROID
+namespace {
+
+// 触摸合成出来的鼠标事件在弹窗里走不到 Qt 自己的 itemSelected 分支（真机
+// 实测：按下/抬起都进了列表视口，行号也对，弹窗却只是收起）。这里按坐标
+// 自己选行：抬起点离按下点太远当作拖动（滚动列表），不选。
+class PopupClickFilter : public QObject {
+ public:
+  PopupClickFilter(QComboBox* combo, QAbstractItemView* view)
+      : combo_(combo), view_(view) {}
+
+  bool eventFilter(QObject*, QEvent* ev) override {
+    switch (ev->type()) {
+      case QEvent::MouseButtonPress: {
+        auto* me = static_cast<QMouseEvent*>(ev);
+        press_ = me->position().toPoint();
+        moved_ = false;
+        break;
+      }
+      case QEvent::MouseMove: {
+        auto* me = static_cast<QMouseEvent*>(ev);
+        if ((me->position().toPoint() - press_).manhattanLength() > 24)
+          moved_ = true;
+        break;
+      }
+      case QEvent::MouseButtonRelease: {
+        auto* me = static_cast<QMouseEvent*>(ev);
+        if (me->button() != Qt::LeftButton || moved_) break;
+        const QModelIndex idx = view_->indexAt(me->position().toPoint());
+        if (!idx.isValid()) break;
+        // 不能在输入事件的过滤器里直接 setCurrentIndex/hidePopup：真机上模型
+        // 已经改成新选项，屏幕却要等下一次别处点击才刷新。推迟到下一轮事件
+        // 循环收尾，并补一次整窗重绘，画面才跟上。
+        QTimer::singleShot(0, combo_, [combo = combo_, row = idx.row()] {
+          combo->setCurrentIndex(row);
+          combo->hidePopup();
+          combo->update();
+          if (QWidget* top = combo->window()) top->update();
+        });
+        return true;
+      }
+      default:
+        break;
+    }
+    return false;
+  }
+
+ private:
+  QComboBox* combo_;
+  QAbstractItemView* view_;
+  QPoint press_;
+  bool moved_ = false;
+};
+}  // namespace
+#endif
+
+void installPopupOriginFix() {
+#ifdef Q_OS_ANDROID
+  // Qt 6.7 安卓把顶层窗口的触摸位置按「窗口位置 ÷ dpr」错位，窗口在 (0,0)
+  // 才准。下拉弹窗由 Qt 贴在控件旁边，位置必非零，选项永远点不中；每次
+  // 弹出后钉到左上角，换算才和画面对得上。弹窗尺寸不动，点外面照常收起。
+  class PopupOrigin : public QObject {
+   public:
+    bool eventFilter(QObject* obj, QEvent* ev) override {
+      if (ev->type() == QEvent::Show) {
+        auto* w = qobject_cast<QWidget*>(obj);
+        if (w && w->isWindow() && w->inherits("QComboBoxPrivateContainer")) {
+          w->move(0, 0);
+          if (w->windowHandle()) w->windowHandle()->setPosition(QPoint(0, 0));
+          // 弹窗的 show 里还会按列表高度调一次几何，等这一轮结束再钉
+          QTimer::singleShot(0, w, [w] {
+            w->move(0, 0);
+            if (w->windowHandle()) w->windowHandle()->setPosition(QPoint(0, 0));
+          });
+          // 弹窗的选择逻辑自己接管（见 PopupClickFilter）
+          if (auto* v = w->findChild<QAbstractItemView*>()) {
+            auto* combo = qobject_cast<QComboBox*>(w->parentWidget());
+            if (combo && !v->viewport()->property("rs_popup_click").toBool()) {
+              v->viewport()->setProperty("rs_popup_click", true);
+              v->viewport()->installEventFilter(
+                  new PopupClickFilter(combo, v));
+            }
+          }
+        }
+      }
+      return false;
+    }
+  };
+  static bool installed = false;
+  if (installed) return;
+  installed = true;
+  QCoreApplication::instance()->installEventFilter(new PopupOrigin());
+#endif
 }
 
 QWidget* addCloseBar(QWidget* panel, const QString& title) {
@@ -177,8 +340,13 @@ void showInfo(QWidget* parent, const QString& title, const QString& text) {
   QObject::connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
 #ifdef Q_OS_ANDROID
   if (const QScreen* screen = dlg.screen() ? dlg.screen()
-                                           : QGuiApplication::primaryScreen())
-    dlg.resize(screen->availableGeometry().size());
+                                           : QGuiApplication::primaryScreen()) {
+    const QRect avail = screen->availableGeometry();
+    // 和 fitDialog 同理：窗口必须落在 (0,0)，否则触摸坐标按窗口位置偏移
+    dlg.setGeometry(avail.x(), avail.y(), avail.width(), avail.height());
+    dlg.setAttribute(Qt::WA_Moved, true);
+    dlg.setAttribute(Qt::WA_Resized, true);
+  }
 #else
   dlg.resize(560, 380);
 #endif

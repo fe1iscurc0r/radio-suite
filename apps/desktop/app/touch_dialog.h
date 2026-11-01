@@ -21,4 +21,9 @@ QWidget* addCloseBar(QWidget* panel, const QString& title);
 // 用可滚动 + 常驻关闭的等价信息框替代
 void showInfo(QWidget* parent, const QString& title, const QString& text);
 
+// 安卓：Qt 的顶层窗口触摸换算按窗口位置（÷dpr）偏移，下拉弹窗跟在控件
+// 旁边位置必非零，选项永远点不准；应用启动时装一次，把弹窗钉到 (0,0)。
+// 其它平台空操作。
+void installPopupOriginFix();
+
 }  // namespace radio::app::touch

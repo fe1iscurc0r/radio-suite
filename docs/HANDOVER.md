@@ -261,11 +261,25 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       只交给 `addLayout` 收养，不再删除；新增
       `tests/test_touch_dialog.cpp::fitDialog reparents form rows into scroll content`，
       桌面用 `RADIO_SUITE_TOUCH_FIT=1` 打开同一套逻辑跑断言。
-      **已验**：桌面 MSVC 构建、`ctest` 182/182、Android clang 交叉编译出新包；
+      **已验**：桌面 MSVC 构建、`ctest` 183/183、Android clang 交叉编译出新包；
       真机第一轮（解锁后）确认波段高亮生效、音频设置对话框底部出现常驻「关闭」，
       随即发现上面那个表单错位缺陷。
-      **未验**：修复后的新包还需再走一轮真机——音频/中继/连接三个对话框的滚动与关闭、
-      返回键复位、三面板互斥切页。
+      **11-01 13:30 第二轮真机复验通过**：方向下拉可选、应用频差后 TX 立即显示
+      `14.870000 MHz +600.0 kHz`（上差）/`13.670000 MHz −600.0 kHz`（下差）；模式下拉
+      8 项含 DTCS（数字亚音），选完可滚到「码 / 收极性 / 发极性」；音频设置 Cancel 与
+      连接/中继对话框的常驻「关闭」都生效；20m/40m 波段高亮随频率回读；APRS / WSJT-X
+      有「关闭 ✕」且返回键能收面板并复位大按键；SSTV 面板可拖。这一轮又定位两个根因：
+      ① **下拉弹窗触摸错位**——Qt 6.7 安卓顶层窗口的触摸换算按窗口位置（dp÷dpr）偏移，
+      窗口在 (0,0) 才准，而弹窗永远贴在控件旁边，点任何选项都命中错行（就是用户说的
+      「模拟亚音模式无法设置 / 数字亚音未看到」）；修法是启动时装
+      `installPopupOriginFix()`，弹窗 `Show` 后钉到 (0,0)、二次 `singleShot(0)` 再钉，
+      并在列表 viewport 上自装 `PopupClickFilter` 按 `indexAt` 选行（Qt 自己的
+      itemSelected 在触摸合成鼠标事件时根本不触发），选行/收起推迟到下一轮事件循环。
+      ② **第二个顶层窗口丢帧**——控件状态与模型都更新了，屏幕却停在前一帧，要再点一下
+      才刷新（应用频差后 TX 标签迟一步、下拉选完不刷新、甩动回弹的横向偏移留在屏上）；
+      修法是对话框内每次 `MouseButtonRelease` 后 60ms 补一次整窗 `update()` +
+      `QWindow::requestUpdate()`，`QScroller` 回 `Inactive` 后再补一帧，并把滚动页横向
+      范围钉死为 0（手指横向抖动不再把整页拖偏切掉左侧标签）。
       另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
       这类 Qt 自带文件框不在范围内。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
@@ -427,8 +441,10 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
   （HamLog 不可用时不出日志页签）的真机截图还欠着，见 §5 第 11 条。
-  手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已装包但**没在手机上点过**，
-  同样待解锁复验。
+  手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已在 11-01 13:30 真机复验通过
+  （频差/亚音下拉、音频设置 Cancel、连接/中继/APRS/WSJT-X 关闭、返回键、SSTV 滚动），
+  两个新根因（下拉弹窗触摸错位、第二顶层窗口丢帧）已修，证据见
+  `docs/android-真机验收清单.md` C10 正文与 §5 第 11 条。
 - 手机上跑：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
   adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
   不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置；**先看 §K4**，
