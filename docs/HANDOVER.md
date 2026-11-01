@@ -1,4 +1,4 @@
-# radio-suite 交接说明（2026-10-30 更新）
+# radio-suite 交接说明（2026-10-30 更新，2026-11-01 补 §5.1 手机端路线）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
@@ -314,6 +314,119 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
       224.0.0.1 去 join 并报「加入组播失败」。改监听地址要走面板里的「设置」，别用 `reg add`。
     - 判链路/判音源的条目**不许拿 mock 行为打勾**，那会写出假报告。
+
+### 5.1 手机端路线（2026-11-01 起草，规划不是进度）
+
+这一节写的是**下一步该怎么排**，不是已完成。所有能力现状都对着代码核过，行号在下面。
+
+**排期的硬约束**：台架上是 Redmi K40 + 全盛 UV-K6，**没有 IC-705**。所以每条规划都必须
+回答「没有真电台能不能收口」；不能的那条只能停在「等硬件」，不许用 mock 或假服务器
+给它打真机勾。
+
+**技术前提（逐条核过的事实）**
+
+- `ICivTransport` 是纯字节管道：`open/close/isOpen/send/poll` + `setFrameCallback`
+  （[apps/desktop/core/transport.h:17](../apps/desktop/core/transport.h#L17)），CIV 编解码与它解耦
+  （`core/civ.h`），`RadioSession` 只持 `shared_ptr<ICivTransport>`
+  （[apps/desktop/app/session.h:105](../apps/desktop/app/session.h#L105)）→ **加一条链路 = 加一个
+  transport，不动引擎**。这是手机端所有扩展的地基。
+- 现有 transport 三个：RS-BA1 UDP（进 APK）、PyBridge（代码在包里，但 `bridgeAvailable()`
+  在 `Q_OS_ANDROID` 直接 `return false`，
+  [apps/desktop/app/launch_config.cpp:37](../apps/desktop/app/launch_config.cpp#L37)）、Mock。
+  **串口 CAT transport：不存在**。`Qt6SerialPort` 在安卓构建里是 `NOTFOUND`
+  （`build-android/CMakeCache.txt:408`），`RADIO_SUITE_HAVE_SERIALPORT` 因此关着
+  （[apps/desktop/app/CMakeLists.txt:65](../apps/desktop/app/CMakeLists.txt#L65)）。
+- bus（`bus_server` + `rigctld_server`）整块依赖 `Qt6HttpServer`，安卓上 `NOTFOUND`
+  （`build-android/CMakeCache.txt:396`）→ **APK 里根本没有 bus**。
+- `rigctld_server` 的方向是**服务端**（`QTcpServer::listen`，
+  [apps/desktop/bus/rigctld_server.cpp:14](../apps/desktop/bus/rigctld_server.cpp#L14)，把我们的
+  `RadioSession` 暴露给 WSJT-X/fldigi）。**rigctld 客户端不存在**，写它是新工作面。
+- 请求/响应**没有序号也没有超时**：250 ms 轮询 + fire-and-forget
+  （[apps/desktop/app/session.cpp:28](../apps/desktop/app/session.cpp#L28)），帧靠 opcode 去复用。
+  序号只存在于 RS-BA1 串口通道内部（`sseq_`，
+  [apps/desktop/core/transport_udp.h:92](../apps/desktop/core/transport_udp.h#L92)）。
+- WSJT-X 面板只在 `address.isMulticast()` 时才 join
+  （[apps/desktop/app/wsjtx_client.cpp:44](../apps/desktop/app/wsjtx_client.cpp#L44)），地址/端口来自
+  QSettings `wsjtx/group` / `wsjtx/port` → **单播今天就能用，安卓上也不需要新权限**。
+- FT8 音源枚举只有 `Network` / `Microphone`
+  （[apps/desktop/app/ft8_panel.h:35](../apps/desktop/app/ft8_panel.h#L35)），**文件输入没有**。
+- 打包参数：minSdk **26** / targetSdk **34** / 只有 arm64-v8a
+  （[apps/desktop/app/CMakeLists.txt:88](../apps/desktop/app/CMakeLists.txt#L88) → 落进
+  `build-android/.../gradle.properties:19`）。manifest 里**没有前台服务**、没有
+  `usb.host`、没有组播权限，运行期权限只有麦克风
+  （`packaging/android/AndroidManifest.xml:11`）。
+
+**A 线｜让手机先成为「能验的遥控头」（推荐先做，不需要电台）**
+
+1. 新增 `TcpCivTransport`（裸 TCP 字节管道，天然满足 `ICivTransport`）+ PC 侧一个
+   CIV-over-TCP 转发小工具（照 `tools/rsba1_bridge.py` 的形状做，工具目录注意
+   `tools/CMakeLists.txt` 现在把 ANDROID 排除了）。
+   验收：手机 → PC → MockTransport，写频/制式/PTT 两端一致；断链（拔网/关进程）后 UI
+   如实显示失联（清单 G-6）。
+2. ⚠️ **这条线的真正成本不在 transport，在会话层**：没有序号/超时，TCP 上多请求并发会
+   互相错配回包。同一次交付里要么给 session 加请求序号，要么钉死一问一答，否则 G 线
+   会出现**假通过**（看着对，其实是上一帧的回声）。
+3. 链路选择 UI 加「TCP」这一档（`connect_dialog.cpp:32-70` 那套表单 + `link/mode|host|…`
+   持久化）；Android 上连接对话框是唯一链路入口，别开第二条。
+
+**B 线｜权限与链路台账进 UI（可独立验收，不依赖 A）**
+
+- manifest 补 `CHANGE_WIFI_MULTICAST_STATE`，并**真的去拿 `MulticastLock`**（JNI，
+  生命周期跟着 wsjtx_client 的 open/close）。只声明权限不拿锁 = 没做，这条在验收清单
+  §2b 已经写明判据。
+- 先验**单播**：PC 发 Decode 包 → 手机面板出解码行。这条是三条里最快出结果的，零新权限。
+- 统一一个权限薄封装（查状态 → 该弹才弹 → 被永久拒绝时给**该机型的具体退路**）。现状是
+  启动时只在 `Undetermined` 才申请，且回调写成空的
+  （[apps/desktop/app/MainWindow.cpp:130](../apps/desktop/app/MainWindow.cpp#L130)
+  `requestPermission(mic, [](const QPermission&) {})`）——授没授上 UI 都不知道，
+  永久拒绝后**没有任何出口**。
+- 加「链路 + 权限自检」页：把验收清单 §2b 那张表搬进 app，一行一条显示 grant/feature
+  状态与降级说明。它顺手收掉 B2「提前授权路径」，而且**在手机上可直接验收**。
+- 明确不做：`MANAGE_EXTERNAL_STORAGE`（是安全设置，且商店政策敏感）、legacy 存储权限
+  （targetSdk 34 上系统不给，SAF 已真机验过够用）。
+
+**C 线｜后台活着（Gate E 的根因候选）**
+
+前台服务：`FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_AUDIO`（34 起要单独声明）+
+`POST_NOTIFICATIONS`（33+）。Qt 6.7.3 安卓侧**没有**前台服务封装 → 要 JNI 自己起，或引
+第三方。判据用清单 E1（灭屏 30 s）/E2（切后台）/E3（音频焦点被抢）/E5（低内存重建），
+同一条线里顺手收 B3（AAudio 真实出声，**至今未验**）与 B5（首帧延迟与稳态预算）。
+
+**D 线｜USB OTG 串口（实验线，要你点头才投）**
+
+缺的是**后端不是弹窗**：JNI + `UsbManager` + `uses-feature usb.host` + `device_filter.xml`
+（FTDI `0403` / CH340 `1a86` / CP210x `10ac`）+ 运行期 `requestPermission`。注意那是
+**USB 授权弹窗，不是 Android 运行时权限**，别混进 grant 台账；或 vendor
+usb-serial-for-android（Apache-2.0，与 AGPL-3.0-or-later 兼容）。
+UV-K6 的写频线是现成 OTG 靶子，但它是 QYT 协议不是 CI-V → **只能证明「fd 打开、读写、
+热插拔、授权弹窗」这一层，不能给 705 语义打勾**。台架冲突也要先解决：手机 USB 口被 adb
+占着，OTG 与 adb 不能同时要，得走无线 adb（`adb tcpip` + 同网段）或另找 adb 主机。
+
+**Root 的定位（建议：只做取证与解释，不做功能前提）**
+
+- 认可：① **验收工装**——`su -c` 读 `/data/data/org.radiosuite.app/files`、
+  `pm install -r` 装机、`uiautomator dump` 拿权威 bounds。这类只活在脚本/Bash 层，
+  **不进产品代码**。② **只读能力探测**（ABI / API level / 有无 su / SELinux 状态），
+  用途是让自检面板解释「这条功能在你这台机器上为什么降级」，而不是靠 root 解锁功能。
+- 不做：静默提权；用 root 绕 MIUI 后台限制/省电白名单/deviceidle 白名单（那是改系统
+  安全与电源设置，要动由人在系统 UI 里动）；改 SELinux enforcing；用 root `chmod`
+  `/dev/ttyUSB*` 绕开 `UsbManager`（技术可行，但「只在已 root 机子上能跑」的功能不进
+  默认路径，要做就做成 experimental）；任何「不 root 就不能用」的功能。
+- root 帮不上组播：`MulticastLock` 是 API 层的事，不是权限层的事。
+
+**待拍板（不拍就不动）**
+
+1. D 线 OTG 投不投。投的话第一步只买一个 OTG 头 + 一块 FTDI/CH340 板，只做字节管道。
+2. Root 只当诊断工装，还是也要 root 旁路。
+3. APRS 要不要吃手机自身 GPS 上报位置（决定 `ACCESS_FINE_LOCATION` 进不进台账）。
+
+**建议顺序**：B（台账 + 单播）→ A（TCP 遥控，含会话层序号）→ C（前台服务 / Gate E）→
+D（OTG，看拍板）。B 先行的理由是它零外部依赖、每步都能在手机上验收，而且能顺带把
+「为什么某条功能不可用」变成用户看得见的文字，而不是散在文档里。
+
+**交付纪律（不变）**：新分支一律从 `fix/android-touch-dialogs` 的当前 head 切；
+#15–#23 那条栈没有逐次授权就不碰；`main` 不推；文档与代码分开提，别蹭 open PR 的分支；
+每条都附回滚点。
 
 ## 6. 构建与验证（本机环境）
 
