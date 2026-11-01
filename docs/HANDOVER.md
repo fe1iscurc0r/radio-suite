@@ -228,12 +228,18 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       **真机五页逐页截图过（2026-10-31 23:5x，横屏 843×376dp）**，C1/C6 那批碰撞全部消失。
       交付前最后一改（HamLog 不可用时不出「日志」页签，手机变四页签）装包后进程存活无崩溃，
       但**那一版没截到图**：手机午夜自动锁屏，MIUI 在锁屏状态拒绝截屏（`screencap` 回 0 字节，
-      `wm dismiss-keyguard` 无效）——四页签版式的真机视觉证据待补，其余构建证据
+      `wm dismiss-keyguard` 无效）——该补记 11-01 15:24 已完成：页签栏确为频谱/调谐/制式/面板
+      四页（验收清单 C9 正文），逐页版式与交互另见 C10 那轮真机复验。其余构建证据
       （MSVC `ctest` 181/181、Android clang 交叉编译通过）齐全。
-    - **C9（HamLog 在 Android 上从未可用）**：`RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，
-      但真机 `hamlog_.available()` 恒假——`HamLogDb::defaultDbPath()` 指的文件不存在，
-      `available()` 要求「库在且 log 表可读」。旧布局里这组控件静默隐藏，分页版第一稿
-      才把它摆成一页死内容；现处置为**不可用就不建这一页**，另开条目待补建库逻辑。
+    - **C9（HamLog 在 Android 上从未可用）已修（`feat/android-local-logbook`）**：
+      `RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，但真机 `hamlog_.available()` 恒假——
+      `HamLogDb::defaultDbPath()` 指的文件不存在，`available()` 要求「库在且 log 表可读」。
+      旧布局里这组控件静默隐藏，分页版第一稿才把它摆成一页死内容；处置仍是**不可用就不建
+      这一页**，但补上了建库：`HamLogDb::createDatabase()`（log 18 列 + settings，全
+      `IF NOT EXISTS`，不动已有行）+ Android-only `ensureLocalDb()`，Android 上库路径改走
+      已验证可写的 `radio::ui::settingsDir()`，`MainWindow` 构造在建 UI 前确保库存在。
+      11-01 17:46 真机复验：库自动建出、第五个页签「日志」出现、记 QSO 写通（详见验收清单
+      C9 正文）。同页「ADIF 导出」走 `QFileDialog`，Android 上仍未验。
     - **手机对话框/面板「能滚、能关」已修（C10，`fix/android-touch-dialogs`）**：用户真机报
       「音频设置没有退出键、cancel 无效，应用中继没有关闭键，频差/模拟亚音/DTCS 选不到，
       估计无法滑动；连接关闭键失效，APRS/WSJT-X 无退出键，切 WSJT-X 页面有问题，
@@ -440,11 +446,13 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （FT8 面板「本机麦克风 · 已解 0 槽」+ 进程内 `AudioRecord` 线程吃 CPU）。
   逐项证据与判据在 `docs/android-真机验收清单.md` §K4。
 - **仍然没验的**：AAudio 真出声与首帧延迟（B3：竖屏下发射按钮在屏外，点不到）、后台存活与
-  音频焦点（Gate E）、FT8 时间基准（Gate F）、以及一切要真电台的 G-1…G-5
+  音频焦点（Gate E）、FT8 时间基准（Gate F）、日志页的「ADIF 导出」（走 `QFileDialog`，
+  Android 上的文件对话框在这台机上从没验过），以及一切要真电台的 G-1…G-5
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
   （HamLog 不可用时不出日志页签）已于 11-01 15:24 真机核对：底部只有
-  频谱/调谐/制式/面板 四页签，日志页签不存在（C9 正文）。
+  频谱/调谐/制式/面板 四页签，日志页签不存在（C9 正文）——C9 当晚修掉自建库后，
+  17:46 再验已是五页签，「日志」在手机上可用且记 QSO 写通（C9 正文）。
   手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已在 11-01 13:30 真机复验通过
   （频差/亚音下拉、音频设置 Cancel、连接/中继/APRS/WSJT-X 关闭、返回键、SSTV 滚动），
   15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框，两个新根因（下拉弹窗触摸错位、

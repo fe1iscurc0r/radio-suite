@@ -17,7 +17,8 @@ D1 的 `radio-suite.ini` 原样保住（102 字节，13:46 那份），D3 的结
 缺陷修了 C10（对话框/面板能滚能关、波段高亮）；当天 13:30 手机解锁后按用户原话逐条复验，
 C10 全部通过，并补了两个新根因的修复（下拉弹窗触摸错位、第二顶层窗口丢帧），
 15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框（同样全屏贴边、能滚、能关），
-结论都写在 C10 正文里。**其余每一条仍是
+结论都写在 C10 正文里；17:46 把 C9 的待办落地（Android 自建本地 HamLog 库），
+「日志」页签在手机上出得来、记 QSO 真写进库。**其余每一条仍是
 PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
 出包信息、jar 字节码，不代表真机行为。
 
@@ -477,7 +478,7 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   右列大按键、底部 `transport: mock` 状态行全部与重构前一致——但这只是人眼对照，
   没有像素级基线。
 
-- [ ] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），未修
+- [x] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），已修，11-01 真机复验通过
   `RADIO_SUITE_HAVE_LOGBOOK=1` 确实编进了 Android 包（`build-android/build.ninja` 可查），
   但真机上 `hamlog_.available()` 恒为 false：`HamLogDb::defaultDbPath()` 指向的库文件
   在手机上不存在，而 `available()` 的契约是「库文件存在且 log 表可读」。
@@ -488,9 +489,23 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   **11-01 15:24 真机核对**：最终包（代码止于 `e8ccabb`，之后只改文档）面板页底部确为
   频谱/调谐/制式/面板 四个页签，日志页签不存在，与该处置一致；本轮截图只点了面板页，
   其余三页在 13:30 那轮点过。
-  **待办**：给 Android 定一个真正可写的 HamLog 库路径（或首次启动建库），
-  再做手机上的记 QSO / ADIF。这条与 D3（QSQLITE 驱动）不同——驱动已经打进包了，
-  缺的是库文件本身。
+  **待办**（提于 15:24，同日 17:46 已落地并复验，见下）：给 Android 定一个真正可写的 HamLog 库路径
+  （或首次启动建库），再做手机上的记 QSO / ADIF。这条与 D3（QSQLITE 驱动）不同——驱动已经
+  打进包了，缺的是库文件本身。
+  **修法（`373d2a2`）**：`HamLogDb` 新增 `createDatabase()`（log 18 列 + settings 两张表，
+  全部 `IF NOT EXISTS`——已有表和行一律不动，对 HamLog 自己的库重复调用也安全）和
+  Android-only 的 `ensureLocalDb()`；`defaultDbPath()` 在 Android 上改走
+  `radio::ui::settingsDir()`（本机已验证可写的 `QStandardPaths::AppDataLocation`），
+  落点 `/data/data/org.radiosuite.app/files/HamLog/Log.db`；`MainWindow` 构造在 `buildUi()`
+  **之前**调用建库，失败只 `qWarning`，不改「库拿不到就不出这一页」的处置。桌面路径不变。
+  **11-01 17:46 真机复验**（Redmi K40，签名包与桌面同码）：冷启动后 `files/HamLog/Log.db`
+  自动建出，从盘上读回的 DDL 确为 HamLog 的 18 列 `log` + `settings`；底部页签多出第五个
+  「日志」，点进去页面正常渲染；在「对方呼号」输入 `BG1TEST` 点「记 QSO」，顶栏绿色状态
+  `已写入 HamLog: BG1TEST @ 14.2700 MHz USB`，列表出现 `BG1TEST  14.2700 MHz USB  2026-11-01
+  0946`，输入框回到占位文案，pull 回的库文件里 `BG1TEST` 命中 1 次。
+  **仍未验**：同一页的「ADIF 导出」走 `QFileDialog::getSaveFileName`，Android 上的文件对话框
+  在这台机上从没验过，能不能落到可分享的位置未知——记 QSO 已经闭环，导出留作下一条。
+  **注意**：手机上这份库现在留了一条测试记录 `BG1TEST`（id 1），与真机通联无关。
 
 - [x] **C10 对话框与独立面板「能滚、能关」** —— 用户真机报缺陷，已修，11-01 真机复验通过
   用户原话：「波段点击不显示亮度（在哪）音频设置没有退出键 cancel 无效，应用中继也
