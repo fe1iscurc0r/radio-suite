@@ -190,6 +190,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
   add_executable(radio_ui_tests
     test_dialogs.cpp
     test_audio_ui.cpp
+    test_touch_dialog.cpp
     test_launch_config.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"

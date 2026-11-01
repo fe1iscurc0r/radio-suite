@@ -21,8 +21,16 @@
 
 namespace radio::app::touch {
 
-#ifdef Q_OS_ANDROID
 namespace {
+
+// 桌面默认保持原样；离屏回归/桌面调试用该环境变量显式打开，手机上是恒开
+bool touchEnabled() {
+#ifdef Q_OS_ANDROID
+  return true;
+#else
+  return qEnvironmentVariableIsSet("RADIO_SUITE_TOUCH_FIT");
+#endif
+}
 
 // 手机上没有鼠标，按钮/输入控件触不到 44dp 就是误触/点不中
 void bumpHeight(QWidget* root, int min_h) {
@@ -40,10 +48,9 @@ void bumpHeight(QWidget* root, int min_h) {
 void restyleButtons(QWidget* root) { bumpHeight(root, 44); }
 
 }  // namespace
-#endif
 
 void fitDialog(QDialog* dlg) {
-#ifdef Q_OS_ANDROID
+  if (!touchEnabled()) return;
   if (!dlg || dlg->property("rs_touch_fitted").toBool()) return;
   QLayout* root = dlg->layout();
   if (!root) return;
@@ -63,8 +70,10 @@ void fitDialog(QDialog* dlg) {
       page->addWidget(w);
       delete it;
     } else if (QLayout* l = it->layout()) {
+      // 子布局就是 takeAt 返回的 item 本身，addLayout 已收养它并把里面的
+      // 控件改父到 content；再 delete 会让 page 持悬空指针（真机上是布局
+      // 错位，回归测试直接 0xC0000409）
       page->addLayout(l);
-      delete it;
     } else {
       page->addItem(it);  // 弹簧：item 本身就是所有者，直接收养
     }
@@ -111,9 +120,6 @@ void fitDialog(QDialog* dlg) {
   // 高度吃满可用区：手机上滚动内容比压缩按钮可靠
   dlg->resize(qMin(qMax(360, dlg->minimumSizeHint().width()), avail.width()),
               avail.height());
-#else
-  (void)dlg;
-#endif
 }
 
 QWidget* addCloseBar(QWidget* panel, const QString& title) {
