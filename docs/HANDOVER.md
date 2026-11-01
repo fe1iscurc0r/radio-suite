@@ -482,10 +482,14 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
   → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
   → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
-  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head）。
+  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head）
+  → #24 `feat/android-local-logbook`（Android 自建本地 HamLog 库、补出「日志」页签，
+  base #23 的 head；head `de34e74`，三平台 CI 全绿，mergeable clean）。
   ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19。回滚点：
-  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）。
+  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19、`d72b98a`/`de34e74`（C9 落地与
+  ADIF 真机补记）挂在 #24。回滚点：
+  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）、
+  `git revert de34e74 d72b98a 373d2a2`（#24）。
   **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
 - **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
