@@ -116,6 +116,10 @@ void fitDialog(QDialog* dlg) {
   const QRect avail = screen->availableGeometry();
   if (dlg->minimumWidth() > avail.width())
     dlg->setMinimumWidth(qMax(0, avail.width() - 8));
+  // 有的对话框自带 minimumHeight（SSTV 是 480dp），比手机可用高度还高；
+  // 不压下去 resize() 会被最小值顶住，底部常驻「关闭」就落到屏外了
+  if (dlg->minimumHeight() > avail.height())
+    dlg->setMinimumHeight(qMax(0, avail.height() - 8));
   dlg->setMaximumSize(avail.width(), avail.height());
   // 高度吃满可用区：手机上滚动内容比压缩按钮可靠
   dlg->resize(qMin(qMax(360, dlg->minimumSizeHint().width()), avail.width()),

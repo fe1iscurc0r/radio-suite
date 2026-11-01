@@ -10,8 +10,10 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QPushButton>
+#include <QScreen>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -77,7 +79,47 @@ TEST_CASE("fitDialog reparents form rows into scroll content", "[touch][ui]") {
   CHECK(group_y < buttons_y);
 
   // 底部常驻「关闭」，且滚动区在根布局里吃得下剩余高度
+  dlg.show();
+  QApplication::processEvents();
   auto* close = buttonWithText(&dlg, "关闭");
   REQUIRE(close != nullptr);
   CHECK(close->minimumHeight() >= 44);
+
+  // 常驻按钮必须真被摆到对话框里（手机上一度是 [0,0][0,0]：
+  // 控件存在但布局没给它几何，底部看起来就没有关闭键）
+  const QPoint close_pos = close->mapTo(&dlg, QPoint(0, 0));
+  CHECK(close->isVisible());
+  CHECK(close->width() > 0);
+  CHECK(close_pos.y() >= 0);
+  CHECK(close_pos.y() + close->height() <= dlg.height());
+  CHECK(close_pos.x() + close->width() <= dlg.width());
+}
+
+TEST_CASE("fitDialog clamps a minimum height taller than the screen",
+          "[touch][ui]") {
+  app();
+  qputenv("RADIO_SUITE_TOUCH_FIT", "1");
+
+  QDialog dlg;
+  // SSTV 对话框就是这种：setMinimumSize(440, 480)，手机可用高度只有三百多 dp；
+  // 最小值压不下去时 resize() 无效，底部常驻「关闭」被顶到屏外
+  dlg.setMinimumSize(440, 5000);
+  auto* root = new QVBoxLayout(&dlg);
+  root->addWidget(new QLabel("tall content", &dlg));
+
+  radio::app::touch::fitDialog(&dlg);
+  dlg.show();
+  QApplication::processEvents();
+
+  const QScreen* screen =
+      dlg.screen() ? dlg.screen() : QGuiApplication::primaryScreen();
+  const QRect avail = screen->availableGeometry();
+  CHECK(dlg.height() <= avail.height());
+
+  auto* close = buttonWithText(&dlg, "关闭");
+  REQUIRE(close != nullptr);
+  const QPoint pos = close->mapTo(&dlg, QPoint(0, 0));
+  CHECK(close->isVisible());
+  CHECK(pos.y() >= 0);
+  CHECK(pos.y() + close->height() <= dlg.height());
 }
