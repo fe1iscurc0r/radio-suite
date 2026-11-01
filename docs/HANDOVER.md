@@ -443,7 +443,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   音频焦点（Gate E）、FT8 时间基准（Gate F）、以及一切要真电台的 G-1…G-5
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
-  （HamLog 不可用时不出日志页签）的真机截图还欠着，见 §5 第 11 条。
+  （HamLog 不可用时不出日志页签）已于 11-01 15:24 真机核对：底部只有
+  频谱/调谐/制式/面板 四页签，日志页签不存在（C9 正文）。
   手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已在 11-01 13:30 真机复验通过
   （频差/亚音下拉、音频设置 Cancel、连接/中继/APRS/WSJT-X 关闭、返回键、SSTV 滚动），
   15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框，两个新根因（下拉弹窗触摸错位、
