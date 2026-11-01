@@ -489,9 +489,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
   `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
   → #6/#7 **均未合并**，合并需逐次授权。
-- **安卓这条线的 PR 栈（2026-11-01 实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
-  **已合并**（远端 main = `5a08fa4`）；以下这条链**没有一条进过 main**，且只能从底往上合，
-  其中 #24 已于 11-01 合并进它的 base 分支（见下面那行）：
+- **安卓这条线的 PR 栈（2026-11-01 深夜实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
+  **已合并**（远端 main = `5a08fa4`）；以下这条链**没有一条进过 main**，且只能从底往上合。
   #15 `fix/wasapi-capture-measurement`（35570c7）、
   #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
   （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
@@ -500,20 +499,31 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
   → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
   → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head；
-  **head 已被 #24 的合并推进到 `648658b`**，仍 open）
-  → #24 `feat/android-local-logbook`（Android 自建本地 HamLog 库、补出「日志」页签，
-  base #23 的 head）——**已于 11-01 合并**，merge commit `648658b`，按仓库惯例用
-  merge commit（与 #12/#13/#14 同法）。⚠️ 注意这条链的「合并」只把改动交给上一层分支：
-  **#24 进的是 `fix/android-touch-dialogs`，不是 `main`**，`main` 仍是 `5a08fa4`，
-  要落到 main 还得从 #15 往上逐条合。
-  ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19；`d72b98a`/`de34e74`/`bea2db5`/
-  `895ee1c`（C9 落地、ADIF 真机补记、PR 栈与本节）写在 #24 的分支上，#24 合并后它们进的是
-  `fix/android-touch-dialogs`，所以现在算 #23 的 diff——本节这次「#24 已合并」的补记同样如此。
-  回滚点：
-  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）、
-  `git revert -m 1 648658b`（#24 已合并，正向回滚；把分支退回 `6b1ac66` 属改写已共享历史，
-  要 force-push，不做）。
+  **head 现在就是 `711238d`，24 commits**，仍 open）
+  - **已合进 `fix/android-touch-dialogs` 的四条**（都按仓库惯例用 merge commit，
+    与 #12/#13/#14 同法）：#24 `feat/android-local-logbook`（Android 自建 HamLog 库、
+    补出「日志」页）→ `648658b`；#25 `docs/handover-pr24-merged`（纯文档状态补记）→
+    `2e3a7ff`；#27 `feat/android-multicast-lock`（Wi-Fi 组播锁 JNI + manifest 声明
+    `CHANGE_WIFI_MULTICAST_STATE`）→ `338d8c0`；#28 `feat/android-self-check`
+    （面板页「自检 / 台账」，把验收清单 §2b 搬进 app，含「上次启动失败原因」）→ `711238d`。
+  - ⚠️ 这条链的「合并」只把改动交给上一层分支：**上面四条进的都是
+    `fix/android-touch-dialogs`，不是 `main`**，`main` 仍是 `5a08fa4`，
+    要落到 main 还得从 #15 往上逐条合。
+  - #28 原本 base 在 #27 的分支上；#27 一合，那个 base 就成了已消化的中间分支，
+    所以把 #28 的 base 改到 `fix/android-touch-dialogs` 再合（否则台账会停在死路上）。
+    改 base 后核对过 diff 恰好是台账那三笔：`multicast_lock.*` 与 `AndroidManifest.xml`
+    都不重复出现，`wsjtx_client.cpp` 只剩 `lastError` 那部分改动。
+  - **仍 open 的文档 PR：#26**（`docs/android-roadmap`，§5.1 手机端路线）。它和本节
+    改的是同一个文件的**不同区段**，所以能各自合，不会互相覆盖。
+  - ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
+    `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19；`d72b98a`/`de34e74`/`bea2db5`/
+    `895ee1c`/`05296c8`/`7414172`/`18b2fec` 这批（C9 落地、ADIF 补记、PR 栈、台账与
+    真机补记）现在都算 #23 的 diff。
+  回滚点（**倒着撤**，merge commit 要 `-m 1`）：
+  `git revert -m 1 711238d`（#28）→ `git revert -m 1 338d8c0`（#27）→
+  `git revert -m 1 2e3a7ff`（#25）→ `git revert -m 1 648658b`（#24）；
+  另有 `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、
+  `git revert af7e8d1`（#17）。把分支退回旧 sha 属改写已共享历史（要 force-push），不做。
   **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
 - **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
