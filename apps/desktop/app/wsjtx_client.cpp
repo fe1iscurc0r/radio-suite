@@ -20,16 +20,22 @@ WsjtxClient::~WsjtxClient() { stop(); }
 
 bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
   stop();
+  last_error_.clear();
   group_ = group;
   port_ = port;
+  // 失败原因同时留一份在成员里：台账页要在「没在监听」的时候说清为什么没起来，
+  // 光靠面板那行红字，用户得正好看见才算传到话。
+  const auto fail = [this, error](const QString& message) {
+    last_error_ = message;
+    if (error) *error = message;
+  };
   socket_ = new QUdpSocket(this);
   if (!socket_->bind(QHostAddress::AnyIPv4, port_,
                      QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
-    if (error)
-      *error = QString("UDP 绑定失败（%1:%2）：%3")
-                   .arg(group_)
-                   .arg(port_)
-                   .arg(socket_->errorString());
+    fail(QString("UDP 绑定失败（%1:%2）：%3")
+             .arg(group_)
+             .arg(port_)
+             .arg(socket_->errorString()));
     socket_->deleteLater();
     socket_ = nullptr;
     return false;
@@ -37,7 +43,7 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
   port_ = socket_->localPort();
   const QHostAddress address(group_);
   if (address.isNull()) {
-    if (error) *error = QString("无效的组播/单播地址：%1").arg(group_);
+    fail(QString("无效的组播/单播地址：%1").arg(group_));
     stop();
     return false;
   }
@@ -45,20 +51,18 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
     // Android 上必须先握住 Wi-Fi 组播锁，否则 join 会「成功」而一个包都收不到。
     QString lock_error;
     if (!multicast_lock_.acquire(&lock_error)) {
-      if (error)
-        *error = QString("拿 Wi-Fi 组播锁失败：%1（可在设置里改用单播地址，"
-                         "如本机 127.0.0.1）")
-                     .arg(lock_error);
+      fail(QString("拿 Wi-Fi 组播锁失败：%1（可在设置里改用单播地址，"
+                   "如本机 127.0.0.1）")
+               .arg(lock_error));
       stop();
       return false;
     }
     if (!socket_->joinMulticastGroup(address)) {
       // 多网卡/VPN 机器上系统常返回 "Unknown error"，补一句可执行建议。
-      if (error)
-        *error = QString("加入组播失败（%1）：%2（可在设置里改用单播地址，"
-                         "如本机 127.0.0.1）")
-                     .arg(group_)
-                     .arg(socket_->errorString());
+      fail(QString("加入组播失败（%1）：%2（可在设置里改用单播地址，"
+                   "如本机 127.0.0.1）")
+               .arg(group_)
+               .arg(socket_->errorString()));
       stop();
       return false;
     }

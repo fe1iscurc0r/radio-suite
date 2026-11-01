@@ -37,6 +37,22 @@ TEST_CASE("wsjtx client: unicast listening never takes the lock",
   CHECK_FALSE(client.multicastLockHeld());
 }
 
+TEST_CASE("wsjtx client: a failed start keeps the reason until the next try",
+          "[wsjtx][ui][lock]") {
+  qtTestApp();
+  radio::app::WsjtxClient client;
+  QString error;
+  // 地址非法：bind 会成功，卡在 QHostAddress 解析这一步，失败原因是确定的
+  CHECK_FALSE(client.start("not-an-address", 0, &error));
+  CHECK_FALSE(client.isListening());
+  CHECK(client.lastError() == error);
+  CHECK_FALSE(client.lastError().isEmpty());
+  // 下一次成功必须把旧原因清掉，否则台账会一直挂着上次的错
+  REQUIRE(client.start("127.0.0.1", 0, &error));
+  CHECK(client.lastError().isEmpty());
+  client.stop();
+}
+
 TEST_CASE("wsjtx client: restart does not leak the lock", "[wsjtx][ui][lock]") {
   qtTestApp();
   radio::app::WsjtxClient client;

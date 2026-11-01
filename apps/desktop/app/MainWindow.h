@@ -19,6 +19,7 @@ class QStackedWidget;
 class QWidget;
 
 #include "app/WaterfallWidget.h"
+#include "app/device_report.h"
 #include "app/launch_config.h"
 #include "app/session.h"
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
@@ -73,6 +74,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
   void onMemSave();       // 本地记忆：当前频/模存入所选槽
   void onMemRecall();     // 本地记忆：取出槽内频/模
+  radio::app::ReportInput selfCheckInput();  // 台账：只收集事实，判定在 device_report
   void onAudioSettings();  // 音频设备选择 + 50003 链路质量读数
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   void onLogQso();        // 记一条 QSO（自动填频率/模式/UTC，写 HamLog 库）
