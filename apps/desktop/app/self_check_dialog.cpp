@@ -68,11 +68,7 @@ SelfCheckDialog::SelfCheckDialog(std::function<ReportInput()> provider,
 
   grid_ = new QGridLayout();
   grid_->setHorizontalSpacing(12);
-  grid_->addWidget(cell("分组", true), 0, 0);
-  grid_->addWidget(cell("项", true), 0, 1);
-  grid_->addWidget(cell("状态", true), 0, 2);
-  grid_->addWidget(cell("说明", true), 0, 3);
-  grid_->setColumnStretch(3, 1);
+  grid_->setColumnStretch(3, 1);  // 表头由 render() 统一建，这里不留第二份
   root->addLayout(grid_, 1);
 
   refresh();

@@ -731,7 +731,7 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   });
   return {aprs_big_btn_, wsjtx_big_btn_, ft8_big_btn_, sstv_big_btn_,
           dtmf_big_btn_, voice_big_btn_, cw_big_btn_, set_big_btn_,
-          memch_big_btn_};
+          memch_big_btn_, check_big_btn_};
 }
 
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
@@ -919,7 +919,9 @@ void MainWindow::buildAndroidUi() {
     for (size_t i = 0; i < big.size(); ++i)
       grid->addWidget(big[i], static_cast<int>(i / 3),
                       static_cast<int>(i % 3));
-    grid->setRowStretch(3, 1);
+    // 拉伸行必须落在最后一个按钮的下一行：10 个键占满 0..3 行，
+    // 再钉在 3 行会把最后一个键拉成整屏高。
+    grid->setRowStretch((static_cast<int>(big.size()) + 2) / 3, 1);
     pages_->addWidget(page);
   }
 
