@@ -18,7 +18,8 @@ D1 的 `radio-suite.ini` 原样保住（102 字节，13:46 那份），D3 的结
 C10 全部通过，并补了两个新根因的修复（下拉弹窗触摸错位、第二顶层窗口丢帧），
 15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框（同样全屏贴边、能滚、能关），
 结论都写在 C10 正文里；17:46 把 C9 的待办落地（Android 自建本地 HamLog 库），
-「日志」页签在手机上出得来、记 QSO 真写进库。**其余每一条仍是
+「日志」页签在手机上出得来、记 QSO 真写进库，17:53 顺带验了同页的 ADIF 导出
+（走系统 SAF 选择器，`content://` 直写成功）。**其余每一条仍是
 PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
 出包信息、jar 字节码，不代表真机行为。
 
@@ -503,9 +504,17 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   「日志」，点进去页面正常渲染；在「对方呼号」输入 `BG1TEST` 点「记 QSO」，顶栏绿色状态
   `已写入 HamLog: BG1TEST @ 14.2700 MHz USB`，列表出现 `BG1TEST  14.2700 MHz USB  2026-11-01
   0946`，输入框回到占位文案，pull 回的库文件里 `BG1TEST` 命中 1 次。
-  **仍未验**：同一页的「ADIF 导出」走 `QFileDialog::getSaveFileName`，Android 上的文件对话框
-  在这台机上从没验过，能不能落到可分享的位置未知——记 QSO 已经闭环，导出留作下一条。
-  **注意**：手机上这份库现在留了一条测试记录 `BG1TEST`（id 1），与真机通联无关。
+  **17:53 同页「ADIF 导出」也验了**：`QFileDialog::getSaveFileName` 在 Android 上不是 Qt 自绘
+  对话框——Qt 6.7.3 把它交给系统 SAF 选择器（`dumpsys window` 里 `mCurrentFocus` 直接变成
+  `com.google.android.documentsui/com.android.documentsui.picker.PickActivity`），文件名框预填
+  `radio-suite.adi`、「保存」可点；选完 `QFile` 直接往返回的 `content://` URI 写，
+  `/sdcard/Download/radio-suite.adi` 落出 162 字节，逐字节是
+  `<ADIF_VER:5>3.1.4<PROGRAMID:11>radio-suite<EOH>` + `<CALL:7>BG1TEST<FREQ:9>14.270000<QSO_DATE:8>20261101<TIME_ON:6>094600<MODE:3>USB<RST_SENT:2>59<RST_RCVD:2>59<EOR>`，
+  顶栏回显「已导出 1 条 QSO → …」。**遗留小瑕疵（未修）**：那句回显把 URI 原样打出来，手机上
+  看到的是一串 `content://com.android.provide…` 截断文本，用户看不出文件落在哪；改成人话
+  （如「已导出 N 条 QSO → 下载/radio-suite.adi」）属产品口径，没擅自改。
+  **注意**：手机上这份库现在留了一条测试记录 `BG1TEST`（id 1），`/sdcard/Download/radio-suite.adi`
+  是本轮导出留下的 162 字节样本，两者都与真机通联无关，要清就直接删这两处。
 
 - [x] **C10 对话框与独立面板「能滚、能关」** —— 用户真机报缺陷，已修，11-01 真机复验通过
   用户原话：「波段点击不显示亮度（在哪）音频设置没有退出键 cancel 无效，应用中继也

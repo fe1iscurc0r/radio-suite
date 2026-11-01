@@ -238,8 +238,10 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       这一页**，但补上了建库：`HamLogDb::createDatabase()`（log 18 列 + settings，全
       `IF NOT EXISTS`，不动已有行）+ Android-only `ensureLocalDb()`，Android 上库路径改走
       已验证可写的 `radio::ui::settingsDir()`，`MainWindow` 构造在建 UI 前确保库存在。
-      11-01 17:46 真机复验：库自动建出、第五个页签「日志」出现、记 QSO 写通（详见验收清单
-      C9 正文）。同页「ADIF 导出」走 `QFileDialog`，Android 上仍未验。
+      11-01 17:46 真机复验：库自动建出、第五个页签「日志」出现、记 QSO 写通；17:53 同页
+      「ADIF 导出」也验通（Qt 把 `QFileDialog` 交给系统 SAF 选择器，`QFile` 往返回的
+      `content://` URI 直写出合法 ADIF 3.1.4）。导出回显打的是裸 URI，手机上看不出文件落在
+      哪，这一条算未修的小瑕疵（改文案属产品口径）。详见验收清单 C9 正文。
     - **手机对话框/面板「能滚、能关」已修（C10，`fix/android-touch-dialogs`）**：用户真机报
       「音频设置没有退出键、cancel 无效，应用中继没有关闭键，频差/模拟亚音/DTCS 选不到，
       估计无法滑动；连接关闭键失效，APRS/WSJT-X 无退出键，切 WSJT-X 页面有问题，
@@ -446,8 +448,7 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （FT8 面板「本机麦克风 · 已解 0 槽」+ 进程内 `AudioRecord` 线程吃 CPU）。
   逐项证据与判据在 `docs/android-真机验收清单.md` §K4。
 - **仍然没验的**：AAudio 真出声与首帧延迟（B3：竖屏下发射按钮在屏外，点不到）、后台存活与
-  音频焦点（Gate E）、FT8 时间基准（Gate F）、日志页的「ADIF 导出」（走 `QFileDialog`，
-  Android 上的文件对话框在这台机上从没验过），以及一切要真电台的 G-1…G-5
+  音频焦点（Gate E）、FT8 时间基准（Gate F），以及一切要真电台的 G-1…G-5
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
   （HamLog 不可用时不出日志页签）已于 11-01 15:24 真机核对：底部只有
