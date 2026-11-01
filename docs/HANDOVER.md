@@ -143,7 +143,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、G-0 的配置半条、K1/K3）；
     D3 只到「写侧」（顺带把 APK 没打 SQLite 驱动这个打包缺陷修了，见下面那条）；**判「链路通不通」的 G-1…G-5 仍是空的**——手上没有可连的电台（只有全盛 UVK6，
     不是 IC-705、没有 50003 音频口），所以「手机上保存 → 重启 → 真连上电台」只到
-    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D2/D4 本轮没覆盖。
+    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D4 本轮没覆盖
+    （D2 当时也没覆盖，11-01 随 C9 一起做掉了）。
     清单里写「代码事实」的部分只是 PC 静态核对（源码行号、aapt 出包信息、jar 字节码），
     不构成真机结论——打勾要换成设备上取到的 ini 字节 / logcat / 截屏。
     - **K1（APK 只能跑 mock）代码侧已修**（`fix/android-link-prefs`）：新增
@@ -292,7 +293,21 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       打开、底部常驻「关闭」一点即回面板页；SET 内容一屏放得下，MEM/CW/DTMF 滑到底
       分别能见到名称与选组/选信道、回读提示与应用设置/发送、生成 .wav，左侧标签不被切。
       另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
-      这类 Qt 自带文件框不在范围内。
+      这类 Qt 自带文件框不在范围内——11-01 17:53 实测：Android 上 `QFileDialog` 根本
+      **不是 Qt 窗口**，Qt 6.7.3 把它交给系统 SAF 选择器（`documentsui/PickActivity`），
+      所以不需要 `fitDialog`，也不受本仓触摸修复的影响。
+    - **手机端权限（OTG / 存储 / 组播）已核清，缺口不在弹窗**（11-01 18:40 静态核对 +
+      一次真机 `dumpsys`，矩阵与判据在验收清单 §2b）：麦克风已声明并在启动时申请、真机
+      `granted=true`；`WRITE_EXTERNAL_STORAGE` 是 Qt6Core 依赖清单注入的历史遗留，
+      targetSdk 34 上系统根本不给授（`granted=false`），而导出走 SAF 已经能用，
+      **不该再去要「存储权限」**（只剩「所有文件访问」这种安全设置，不申请）；
+      **USB OTG 串口缺的是后端不是权限**——安卓 Qt 不带 QtSerialPort
+      （`Qt6SerialPort_DIR-NOTFOUND`），`RADIO_SUITE_HAVE_SERIALPORT` 在安卓构建里是关的，
+      APRS 面板走的是「本构建未启用串口…请用 KISS TCP」那句降级，要做 OTG 得自己接
+      `UsbManager`（JNI + `usb.host` feature + `requestPermission`）或 vendor
+      usb-serial-for-android，且台架上没有可插设备、手机 USB 口被 adb 占着，**今天证不了**；
+      WSJT-X 组播缺 `CHANGE_WIFI_MULTICAST_STATE` + `MulticastLock`（也要 JNI），
+      只声明权限不拿锁等于没做——**能先做的替代是单播数据通路，不需要电台**。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播

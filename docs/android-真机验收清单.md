@@ -333,6 +333,60 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 ---
 
+## 2b. 权限矩阵（麦克风 / 存储 / USB OTG / 组播）—— 2026-11-01 核对
+
+用户提的「手机端还要询问权限：OTG、存储等」，逐条查实。**这一节是静态核对 + 一次真机
+`dumpsys`（18:40），OTG 那条今天证不了**，原因写在下面，不假装做过。
+
+取证据的命令（一次跑完，别手搓）：
+```bash
+AAPT=/d/Android/sdk/build-tools/34.0.0/aapt2.exe
+"$AAPT" dump permissions "<APK>"   # 包里真正声明了什么
+"$AAPT" dump badging   "<APK>" | grep -iE "feature|targetSdk"
+"$ADB" shell dumpsys package org.radiosuite.app | sed -n '/runtime permissions/,/installed/p'
+ls /d/Qt/6.7.3/android_arm64_v8a/include/QtSerialPort   # 安卓 Qt 有没有串口模块
+grep Qt6SerialPort_DIR build-android/CMakeCache.txt
+```
+
+| 权限 / 特性 | 谁声明的 | 真机状态（11-01 18:40） | 结论 |
+| --- | --- | --- | --- |
+| `RECORD_AUDIO` | 我们（`packaging/android/AndroidManifest.xml:11`） | `granted=true` | 启动时按 B1 申请，行为对 |
+| `INTERNET` / `ACCESS_NETWORK_STATE` | androiddeployqt 注入 | 安装期权限 | 无需弹窗 |
+| `WRITE_EXTERNAL_STORAGE`（隐含 `READ_`） | **Qt6Core 的 `lib/Qt6Core_arm64-v8a-android-dependencies.xml` 注入，不是我们写的** | 两条都 `granted=false`（`RESTRICTION_INSTALLER_EXEMPT`） | targetSdk 34 上这是**死权限**，见下 |
+| `CHANGE_WIFI_MULTICAST_STATE` | 未声明 | — | WSJT-X 组播缺它，见下 |
+| `android.hardware.usb.host` / USB 权限 | 未声明（包里只有 microphone[not-required] + 两条 implied） | — | 缺口不在弹窗，在后端 |
+
+**存储：不该问，也问不出东西。** Android 13 / targetSdk 34 已经没有「存储」这个运行时权限，
+`WRITE_EXTERNAL_STORAGE` 是 Qt Core 依赖清单带进来的历史遗留，系统直接不给授（真机
+`granted=false`），而应用一点没受影响——写路径本来就不靠它：私有目录一直在写
+（`radio-suite.ini`、`aprs.db`、11-01 新建的 `HamLog/Log.db`），对外导出走 SAF
+（17:53 ADIF 导出实测落 `/sdcard/Download/radio-suite.adi`，全程没弹任何权限框）。
+再往上只剩 `MANAGE_EXTERNAL_STORAGE`（所有文件访问），那是系统安全设置、MIUI 还要单独放行——
+**不申请**，一个电台面板不该要整机的文件系统。
+
+**USB OTG：真正缺的是后端，不是弹窗。** 安卓版 Qt 6.7.3 **不带 QtSerialPort**
+（`include/QtSerialPort` 不存在、`Qt6SerialPort_DIR-NOTFOUND`），所以
+`RADIO_SUITE_HAVE_SERIALPORT` 在安卓构建里是关的，APRS 面板的串口入口走的是
+`apps/desktop/app/aprs_panel.cpp:847` 那句降级「本构建未启用串口（缺少 Qt6::SerialPort），
+请用 KISS TCP」。要做 OTG 串口得自己接 `UsbManager`：JNI + 清单加
+`<uses-feature android:name="android.hardware.usb.host">` + `USB_DEVICE_ATTACHED` 的
+`device_filter.xml` + `UsbManager.requestPermission()`（USB 授权不是运行时权限组，只能这么要），
+或 vendor `usb-serial-for-android`（Apache-2.0）。**今天证不了**：手机唯一的 USB 口被 adb
+占着，台架上也没有可插的串口设备/电台；只加清单声明、不加后端是自欺，所以整条按工单排。
+
+**组播：只声明权限不拿锁等于没做。** WSJT-X 面板默认监听 `224.0.0.1:2237`
+（`apps/desktop/app/wsjtx_client.cpp:44` `joinMulticastGroup`），Android 上不持
+`WifiManager.MulticastLock` 时组播帧一般收不到，而拿锁要 JNI。单播不受影响：
+把地址指成手机可达的单播地址就能先证数据通路——**这条是能做的，且不需要电台**。
+
+判据（下次真机补，别照抄本节结论）：
+- 新包 `aapt2 dump permissions` 的期望集合仍是上面那五项，多出来的一项要能说出谁注入的；
+- 撤销 `RECORD_AUDIO` 后 FT8 选「本机麦克风」要如实失败（B1 的撤销分支至今没走过）；
+- 若做了 OTG：插上设备弹 `UsbManager` 授权框，点拒绝后面板如实报错、不崩；
+- 若做了组播锁：同一网段 PC 发 Decode 包 → 手机面板出解码行。
+
+---
+
 ## 3. Gate C — 手机分辨率上的 UI 与触控
 
 - [ ] **C1 窗口尺寸** —— **真机不通过**（2026-10-31 竖屏实测，见下面「实测」）
@@ -657,12 +711,14 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   所以 WSJT-X 面板照旧按默认组播 224.0.0.1 去 join 并报「加入组播失败」。
   要改监听地址请走面板里的「设置」，别用 `reg add`。
 
-- [ ] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级**
-  代码事实：[apps/desktop/logbook/logbook.cpp:21-25](../apps/desktop/logbook/logbook.cpp#L21-L25) 读 `APPDATA`，
-  为空直接 `return {}`；Android 没有 `APPDATA` ⇒ 路径恒空。
-  判定：HamLog 相关按钮**不崩**、给出「库不存在（先运行一次 HamLog）」一类的真实提示、
-  且不出现「写了 QSO 但其实没落盘」的假成功。
-  这条判的是「诚实」，不是「能用」；要能用得换路径策略，属后续工单。
+- [x] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级** —— 降级半条已过，
+  「换路径策略」那半条 11-01 由 C9 做掉了（`373d2a2`：Android 自建本地库），故这一页现在
+  是真能用的第五个页签，判据随之改写为：**建库成功**时记 QSO 落盘（17:46 真机已过，见 C9）；
+  **建库失败**时仍然整页不出、不摆死页面（`MainWindow` 构造里失败只 `qWarning`，
+  `buildUi()` 照旧按 `hamlog_.available()` 决定这一页）。
+  原代码事实（`logbook.cpp` 读 `APPDATA`，Android 上恒空）**已改**：`defaultDbPath()`
+  在 `Q_OS_ANDROID` 下走 `radio::ui::settingsDir()`。
+  判定：HamLog 相关按钮**不崩**、给出真实提示、不出现「写了 QSO 但其实没落盘」的假成功。
 
 - [x] **D3 APRS 库落在哪**（写侧已验；「收下站点 → 重启 → 轨迹仍在」的读侧仍空，见下）
   代码事实：路径解析顺序 `RADIO_SUITE_APRS_DB` → `APPDATA` → `QStandardPaths::AppDataLocation`
