@@ -115,7 +115,9 @@ if(BUILD_GUI)
   find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
   add_executable(radio_wsjtx_ui_tests
     test_wsjtx_ui.cpp
+    test_multicast_lock.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_client.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/multicast_lock.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp")
   target_link_libraries(radio_wsjtx_ui_tests PRIVATE

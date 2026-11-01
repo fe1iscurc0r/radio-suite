@@ -34,6 +34,7 @@ set(APP_SRC
   aprs_messages_dialog.cpp
   aprs_rf.cpp
   wsjtx_client.cpp
+  multicast_lock.cpp
   wsjtx_panel.cpp
   ft8_panel.cpp)
 

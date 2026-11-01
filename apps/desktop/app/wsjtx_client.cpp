@@ -41,15 +41,27 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
     stop();
     return false;
   }
-  if (address.isMulticast() && !socket_->joinMulticastGroup(address)) {
-    // 多网卡/VPN 机器上系统常返回 "Unknown error"，补一句可执行建议。
-    if (error)
-      *error = QString("加入组播失败（%1）：%2（可在设置里改用单播地址，"
-                       "如本机 127.0.0.1）")
-                   .arg(group_)
-                   .arg(socket_->errorString());
-    stop();
-    return false;
+  if (address.isMulticast()) {
+    // Android 上必须先握住 Wi-Fi 组播锁，否则 join 会「成功」而一个包都收不到。
+    QString lock_error;
+    if (!multicast_lock_.acquire(&lock_error)) {
+      if (error)
+        *error = QString("拿 Wi-Fi 组播锁失败：%1（可在设置里改用单播地址，"
+                         "如本机 127.0.0.1）")
+                     .arg(lock_error);
+      stop();
+      return false;
+    }
+    if (!socket_->joinMulticastGroup(address)) {
+      // 多网卡/VPN 机器上系统常返回 "Unknown error"，补一句可执行建议。
+      if (error)
+        *error = QString("加入组播失败（%1）：%2（可在设置里改用单播地址，"
+                         "如本机 127.0.0.1）")
+                     .arg(group_)
+                     .arg(socket_->errorString());
+      stop();
+      return false;
+    }
   }
   connect(socket_, &QUdpSocket::readyRead, this, &WsjtxClient::onReadyRead);
   emit listeningChanged(true);
@@ -57,13 +69,17 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
 }
 
 void WsjtxClient::stop() {
-  if (!socket_) return;
+  if (!socket_) {
+    multicast_lock_.release();  // 半路失败时可能已经拿到锁却没建起监听
+    return;
+  }
   socket_->disconnect(this);
   const QHostAddress address(group_);
   if (address.isMulticast()) socket_->leaveMulticastGroup(address);
   socket_->close();
   socket_->deleteLater();
   socket_ = nullptr;
+  multicast_lock_.release();
   emit listeningChanged(false);
 }
 

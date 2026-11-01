@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 
+#include "app/multicast_lock.h"
 #include "wsjtx/wsjtx.h"
 
 class QUdpSocket;
@@ -34,6 +35,9 @@ class WsjtxClient : public QObject {
 
   QString clientId() const { return client_id_; }
   void setClientId(const QString& id);
+
+  // 组播监听时是否真的握着 Android Wi-Fi 组播锁（非 Android 恒 false：不适用）。
+  bool multicastLockHeld() const { return multicast_lock_.held(); }
 
   bool send(const radio::wsjtx::Message& message);
   bool sendReply(const radio::wsjtx::Decode& decode, quint8 modifiers = 0);
@@ -63,6 +67,7 @@ class WsjtxClient : public QObject {
   QString group_ = QString::fromLatin1(radio::wsjtx::kDefaultGroup);
   quint16 port_ = radio::wsjtx::kDefaultPort;
   QString client_id_ = "radio-suite";
+  MulticastLock multicast_lock_;
 };
 
 }  // namespace radio::app
