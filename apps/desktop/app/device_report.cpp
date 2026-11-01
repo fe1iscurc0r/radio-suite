@@ -121,8 +121,18 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
   const bool multicast_group =
       QHostAddress(in.wsjtx_group).isMulticast();
   if (!in.wsjtx_listening) {
-    rows << makeRow("WSJT-X", "监听", ProbeState::Warn,
-                    QStringLiteral("未监听（面板里启动后才会有解码行）"));
+    const bool has_error = !in.wsjtx_last_error.isEmpty();
+    rows << makeRow("WSJT-X", "监听",
+                    has_error ? ProbeState::Missing : ProbeState::Warn,
+                    has_error
+                        ? in.wsjtx_last_error
+                        : QStringLiteral("未监听（面板里启动后才会有解码行）"));
+    // 启动失败时锁行也要出现：真机上就撞过「锁拿得到、join 失败」，
+    // 只在监听成功时才显示锁，等于把最该看的那种情况藏起来。
+    if (has_error && android && QHostAddress(in.wsjtx_group).isMulticast())
+      rows << makeRow("WSJT-X", "Wi-Fi 组播锁", ProbeState::Warn,
+                      QStringLiteral("启动失败后锁已释放（正常收尾）；锁本身能否拿到"
+                                     "看 logcat 里本应用 uid 的 acquireMulticastLock"));
   } else {
     rows << makeRow("WSJT-X", "监听", ProbeState::Ok,
                     QStringLiteral("%1:%2").arg(in.wsjtx_group).arg(in.wsjtx_port));

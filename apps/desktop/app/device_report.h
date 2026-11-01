@@ -52,6 +52,7 @@ struct ReportInput {
   QString wsjtx_group;
   quint16 wsjtx_port = 0;
   bool multicast_lock_held = false;
+  QString wsjtx_last_error;  // 上一次 start() 失败的原因，成功则空
 
   bool net_audio_active = false;
   int audio_output_devices = 0;

@@ -124,6 +124,37 @@ TEST_CASE("device report: no bus compiled in is not reported as available", "[re
   CHECK(bus->state == radio::app::ProbeState::NotApplicable);
 }
 
+TEST_CASE("device report: failed start names the reason instead of bare not-listening",
+          "[report]") {
+  auto in = androidInput();
+  in.wsjtx_listening = false;
+  in.multicast_lock_held = false;
+  in.wsjtx_last_error =
+      QStringLiteral("加入组播失败（224.0.0.1）：Unknown error（可在设置里改用单播地址，"
+                     "如本机 127.0.0.1）");
+  const auto rows = radio::app::buildDeviceReport(in);
+  const auto* listen = rowOf(rows, QStringLiteral("监听"));
+  REQUIRE(listen != nullptr);
+  CHECK(listen->state == radio::app::ProbeState::Missing);
+  CHECK(listen->note.contains(QStringLiteral("Unknown error")));
+  // 启动失败时锁行也要在：真机撞过的「锁拿得到、join 失败」不能被藏起来
+  const auto* lock = rowOf(rows, QStringLiteral("Wi-Fi 组播锁"));
+  REQUIRE(lock != nullptr);
+  CHECK(lock->state == radio::app::ProbeState::Warn);
+}
+
+TEST_CASE("device report: never-tried start says not-listening without inventing a cause",
+          "[report]") {
+  auto in = androidInput();
+  in.wsjtx_listening = false;
+  const auto rows = radio::app::buildDeviceReport(in);
+  const auto* listen = rowOf(rows, QStringLiteral("监听"));
+  REQUIRE(listen != nullptr);
+  CHECK(listen->state == radio::app::ProbeState::Warn);
+  CHECK(listen->note.contains(QStringLiteral("未监听")));
+  CHECK(rowOf(rows, QStringLiteral("Wi-Fi 组播锁")) == nullptr);
+}
+
 TEST_CASE("self check dialog renders every row and re-reads facts", "[report][ui]") {
   app();
   int calls = 0;

@@ -1566,6 +1566,7 @@ radio::app::ReportInput MainWindow::selfCheckInput() {
     in.wsjtx_group = client->group();
     in.wsjtx_port = client->port();
     in.multicast_lock_held = client->multicastLockHeld();
+    in.wsjtx_last_error = client->lastError();
   }
   radio::audio::AudioSink sink_enum;  // 现场枚举，USB 声卡插拔后不用重启
   in.audio_output_devices = static_cast<int>(sink_enum.outputDeviceIds().size());
