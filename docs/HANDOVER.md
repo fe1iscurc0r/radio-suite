@@ -232,7 +232,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       `wm dismiss-keyguard` 无效）——该补记 11-01 15:24 已完成：页签栏确为频谱/调谐/制式/面板
       四页（验收清单 C9 正文），逐页版式与交互另见 C10 那轮真机复验。其余构建证据
       （MSVC `ctest` 181/181、Android clang 交叉编译通过）齐全。
-    - **C9（HamLog 在 Android 上从未可用）已修（`feat/android-local-logbook`）**：
+    - **C9（HamLog 在 Android 上从未可用）已修并合并（PR #24 → `fix/android-touch-dialogs`，
+      merge commit `648658b`）**：
       `RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，但真机 `hamlog_.available()` 恒假——
       `HamLogDb::defaultDbPath()` 指的文件不存在，`available()` 要求「库在且 log 表可读」。
       旧布局里这组控件静默隐藏，分页版第一稿才把它摆成一页死内容；处置仍是**不可用就不建
@@ -488,23 +489,31 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
   `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
   → #6/#7 **均未合并**，合并需逐次授权。
-- **安卓这条线的 PR 栈（2026-10-31 实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
-  **已合并**（远端 main = `5a08fa4`）；以下**全部 open、均未合并**，且是一条链，
-  合的顺序只能从底往上：#15 `fix/wasapi-capture-measurement`（35570c7）、
+- **安卓这条线的 PR 栈（2026-11-01 实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
+  **已合并**（远端 main = `5a08fa4`）；以下这条链**没有一条进过 main**，且只能从底往上合，
+  其中 #24 已于 11-01 合并进它的 base 分支（见下面那行）：
+  #15 `fix/wasapi-capture-measurement`（35570c7）、
   #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
   （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
   → #19 `fix/android-settings-persistence`（`5de74a2`，base #18 的 head）
   → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
   → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
   → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
-  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head）
+  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head；
+  **head 已被 #24 的合并推进到 `648658b`**，仍 open）
   → #24 `feat/android-local-logbook`（Android 自建本地 HamLog 库、补出「日志」页签，
-  base #23 的 head；head `de34e74`，三平台 CI 全绿，mergeable clean）。
+  base #23 的 head）——**已于 11-01 合并**，merge commit `648658b`，按仓库惯例用
+  merge commit（与 #12/#13/#14 同法）。⚠️ 注意这条链的「合并」只把改动交给上一层分支：
+  **#24 进的是 `fix/android-touch-dialogs`，不是 `main`**，`main` 仍是 `5a08fa4`，
+  要落到 main 还得从 #15 往上逐条合。
   ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19、`d72b98a`/`de34e74`（C9 落地与
-  ADIF 真机补记）挂在 #24。回滚点：
+  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19；`d72b98a`/`de34e74`/`bea2db5`/
+  `895ee1c`（C9 落地、ADIF 真机补记、PR 栈与本节）写在 #24 的分支上，#24 合并后它们进的是
+  `fix/android-touch-dialogs`，所以现在算 #23 的 diff——本节这次「#24 已合并」的补记同样如此。
+  回滚点：
   `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）、
-  `git revert de34e74 d72b98a 373d2a2`（#24）。
+  `git revert -m 1 648658b`（#24 已合并，正向回滚；把分支退回 `6b1ac66` 属改写已共享历史，
+  要 force-push，不做）。
   **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
 - **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
