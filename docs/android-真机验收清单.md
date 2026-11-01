@@ -511,12 +511,26 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   `showInfo`（同样常驻关闭，滚动区同样挂 QScroller）。接线覆盖：音频设置、中继/亚音、
   连接设置、SSTV、DTMF、语音存储、CW、SET、MEM 信道、APRS 消息、APRS RF 设置、
   WSJT-X UDP 设置。
+  **装包后在手机上抓到第二个缺陷，已修（`f540c30`）**：第一次解锁复验时波段高亮已
+  生效、音频设置对话框底部出现了常驻「关闭」，但对话框里「扬声器（RX 下行）」跑到了「取消/确定」
+  下方、中间一大段空白，往里拖也不滚。根因在 `fitDialog` 搬子布局那一步：
+  `QBoxLayout::takeAt()` 返回的 item **就是子布局对象本身**（Qt 6.8 `qboxlayout.cpp`
+  的 `takeAt` 直接返回 `b->item`），`addLayout()` 收养它时已经 `setParent(page)` 并把
+  里面的控件改父到滚动页；紧接着的 `delete it` 又把同一个布局删了——滚动页持悬空
+  指针。真机上是这些控件停在旧坐标、不再参与布局；离屏回归用例能稳定复现
+  （进程 `0xC0000409`）。修法：子布局分支不再 `delete it`，只交给 `addLayout` 收养
+  （控件分支的 `QWidgetItem` 仍可安全删除，它是布局项而不是控件）。
+  回归用例 [tests/test_touch_dialog.cpp](../tests/test_touch_dialog.cpp)：
+  `fitDialog reparents form rows into scroll content` 断言表单标签/下拉框确实是滚动页
+  的后代、纵向顺序「表单 < 分组框 < 按钮箱」、常驻关闭 ≥44dp；桌面靠
+  `RADIO_SUITE_TOUCH_FIT=1` 打开同一套触摸层逻辑跑这组断言。
   主窗侧：三个面板事件过滤器收 `QEvent::Hide` → 复位对应大按键；三个面板大按键改为
   互斥（开一个收掉另两个）并给 `:checked` 琥珀背光；波段/广播预置按钮改 `checkable`，
   `syncBandHighlight()` 在 `refreshState()` 里按 `[low, high)` 回读点亮（40m 7.000–7.300、
   20m 14.000–14.350、15m 21.000–21.450、10m 28.000–29.700、6m 50–54、2m 144–148、
   70cm 430–440 MHz；AIR 118–137、BC-FM 87.5–108、BC-SW 9.4–9.9）。
-  **已验**：桌面 MSVC 构建（all 目标，含三个离屏 UI 测试）通过、`ctest` **181/181**；
+  **已验**：桌面 MSVC 构建（all 目标，含三个离屏 UI 测试）通过、`ctest` **182/182**
+  （含新增的 `fitDialog reparents form rows into scroll content`）；
   Android clang 交叉编译通过并
   出了新 APK（已 `adb install -r` 装到手机上，含后续补丁：输入控件触控高度 + `showInfo`
   滚动）；桌面实窗（`--mock`，1105×768）截图

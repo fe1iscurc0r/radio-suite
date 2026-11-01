@@ -254,10 +254,18 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       `refreshState()` 按 `[low, high)` 回读点亮。三个离屏 UI 测试目标补编
       `touch_dialog.cpp`（原先只构 app 目标没暴露，Windows/macOS CI 链接期
       `LNK2019 fitDialog` 才抓到）。
-      **已验**：桌面 MSVC 构建、`ctest` 181/181、Android clang 交叉编译出新包并
-      `adb install -r` 到手机；桌面实窗（`--mock`）14.070 MHz 时 20m 亮琥珀。
-      **未验**：装包时手机已灭屏且带安全锁屏（截屏黑图、`wm dismiss-keyguard` 无效），
-      这一轮**没在手机上点过**——滚动手感、关闭条位置、返回键复位、三面板互斥待解锁后复验。
+      **真机上又抓到一个搬布局的缺陷（已修 `f540c30`）**：`QBoxLayout::takeAt()` 返回的
+      item 就是子布局对象本身，`addLayout()` 收养它并把控件改父到滚动页；随后再
+      `delete it` 等于删掉滚动页仍在引用的布局——真机上表单行停在旧坐标（「扬声器」
+      跑到确定/取消下方、拖不动），离屏回归用例直接 `0xC0000409`。修法是子布局分支
+      只交给 `addLayout` 收养，不再删除；新增
+      `tests/test_touch_dialog.cpp::fitDialog reparents form rows into scroll content`，
+      桌面用 `RADIO_SUITE_TOUCH_FIT=1` 打开同一套逻辑跑断言。
+      **已验**：桌面 MSVC 构建、`ctest` 182/182、Android clang 交叉编译出新包；
+      真机第一轮（解锁后）确认波段高亮生效、音频设置对话框底部出现常驻「关闭」，
+      随即发现上面那个表单错位缺陷。
+      **未验**：修复后的新包还需再走一轮真机——音频/中继/连接三个对话框的滚动与关闭、
+      返回键复位、三面板互斥切页。
       另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
       这类 Qt 自带文件框不在范围内。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
