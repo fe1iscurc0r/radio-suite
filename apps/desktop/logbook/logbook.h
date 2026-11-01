@@ -32,8 +32,19 @@ struct Qso {
 
 class HamLogDb {
  public:
-  // %APPDATA%/HamLog/Log.db（Windows）；不存在返回空路径
+  // %APPDATA%/HamLog/Log.db（Windows）；Android 上没有 HamLog 桌面程序，
+  // 库落在应用自己的可写目录（见 ensureLocalDb）。拿不到可写路径返回空。
   static QString defaultDbPath();
+
+  // 建库：log(18 列) + settings 两张表，全部 IF NOT EXISTS——已存在的表和行
+  // 一律不动，所以对 HamLog 自己的库重复调用是安全的。
+  static bool createDatabase(const QString& path, QString* error = nullptr);
+
+#ifdef Q_OS_ANDROID
+  // 桌面端库归 HamLog 所有（我们只读写、不建壳）；Android 上没人建，
+  // 不建就整个「日志」页都摆不出来，所以启动时确保有一份。
+  static bool ensureLocalDb(QString* error = nullptr);
+#endif
 
   explicit HamLogDb(QString db_path = {});
 

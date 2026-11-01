@@ -17,7 +17,9 @@ D1 的 `radio-suite.ini` 原样保住（102 字节，13:46 那份），D3 的结
 缺陷修了 C10（对话框/面板能滚能关、波段高亮）；当天 13:30 手机解锁后按用户原话逐条复验，
 C10 全部通过，并补了两个新根因的修复（下拉弹窗触摸错位、第二顶层窗口丢帧），
 15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框（同样全屏贴边、能滚、能关），
-结论都写在 C10 正文里。**其余每一条仍是
+结论都写在 C10 正文里；17:46 把 C9 的待办落地（Android 自建本地 HamLog 库），
+「日志」页签在手机上出得来、记 QSO 真写进库，17:53 顺带验了同页的 ADIF 导出
+（走系统 SAF 选择器，`content://` 直写成功）。**其余每一条仍是
 PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
 出包信息、jar 字节码，不代表真机行为。
 
@@ -331,6 +333,60 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 ---
 
+## 2b. 权限矩阵（麦克风 / 存储 / USB OTG / 组播）—— 2026-11-01 核对
+
+用户提的「手机端还要询问权限：OTG、存储等」，逐条查实。**这一节是静态核对 + 一次真机
+`dumpsys`（18:40），OTG 那条今天证不了**，原因写在下面，不假装做过。
+
+取证据的命令（一次跑完，别手搓）：
+```bash
+AAPT=/d/Android/sdk/build-tools/34.0.0/aapt2.exe
+"$AAPT" dump permissions "<APK>"   # 包里真正声明了什么
+"$AAPT" dump badging   "<APK>" | grep -iE "feature|targetSdk"
+"$ADB" shell dumpsys package org.radiosuite.app | sed -n '/runtime permissions/,/installed/p'
+ls /d/Qt/6.7.3/android_arm64_v8a/include/QtSerialPort   # 安卓 Qt 有没有串口模块
+grep Qt6SerialPort_DIR build-android/CMakeCache.txt
+```
+
+| 权限 / 特性 | 谁声明的 | 真机状态（11-01 18:40） | 结论 |
+| --- | --- | --- | --- |
+| `RECORD_AUDIO` | 我们（`packaging/android/AndroidManifest.xml:11`） | `granted=true` | 启动时按 B1 申请，行为对 |
+| `INTERNET` / `ACCESS_NETWORK_STATE` | androiddeployqt 注入 | 安装期权限 | 无需弹窗 |
+| `WRITE_EXTERNAL_STORAGE`（隐含 `READ_`） | **Qt6Core 的 `lib/Qt6Core_arm64-v8a-android-dependencies.xml` 注入，不是我们写的** | 两条都 `granted=false`（`RESTRICTION_INSTALLER_EXEMPT`） | targetSdk 34 上这是**死权限**，见下 |
+| `CHANGE_WIFI_MULTICAST_STATE` | 未声明 | — | WSJT-X 组播缺它，见下 |
+| `android.hardware.usb.host` / USB 权限 | 未声明（包里只有 microphone[not-required] + 两条 implied） | — | 缺口不在弹窗，在后端 |
+
+**存储：不该问，也问不出东西。** Android 13 / targetSdk 34 已经没有「存储」这个运行时权限，
+`WRITE_EXTERNAL_STORAGE` 是 Qt Core 依赖清单带进来的历史遗留，系统直接不给授（真机
+`granted=false`），而应用一点没受影响——写路径本来就不靠它：私有目录一直在写
+（`radio-suite.ini`、`aprs.db`、11-01 新建的 `HamLog/Log.db`），对外导出走 SAF
+（17:53 ADIF 导出实测落 `/sdcard/Download/radio-suite.adi`，全程没弹任何权限框）。
+再往上只剩 `MANAGE_EXTERNAL_STORAGE`（所有文件访问），那是系统安全设置、MIUI 还要单独放行——
+**不申请**，一个电台面板不该要整机的文件系统。
+
+**USB OTG：真正缺的是后端，不是弹窗。** 安卓版 Qt 6.7.3 **不带 QtSerialPort**
+（`include/QtSerialPort` 不存在、`Qt6SerialPort_DIR-NOTFOUND`），所以
+`RADIO_SUITE_HAVE_SERIALPORT` 在安卓构建里是关的，APRS 面板的串口入口走的是
+`apps/desktop/app/aprs_panel.cpp:847` 那句降级「本构建未启用串口（缺少 Qt6::SerialPort），
+请用 KISS TCP」。要做 OTG 串口得自己接 `UsbManager`：JNI + 清单加
+`<uses-feature android:name="android.hardware.usb.host">` + `USB_DEVICE_ATTACHED` 的
+`device_filter.xml` + `UsbManager.requestPermission()`（USB 授权不是运行时权限组，只能这么要），
+或 vendor `usb-serial-for-android`（Apache-2.0）。**今天证不了**：手机唯一的 USB 口被 adb
+占着，台架上也没有可插的串口设备/电台；只加清单声明、不加后端是自欺，所以整条按工单排。
+
+**组播：只声明权限不拿锁等于没做。** WSJT-X 面板默认监听 `224.0.0.1:2237`
+（`apps/desktop/app/wsjtx_client.cpp:44` `joinMulticastGroup`），Android 上不持
+`WifiManager.MulticastLock` 时组播帧一般收不到，而拿锁要 JNI。单播不受影响：
+把地址指成手机可达的单播地址就能先证数据通路——**这条是能做的，且不需要电台**。
+
+判据（下次真机补，别照抄本节结论）：
+- 新包 `aapt2 dump permissions` 的期望集合仍是上面那五项，多出来的一项要能说出谁注入的；
+- 撤销 `RECORD_AUDIO` 后 FT8 选「本机麦克风」要如实失败（B1 的撤销分支至今没走过）；
+- 若做了 OTG：插上设备弹 `UsbManager` 授权框，点拒绝后面板如实报错、不崩；
+- 若做了组播锁：同一网段 PC 发 Decode 包 → 手机面板出解码行。
+
+---
+
 ## 3. Gate C — 手机分辨率上的 UI 与触控
 
 - [ ] **C1 窗口尺寸** —— **真机不通过**（2026-10-31 竖屏实测，见下面「实测」）
@@ -477,7 +533,7 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   右列大按键、底部 `transport: mock` 状态行全部与重构前一致——但这只是人眼对照，
   没有像素级基线。
 
-- [ ] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），未修
+- [x] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），已修，11-01 真机复验通过
   `RADIO_SUITE_HAVE_LOGBOOK=1` 确实编进了 Android 包（`build-android/build.ninja` 可查），
   但真机上 `hamlog_.available()` 恒为 false：`HamLogDb::defaultDbPath()` 指向的库文件
   在手机上不存在，而 `available()` 的契约是「库文件存在且 log 表可读」。
@@ -488,9 +544,31 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   **11-01 15:24 真机核对**：最终包（代码止于 `e8ccabb`，之后只改文档）面板页底部确为
   频谱/调谐/制式/面板 四个页签，日志页签不存在，与该处置一致；本轮截图只点了面板页，
   其余三页在 13:30 那轮点过。
-  **待办**：给 Android 定一个真正可写的 HamLog 库路径（或首次启动建库），
-  再做手机上的记 QSO / ADIF。这条与 D3（QSQLITE 驱动）不同——驱动已经打进包了，
-  缺的是库文件本身。
+  **待办**（提于 15:24，同日 17:46 已落地并复验，见下）：给 Android 定一个真正可写的 HamLog 库路径
+  （或首次启动建库），再做手机上的记 QSO / ADIF。这条与 D3（QSQLITE 驱动）不同——驱动已经
+  打进包了，缺的是库文件本身。
+  **修法（`373d2a2`）**：`HamLogDb` 新增 `createDatabase()`（log 18 列 + settings 两张表，
+  全部 `IF NOT EXISTS`——已有表和行一律不动，对 HamLog 自己的库重复调用也安全）和
+  Android-only 的 `ensureLocalDb()`；`defaultDbPath()` 在 Android 上改走
+  `radio::ui::settingsDir()`（本机已验证可写的 `QStandardPaths::AppDataLocation`），
+  落点 `/data/data/org.radiosuite.app/files/HamLog/Log.db`；`MainWindow` 构造在 `buildUi()`
+  **之前**调用建库，失败只 `qWarning`，不改「库拿不到就不出这一页」的处置。桌面路径不变。
+  **11-01 17:46 真机复验**（Redmi K40，签名包与桌面同码）：冷启动后 `files/HamLog/Log.db`
+  自动建出，从盘上读回的 DDL 确为 HamLog 的 18 列 `log` + `settings`；底部页签多出第五个
+  「日志」，点进去页面正常渲染；在「对方呼号」输入 `BG1TEST` 点「记 QSO」，顶栏绿色状态
+  `已写入 HamLog: BG1TEST @ 14.2700 MHz USB`，列表出现 `BG1TEST  14.2700 MHz USB  2026-11-01
+  0946`，输入框回到占位文案，pull 回的库文件里 `BG1TEST` 命中 1 次。
+  **17:53 同页「ADIF 导出」也验了**：`QFileDialog::getSaveFileName` 在 Android 上不是 Qt 自绘
+  对话框——Qt 6.7.3 把它交给系统 SAF 选择器（`dumpsys window` 里 `mCurrentFocus` 直接变成
+  `com.google.android.documentsui/com.android.documentsui.picker.PickActivity`），文件名框预填
+  `radio-suite.adi`、「保存」可点；选完 `QFile` 直接往返回的 `content://` URI 写，
+  `/sdcard/Download/radio-suite.adi` 落出 162 字节，逐字节是
+  `<ADIF_VER:5>3.1.4<PROGRAMID:11>radio-suite<EOH>` + `<CALL:7>BG1TEST<FREQ:9>14.270000<QSO_DATE:8>20261101<TIME_ON:6>094600<MODE:3>USB<RST_SENT:2>59<RST_RCVD:2>59<EOR>`，
+  顶栏回显「已导出 1 条 QSO → …」。**遗留小瑕疵（未修）**：那句回显把 URI 原样打出来，手机上
+  看到的是一串 `content://com.android.provide…` 截断文本，用户看不出文件落在哪；改成人话
+  （如「已导出 N 条 QSO → 下载/radio-suite.adi」）属产品口径，没擅自改。
+  **注意**：手机上这份库现在留了一条测试记录 `BG1TEST`（id 1），`/sdcard/Download/radio-suite.adi`
+  是本轮导出留下的 162 字节样本，两者都与真机通联无关，要清就直接删这两处。
 
 - [x] **C10 对话框与独立面板「能滚、能关」** —— 用户真机报缺陷，已修，11-01 真机复验通过
   用户原话：「波段点击不显示亮度（在哪）音频设置没有退出键 cancel 无效，应用中继也
@@ -633,12 +711,14 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   所以 WSJT-X 面板照旧按默认组播 224.0.0.1 去 join 并报「加入组播失败」。
   要改监听地址请走面板里的「设置」，别用 `reg add`。
 
-- [ ] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级**
-  代码事实：[apps/desktop/logbook/logbook.cpp:21-25](../apps/desktop/logbook/logbook.cpp#L21-L25) 读 `APPDATA`，
-  为空直接 `return {}`；Android 没有 `APPDATA` ⇒ 路径恒空。
-  判定：HamLog 相关按钮**不崩**、给出「库不存在（先运行一次 HamLog）」一类的真实提示、
-  且不出现「写了 QSO 但其实没落盘」的假成功。
-  这条判的是「诚实」，不是「能用」；要能用得换路径策略，属后续工单。
+- [x] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级** —— 降级半条已过，
+  「换路径策略」那半条 11-01 由 C9 做掉了（`373d2a2`：Android 自建本地库），故这一页现在
+  是真能用的第五个页签，判据随之改写为：**建库成功**时记 QSO 落盘（17:46 真机已过，见 C9）；
+  **建库失败**时仍然整页不出、不摆死页面（`MainWindow` 构造里失败只 `qWarning`，
+  `buildUi()` 照旧按 `hamlog_.available()` 决定这一页）。
+  原代码事实（`logbook.cpp` 读 `APPDATA`，Android 上恒空）**已改**：`defaultDbPath()`
+  在 `Q_OS_ANDROID` 下走 `radio::ui::settingsDir()`。
+  判定：HamLog 相关按钮**不崩**、给出真实提示、不出现「写了 QSO 但其实没落盘」的假成功。
 
 - [x] **D3 APRS 库落在哪**（写侧已验；「收下站点 → 重启 → 轨迹仍在」的读侧仍空，见下）
   代码事实：路径解析顺序 `RADIO_SUITE_APRS_DB` → `APPDATA` → `QStandardPaths::AppDataLocation`

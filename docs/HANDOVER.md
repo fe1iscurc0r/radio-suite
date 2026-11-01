@@ -143,7 +143,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、G-0 的配置半条、K1/K3）；
     D3 只到「写侧」（顺带把 APK 没打 SQLite 驱动这个打包缺陷修了，见下面那条）；**判「链路通不通」的 G-1…G-5 仍是空的**——手上没有可连的电台（只有全盛 UVK6，
     不是 IC-705、没有 50003 音频口），所以「手机上保存 → 重启 → 真连上电台」只到
-    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D2/D4 本轮没覆盖。
+    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D4 本轮没覆盖
+    （D2 当时也没覆盖，11-01 随 C9 一起做掉了）。
     清单里写「代码事实」的部分只是 PC 静态核对（源码行号、aapt 出包信息、jar 字节码），
     不构成真机结论——打勾要换成设备上取到的 ini 字节 / logcat / 截屏。
     - **K1（APK 只能跑 mock）代码侧已修**（`fix/android-link-prefs`）：新增
@@ -228,12 +229,20 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       **真机五页逐页截图过（2026-10-31 23:5x，横屏 843×376dp）**，C1/C6 那批碰撞全部消失。
       交付前最后一改（HamLog 不可用时不出「日志」页签，手机变四页签）装包后进程存活无崩溃，
       但**那一版没截到图**：手机午夜自动锁屏，MIUI 在锁屏状态拒绝截屏（`screencap` 回 0 字节，
-      `wm dismiss-keyguard` 无效）——四页签版式的真机视觉证据待补，其余构建证据
+      `wm dismiss-keyguard` 无效）——该补记 11-01 15:24 已完成：页签栏确为频谱/调谐/制式/面板
+      四页（验收清单 C9 正文），逐页版式与交互另见 C10 那轮真机复验。其余构建证据
       （MSVC `ctest` 181/181、Android clang 交叉编译通过）齐全。
-    - **C9（HamLog 在 Android 上从未可用）**：`RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，
-      但真机 `hamlog_.available()` 恒假——`HamLogDb::defaultDbPath()` 指的文件不存在，
-      `available()` 要求「库在且 log 表可读」。旧布局里这组控件静默隐藏，分页版第一稿
-      才把它摆成一页死内容；现处置为**不可用就不建这一页**，另开条目待补建库逻辑。
+    - **C9（HamLog 在 Android 上从未可用）已修（`feat/android-local-logbook`）**：
+      `RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，但真机 `hamlog_.available()` 恒假——
+      `HamLogDb::defaultDbPath()` 指的文件不存在，`available()` 要求「库在且 log 表可读」。
+      旧布局里这组控件静默隐藏，分页版第一稿才把它摆成一页死内容；处置仍是**不可用就不建
+      这一页**，但补上了建库：`HamLogDb::createDatabase()`（log 18 列 + settings，全
+      `IF NOT EXISTS`，不动已有行）+ Android-only `ensureLocalDb()`，Android 上库路径改走
+      已验证可写的 `radio::ui::settingsDir()`，`MainWindow` 构造在建 UI 前确保库存在。
+      11-01 17:46 真机复验：库自动建出、第五个页签「日志」出现、记 QSO 写通；17:53 同页
+      「ADIF 导出」也验通（Qt 把 `QFileDialog` 交给系统 SAF 选择器，`QFile` 往返回的
+      `content://` URI 直写出合法 ADIF 3.1.4）。导出回显打的是裸 URI，手机上看不出文件落在
+      哪，这一条算未修的小瑕疵（改文案属产品口径）。详见验收清单 C9 正文。
     - **手机对话框/面板「能滚、能关」已修（C10，`fix/android-touch-dialogs`）**：用户真机报
       「音频设置没有退出键、cancel 无效，应用中继没有关闭键，频差/模拟亚音/DTCS 选不到，
       估计无法滑动；连接关闭键失效，APRS/WSJT-X 无退出键，切 WSJT-X 页面有问题，
@@ -284,7 +293,21 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       打开、底部常驻「关闭」一点即回面板页；SET 内容一屏放得下，MEM/CW/DTMF 滑到底
       分别能见到名称与选组/选信道、回读提示与应用设置/发送、生成 .wav，左侧标签不被切。
       另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
-      这类 Qt 自带文件框不在范围内。
+      这类 Qt 自带文件框不在范围内——11-01 17:53 实测：Android 上 `QFileDialog` 根本
+      **不是 Qt 窗口**，Qt 6.7.3 把它交给系统 SAF 选择器（`documentsui/PickActivity`），
+      所以不需要 `fitDialog`，也不受本仓触摸修复的影响。
+    - **手机端权限（OTG / 存储 / 组播）已核清，缺口不在弹窗**（11-01 18:40 静态核对 +
+      一次真机 `dumpsys`，矩阵与判据在验收清单 §2b）：麦克风已声明并在启动时申请、真机
+      `granted=true`；`WRITE_EXTERNAL_STORAGE` 是 Qt6Core 依赖清单注入的历史遗留，
+      targetSdk 34 上系统根本不给授（`granted=false`），而导出走 SAF 已经能用，
+      **不该再去要「存储权限」**（只剩「所有文件访问」这种安全设置，不申请）；
+      **USB OTG 串口缺的是后端不是权限**——安卓 Qt 不带 QtSerialPort
+      （`Qt6SerialPort_DIR-NOTFOUND`），`RADIO_SUITE_HAVE_SERIALPORT` 在安卓构建里是关的，
+      APRS 面板走的是「本构建未启用串口…请用 KISS TCP」那句降级，要做 OTG 得自己接
+      `UsbManager`（JNI + `usb.host` feature + `requestPermission`）或 vendor
+      usb-serial-for-android，且台架上没有可插设备、手机 USB 口被 adb 占着，**今天证不了**；
+      WSJT-X 组播缺 `CHANGE_WIFI_MULTICAST_STATE` + `MulticastLock`（也要 JNI），
+      只声明权限不拿锁等于没做——**能先做的替代是单播数据通路，不需要电台**。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
@@ -440,11 +463,12 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （FT8 面板「本机麦克风 · 已解 0 槽」+ 进程内 `AudioRecord` 线程吃 CPU）。
   逐项证据与判据在 `docs/android-真机验收清单.md` §K4。
 - **仍然没验的**：AAudio 真出声与首帧延迟（B3：竖屏下发射按钮在屏外，点不到）、后台存活与
-  音频焦点（Gate E）、FT8 时间基准（Gate F）、以及一切要真电台的 G-1…G-5
+  音频焦点（Gate E）、FT8 时间基准（Gate F），以及一切要真电台的 G-1…G-5
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
   （HamLog 不可用时不出日志页签）已于 11-01 15:24 真机核对：底部只有
-  频谱/调谐/制式/面板 四页签，日志页签不存在（C9 正文）。
+  频谱/调谐/制式/面板 四页签，日志页签不存在（C9 正文）——C9 当晚修掉自建库后，
+  17:46 再验已是五页签，「日志」在手机上可用且记 QSO 写通（C9 正文）。
   手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已在 11-01 13:30 真机复验通过
   （频差/亚音下拉、音频设置 Cancel、连接/中继/APRS/WSJT-X 关闭、返回键、SSTV 滚动），
   15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框，两个新根因（下拉弹窗触摸错位、
@@ -473,10 +497,14 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
   → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
   → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
-  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head）。
+  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head）
+  → #24 `feat/android-local-logbook`（Android 自建本地 HamLog 库、补出「日志」页签，
+  base #23 的 head；head `de34e74`，三平台 CI 全绿，mergeable clean）。
   ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19。回滚点：
-  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）。
+  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19、`d72b98a`/`de34e74`（C9 落地与
+  ADIF 真机补记）挂在 #24。回滚点：
+  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）、
+  `git revert de34e74 d72b98a 373d2a2`（#24）。
   **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
 - **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、

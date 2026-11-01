@@ -4,9 +4,12 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+
+#include "ui_common/app_settings.h"
 
 namespace radio::logbook {
 
@@ -16,13 +19,72 @@ constexpr const char* kCols[] = {
     "id", "Callsign", "Freq", "Year", "Month", "Day", "Time", "Mode",
     "Power_self", "Power_side", "Rst_self", "Rst_side", "QTH", "Device",
     "QSL_RX", "QSL_SEND", "Remarks", "CreateTime"};
+
+// 建表语句与 hamlog_adapter 的表形状一致；IF NOT EXISTS 是「不碰别人数据」的保证
+constexpr const char* kCreateLogTable =
+    "CREATE TABLE IF NOT EXISTS log ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "Callsign TEXT,Freq REAL,Year INTEGER,Month INTEGER,Day INTEGER,"
+    "Time TEXT,Mode TEXT,Power_self TEXT,Power_side TEXT,"
+    "Rst_self TEXT,Rst_side TEXT,QTH TEXT,Device TEXT,"
+    "QSL_RX TEXT,QSL_SEND TEXT,Remarks TEXT,CreateTime TEXT)";
+constexpr const char* kCreateSettingsTable =
+    "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT)";
 }  // namespace
 
 QString HamLogDb::defaultDbPath() {
+#ifdef Q_OS_ANDROID
+  // Android 上没有 %APPDATA%，也没有 HamLog 桌面程序：库放在应用自己的可写目录，
+  // 可写目录的取法和 app_settings.h 同源（applicationDirPath 是 root 属主的 native
+  // 库目录，写不进去，不能当候选）。
+  const QString dir = radio::ui::settingsDir();
+  if (dir.isEmpty()) return {};
+  return QDir(dir).filePath(QStringLiteral("HamLog/Log.db"));
+#else
   const QString appdata = qEnvironmentVariable("APPDATA");
   if (appdata.isEmpty()) return {};
   return QDir(appdata).filePath("HamLog/Log.db");
+#endif
 }
+
+bool HamLogDb::createDatabase(const QString& path, QString* error) {
+  if (path.isEmpty()) {
+    if (error) *error = QStringLiteral("库路径为空");
+    return false;
+  }
+  QDir().mkpath(QFileInfo(path).absolutePath());
+  // 独立连接名：建表要早于任何查询，不能和 radio_logbook 那条复用连接纠缠。
+  // 局部 QSqlDatabase 必须在 removeDatabase 之前析构，否则 Qt 会告警。
+  const QString conn = QStringLiteral("radio_logbook_init");
+  {
+    QSqlDatabase db = QSqlDatabase::contains(conn)
+                          ? QSqlDatabase::database(conn)
+                          : QSqlDatabase::addDatabase("QSQLITE", conn);
+    db.setDatabaseName(path);
+    if (!db.open()) {
+      if (error) *error = "打开失败: " + db.lastError().text();
+      return false;
+    }
+    QSqlQuery q(db);
+    if (!q.exec(kCreateLogTable)) {
+      if (error) *error = "log 建表失败: " + q.lastError().text();
+      return false;
+    }
+    if (!q.exec(kCreateSettingsTable)) {
+      if (error) *error = "settings 建表失败: " + q.lastError().text();
+      return false;
+    }
+    db.close();
+  }
+  QSqlDatabase::removeDatabase(conn);
+  return true;
+}
+
+#ifdef Q_OS_ANDROID
+bool HamLogDb::ensureLocalDb(QString* error) {
+  return createDatabase(defaultDbPath(), error);
+}
+#endif
 
 HamLogDb::HamLogDb(QString db_path)
     : path_(db_path.isEmpty() ? HamLogDb::defaultDbPath() : db_path) {}
