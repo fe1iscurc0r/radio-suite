@@ -1,18 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # radio-suite 可执行：Qt Widgets + QOpenGLWidget 瀑布 + HamLog 融合 + APRS 面板
-# + --headless --bus HTTP 总线（M5 第一片，bus 源直接编入；全量时再独立成库）
+# + --headless --bus HTTP 总线（bus/session 已独立成库，这里只链不编）
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets OpenGLWidgets Network)
 find_package(Qt6 QUIET COMPONENTS SerialPort)
-# HttpServer 独立包名式调用（Qt6 组件式重复调用在本机未置 _FOUND，原因待查）
-# HttpServer 独立包名式调用（组件式重复调用不置 _FOUND；依赖 WebSockets 需一并安装）
-find_package(Qt6HttpServer QUIET)
 
 set(CMAKE_AUTOMOC ON)
 
 set(APP_SRC
   main.cpp
   launch_config.cpp
-  session.cpp
   network_audio.cpp
   audio_stats.cpp
   audio_dialog.cpp
@@ -40,10 +36,6 @@ set(APP_SRC
   wsjtx_panel.cpp
   ft8_panel.cpp)
 
-if(Qt6HttpServer_FOUND)
-  list(APPEND APP_SRC ../bus/bus_server.cpp ../bus/rigctld_server.cpp)
-endif()
-
 # Android 用 qt_add_executable：它会挂上 androiddeployqt 的部署设置与 apk 目标
 if(ANDROID)
   qt_add_executable(radio-suite ${APP_SRC})
@@ -56,6 +48,8 @@ target_link_libraries(radio-suite PRIVATE
   Qt6::OpenGLWidgets
   Qt6::Network
   radio::core
+  radio::session
+  radio::bus
   radio::dsp
   radio::audio
   radio::aprs
@@ -69,11 +63,6 @@ if(Qt6SerialPort_FOUND)
   target_link_libraries(radio-suite PRIVATE Qt6::SerialPort)
   target_compile_definitions(radio-suite PRIVATE RADIO_SUITE_HAVE_SERIALPORT=1)
   message(STATUS "radio-suite: KISS 串口启用 (Qt6::SerialPort)")
-endif()
-if(Qt6HttpServer_FOUND)
-  target_link_libraries(radio-suite PRIVATE Qt6::HttpServer)
-  target_compile_definitions(radio-suite PRIVATE RADIO_SUITE_HAVE_BUS=1)
-  message(STATUS "radio-suite: HTTP 总线启用 (Qt6::HttpServer)")
 endif()
 if(TARGET radio::logbook)
   target_link_libraries(radio-suite PRIVATE radio::logbook)

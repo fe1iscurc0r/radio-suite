@@ -7,14 +7,12 @@
 
 #include "app/MainWindow.h"
 #include "app/launch_config.h"
-#include "app/session.h"
+#include "session/session.h"
 #include "app/touch_dialog.h"
 #include "ui_common/app_settings.h"
 #include "ui_common/font_proxy_settings.h"
-#ifdef RADIO_SUITE_HAVE_BUS
 #include "bus/bus_server.h"
 #include "bus/rigctld_server.h"
-#endif
 
 int main(int argc, char* argv[]) {
 #ifdef Q_OS_ANDROID
@@ -64,7 +62,7 @@ int main(int argc, char* argv[]) {
 
   if (cli.isSet(headless_opt) || cli.isSet(bus_opt)) {
     // ---- headless 总线模式（scratchpad/lumo 集成，M5 第一片）----
-#ifdef RADIO_SUITE_HAVE_BUS
+    // bus 已独立成 radio_bus 库，无条件可用，不再按 RADIO_SUITE_HAVE_BUS 裁剪
     uint16_t port = static_cast<uint16_t>(cli.value(bus_opt).toInt());
     if (port == 0) port = 8765;
     std::shared_ptr<radio::core::ICivTransport> transport =
@@ -80,18 +78,12 @@ int main(int argc, char* argv[]) {
       return 1;
     }
     // rigctld（rigplane 语义移植）：WSJT-X/fldigi 即插
-#ifdef RADIO_SUITE_HAVE_BUS
     radio::bus::RigctldServer rigctld(session);
     radio::bus::RigctldServer::Config rcfg;
     QString rerr;
     if (!rigctld.start(rcfg, &rerr)) qWarning() << rerr;
-#endif
     qInfo() << "headless 总线模式运行中，Ctrl+C 退出";
     return app.exec();
-#else
-    qCritical() << "本构建未含 HTTP 总线（缺 Qt6::HttpServer）";
-    return 1;
-#endif
   }
 
   std::shared_ptr<radio::core::ICivTransport> transport =

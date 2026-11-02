@@ -15,7 +15,7 @@
 
 #include <cmath>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "app/touch_dialog.h"
 
 namespace radio::app {

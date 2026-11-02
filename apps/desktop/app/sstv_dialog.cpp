@@ -11,7 +11,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "audio/audio_out.h"
 #include "core/safety.h"
 #include "core/sstv.h"

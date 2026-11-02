@@ -12,7 +12,7 @@
 #include <QTimer>
 #include <vector>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "dsp/fft.h"
 #include "dsp/synth.h"
 

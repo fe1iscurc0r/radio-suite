@@ -15,7 +15,7 @@
 #include <algorithm>
 #include <cstring>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "audio/audio_in.h"
 #include "audio/audio_out.h"
 #include "core/safety.h"

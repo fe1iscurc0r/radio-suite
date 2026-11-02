@@ -11,7 +11,7 @@
 #include <span>
 #include <vector>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "core/civ.h"
 #include "core/transport_mock.h"
 #include "qt_test_app.h"

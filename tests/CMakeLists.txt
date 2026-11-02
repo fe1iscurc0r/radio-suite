@@ -51,13 +51,12 @@ endif()
 
 add_executable(radio_session_tests
   test_session_tx.cpp
-  test_tcp_gateway.cpp
-  "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp")
+  test_tcp_gateway.cpp)
 target_include_directories(radio_session_tests PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_SOURCE_DIR}/apps/desktop")
 target_link_libraries(radio_session_tests PRIVATE
-  radio::core
+  radio::session
   Qt6::Core
   Catch2::Catch2WithMain)
 set_target_properties(radio_session_tests PROPERTIES AUTOMOC ON)
@@ -68,16 +67,12 @@ if(Qt6HttpServer_FOUND)
   find_package(Qt6 REQUIRED COMPONENTS Network)
   add_executable(radio_bus_tests
     test_bus.cpp
-    test_rigctld.cpp
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/bus/bus_server.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/bus/rigctld_server.cpp")
+    test_rigctld.cpp)
   target_include_directories(radio_bus_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   target_link_libraries(radio_bus_tests PRIVATE
-    radio::core
-    radio::dsp
+    radio::bus
     Qt6::Network
     Qt6::HttpServer
     Catch2::Catch2WithMain)
@@ -199,7 +194,6 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     test_device_report.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/set_mode_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
@@ -214,6 +208,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   target_link_libraries(radio_ui_tests PRIVATE
     radio::core
+    radio::session
     Qt6::Widgets
     Qt6::Network
     Catch2::Catch2WithMain)

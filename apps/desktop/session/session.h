@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// radio-suite · app/session.h — RadioSession：transport 会话 + 安全门禁 + 状态单源
+// radio-suite · session/session.h — RadioSession：transport 会话 + 安全门禁 + 状态单源
 //
 // 工单硬约束 2/4：UI 与总线共用同一套命令出口（本类）；PTT/设频必经 SafetyGate。
 // M0 单线程（QTimer 驱动）；M1 把 poll 移入 core I/O 线程，跨线程只传值。
