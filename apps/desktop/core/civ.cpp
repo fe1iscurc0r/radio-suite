@@ -5,6 +5,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <cstring>
 
 namespace radio::core::civ {
 namespace {
@@ -114,6 +115,32 @@ std::optional<CivFrame> parseFrame(std::span<const uint8_t> data) {
   f.payload.assign(data.begin() + static_cast<ptrdiff_t>(i) + 3,
                    data.end() - 1);
   return f;
+}
+
+size_t extractFrames(std::span<const uint8_t> buffer,
+                     const std::function<void(std::span<const uint8_t>)>& on_frame,
+                     size_t* discarded) {
+  size_t consumed = 0;
+  size_t drop = 0;
+  while (consumed < buffer.size()) {
+    const uint8_t* p = buffer.data() + consumed;
+    const size_t rest = buffer.size() - consumed;
+    const uint8_t* end =
+        static_cast<const uint8_t*>(std::memchr(p, kPostamble, rest));
+    if (end == nullptr) break;  // 还没收全，整段留到下次
+    const size_t frame_len = static_cast<size_t>(end - p) + 1;
+    size_t lead = 0;
+    while (lead < frame_len && p[lead] != kPreamble) ++lead;  // 帧前垃圾
+    drop += lead;
+    const size_t body = frame_len - lead;
+    if (body >= kMinFrameBytes)
+      on_frame(std::span<const uint8_t>(p + lead, body));
+    else
+      drop += body;  // 短碎片喂给 parseFrame 只会得到假帧
+    consumed += frame_len;
+  }
+  if (discarded) *discarded += drop;
+  return consumed;
 }
 
 std::optional<std::array<uint8_t, 5>> freqToBcd5(uint64_t hz) {
