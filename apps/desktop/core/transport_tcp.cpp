@@ -5,11 +5,11 @@
 
 #include <cstring>
 
+#include "core/civ.h"
+
 namespace radio::core {
 namespace {
 
-constexpr uint8_t kPreamble = 0xFE;
-constexpr uint8_t kPostamble = 0xFD;
 // 一帧 CI-V 最长也就几十字节；攒到这个数还没见到 FD，说明流已经错位
 //（对端不是 CI-V，或者中间被截断），丢掉重同步比继续攒着诚实。
 constexpr int kMaxPendingBytes = 4096;
@@ -77,28 +77,19 @@ size_t TcpCivTransport::poll() {
 
 size_t TcpCivTransport::drain() {
   rx_.append(sock_->readAll());
+  const std::span<const uint8_t> buf(
+      reinterpret_cast<const uint8_t*>(rx_.constData()),
+      static_cast<size_t>(rx_.size()));
   size_t frames = 0;
-  for (;;) {
-    const int end = rx_.indexOf(static_cast<char>(kPostamble));
-    if (end < 0) break;
-    QByteArray raw = rx_.left(end + 1);
-    rx_.remove(0, end + 1);
-    int start = 0;
-    while (start < raw.size() && static_cast<uint8_t>(raw[start]) != kPreamble)
-      ++start;
-    if (start > 0) discarded_ += static_cast<size_t>(start);  // 帧前的垃圾字节
-    raw = raw.mid(start);
-    if (raw.size() < 6) {  // civ::parseFrame 最短要 6 字节，喂进去只会是假帧
-      discarded_ += static_cast<size_t>(raw.size());
-      continue;
-    }
-    const std::span<const uint8_t> bytes(
-        reinterpret_cast<const uint8_t*>(raw.constData()),
-        static_cast<size_t>(raw.size()));
-    emitFrame(bytes);
-    ++frames;
-    ++delivered_;
-  }
+  const size_t consumed = civ::extractFrames(
+      buf,
+      [this, &frames](std::span<const uint8_t> f) {
+        emitFrame(f);
+        ++frames;
+        ++delivered_;
+      },
+      &discarded_);
+  rx_.remove(0, static_cast<qint64>(consumed));
   if (rx_.size() > kMaxPendingBytes) {
     discarded_ += static_cast<size_t>(rx_.size());
     log_ += "drop " + std::to_string(rx_.size()) +

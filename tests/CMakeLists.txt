@@ -51,6 +51,7 @@ endif()
 
 add_executable(radio_session_tests
   test_session_tx.cpp
+  test_tcp_gateway.cpp
   "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp")
 target_include_directories(radio_session_tests PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
