@@ -9,6 +9,11 @@ class QWidget;
 
 namespace radio::app::touch {
 
+// 关掉 Qt widgets 的「快移动 / 快滚动」：那条快路径滚动时只搬像素、只补画
+// 新露出来的窄条，留在画面里的行一次都不重画。真机甩动台账时它留下屏幕左端
+// 一条慢一排的竖直滞后带（缝在 x≈148）。必须在任何控件绘制之前调用。
+void installScrollRepaintWorkaround();
+
 // 安卓：内容装进滚动区、底部钉一条「关闭」、窗口压进屏幕可用区域。
 // 其它平台空操作，桌面窗口管理器照旧给标题栏和 X。
 void fitDialog(QDialog* dlg);

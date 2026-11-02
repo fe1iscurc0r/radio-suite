@@ -8,6 +8,7 @@
 #include "app/MainWindow.h"
 #include "app/launch_config.h"
 #include "app/session.h"
+#include "app/touch_dialog.h"
 #include "ui_common/app_settings.h"
 #include "ui_common/font_proxy_settings.h"
 #ifdef RADIO_SUITE_HAVE_BUS
@@ -16,6 +17,11 @@
 #endif
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_ANDROID
+  // 安卓先关掉 Qt 的「搬像素快滚动」，再建控件：留着它甩动滚动会在屏幕上
+  // 留下一条慢一排的竖直滞后带（真机实测，见 touch_dialog.h 的注释）
+  radio::app::touch::installScrollRepaintWorkaround();
+#endif
   QApplication app(argc, argv);
   QApplication::setApplicationName("radio-suite");
   QApplication::setApplicationVersion("0.1.0");
