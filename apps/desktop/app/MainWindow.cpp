@@ -1659,9 +1659,6 @@ void MainWindow::onAudioSettings() {
 }
 
 void MainWindow::onBenchTick() {
-  // 瀑布图不在画面上就不算：FFT + 降采样 + 上传只喂它一个，另外四个页面上
-  // 这些 CPU 是白烧（甩动列表滚动时跟它抢预算的就是这点）
-  if (!waterfall_ || !waterfall_->isVisible()) return;
   // 网络音频开启且已收到下行：频谱直接用真实 RX PCM；否则回落到合成谱
   const bool live = network_audio_ && network_audio_->active() && rx_have_;
   if (live) {
