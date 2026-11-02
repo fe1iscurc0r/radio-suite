@@ -18,7 +18,7 @@ if(RADIO_SUITE_UDP)
   find_package(Qt6 QUIET COMPONENTS Network)
   if(Qt6_FOUND)
     list(APPEND RADIO_CORE_SRC transport_udp.cpp transport_pybridge.cpp
-         transport_tcp.cpp)
+         transport_tcp.cpp transport_tcp_gateway.cpp)
     set(RADIO_CORE_EXTRA_LIBS Qt6::Network)
     set(RADIO_CORE_DEFINES RADIO_SUITE_HAVE_UDP=1)
     message(STATUS "radio_core: UDP 真机链路 + rsba1-core Python 桥启用 (Qt6::Network)")
