@@ -2,6 +2,8 @@
 // 字体/代理设置实现——对齐原版 FontManager 与 ProxyManager 语义（本地 HamLog R1.0.0）
 #include "ui_common/font_proxy_settings.h"
 
+#include "ui_common/app_settings.h"
+
 #include <QApplication>
 #include <QComboBox>
 #include <QFontDatabase>
@@ -11,14 +13,10 @@
 #include <QLineEdit>
 #include <QNetworkProxy>
 #include <QPushButton>
-#include <QSettings>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
 namespace radio::ui {
-namespace {
-constexpr const char* kOrg = "radio-suite";
-}  // namespace
 
 // ---- 字体 ----
 
@@ -46,7 +44,7 @@ FontSettingsDialog::FontSettingsDialog(QWidget* parent) : QDialog(parent) {
   auto* reset = new QPushButton("恢复默认", this);
   connect(reset, &QPushButton::clicked, this, [this] {
     QApplication::setFont(QFont("Microsoft YaHei", 10));
-    QSettings st(kOrg, "radio-suite");
+    auto st = radio::ui::appSettings();
     st.remove("font");
     accept();
   });
@@ -55,7 +53,7 @@ FontSettingsDialog::FontSettingsDialog(QWidget* parent) : QDialog(parent) {
 }
 
 void FontSettingsDialog::applySaved() {
-  QSettings st(kOrg, "radio-suite");
+  auto st = radio::ui::appSettings();
   const QString family = st.value("font/family").toString();
   const int size = st.value("font/size", 10).toInt();
   if (!family.isEmpty() && size > 0)
@@ -64,7 +62,7 @@ void FontSettingsDialog::applySaved() {
 
 void FontSettingsDialog::onApply() {
   QApplication::setFont(QFont(family_->currentText(), size_->value()));
-  QSettings st(kOrg, "radio-suite");
+  auto st = radio::ui::appSettings();
   st.setValue("font/family", family_->currentText());
   st.setValue("font/size", size_->value());
   accept();
@@ -90,7 +88,7 @@ ProxySettingsDialog::ProxySettingsDialog(QWidget* parent) : QDialog(parent) {
   form->addRow("端口:", port_);
   root->addLayout(form);
 
-  QSettings st(kOrg, "radio-suite");
+  auto st = radio::ui::appSettings();
   type_->setCurrentIndex(st.value("proxy/type", 0).toInt());
   host_->setText(st.value("proxy/host").toString());
   port_->setValue(st.value("proxy/port", 7890).toInt());
@@ -104,7 +102,7 @@ ProxySettingsDialog::ProxySettingsDialog(QWidget* parent) : QDialog(parent) {
 }
 
 void ProxySettingsDialog::applySaved() {
-  QSettings st(kOrg, "radio-suite");
+  auto st = radio::ui::appSettings();
   const int type = st.value("proxy/type", 0).toInt();
   if (type == 0) {
     QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
@@ -118,7 +116,7 @@ void ProxySettingsDialog::applySaved() {
 }
 
 void ProxySettingsDialog::onApply() {
-  QSettings st(kOrg, "radio-suite");
+  auto st = radio::ui::appSettings();
   st.setValue("proxy/type", type_->currentIndex());
   st.setValue("proxy/host", host_->text());
   st.setValue("proxy/port", port_->value());

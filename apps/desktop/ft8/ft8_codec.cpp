@@ -119,7 +119,10 @@ std::vector<float> synthesize(const std::vector<uint8_t>& tones, float f0_hz) {
   const int n_sym = static_cast<int>(tones.size());
   const int n_wave = n_sym * n_spsym;
   const int n_slot = static_cast<int>(kSampleRateHz * FT8_SLOT_TIME);
-  const int n_lead = (n_slot - n_wave) / 2;
+  // 发射要在槽顶点起键：79 个符号只占 13.17 s，余下 1.83 s 是尾部保护。
+  // 居中摆放（(n_slot-n_wave)/2）会让每一发晚起 0.92 s——声学环回实测
+  // DT=+1.28 s 里 0.92 s 就是这个，剩下 0.36 s 才是声卡延迟。
+  const int n_lead = 0;
 
   // 平滑频率波形：前后各延一个符号（上游 gen_ft8 的 dummy symbols）
   std::vector<float> dphi(static_cast<size_t>(n_wave) + 2 * n_spsym,

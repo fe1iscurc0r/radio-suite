@@ -23,6 +23,8 @@ class AudioOut {
 
   // 列出输出设备（UI 选择用）
   std::vector<std::string> deviceNames() const;
+  // 有输出通道的设备 ID（与 deviceNames 同序；WASAPI ID 非连续，别拿下标当 ID）
+  std::vector<uint32_t> outputDeviceIds() const;
 
   // 播放 16bit 单声道 PCM（阻塞式；false = 设备打开失败）。stop() 可中断。
   bool play(const std::vector<int16_t>& pcm, uint32_t sample_rate,

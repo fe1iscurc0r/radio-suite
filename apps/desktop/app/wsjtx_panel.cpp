@@ -13,16 +13,16 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QRegularExpression>
-#include <QSet>
-#include <QSettings>
 #include <QShowEvent>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
+#include "app/decode_target.h"
+#include "app/touch_dialog.h"
 #include "app/wsjtx_client.h"
+#include "ui_common/app_settings.h"
 
 namespace radio::app {
 namespace {
@@ -42,50 +42,6 @@ QString mhz(uint64_t hz) {
 QString utcText(const radio::wsjtx::DateTime& dt) {
   return QDateTime::fromMSecsSinceEpoch(dt.utcMs()).toUTC().toString(
       "yyyy-MM-dd hh:mm:ss");
-}
-
-struct DecodeTarget {
-  QString call;
-  QString grid;
-};
-
-bool plausibleCall(const QString& token) {
-  static const QSet<QString> kProtocol{"RR73", "RRR", "RR", "73", "R",
-                                       "TU",   "DE",  "CQ", "QRZ"};
-  if (kProtocol.contains(token.toUpper())) return false;
-  if (token.size() < 3 || token.size() > 12) return false;
-  bool letter = false, digit = false;
-  for (const QChar c : token) {
-    if (!c.isLetterOrNumber() && c != '/') return false;  // 排除 -12 / R-12 报告
-    if (c.isLetter()) letter = true;
-    if (c.isDigit()) digit = true;
-  }
-  return letter && digit;
-}
-
-bool looksLikeGrid(const QString& token) {
-  static const QRegularExpression re(
-      "^[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?$");
-  return re.match(token).hasMatch();
-}
-
-// WSJT-X 文本：CQ [修饰…] CALL [GRID] / CALL1 CALL2 [GRID|报告|73]
-// 修饰词（DX/TEST/POTA/SOTA/QRP/FD/WW/VHF…）都"不像呼号"，用同一判据筛掉，
-// 不再维护一份必然漏项的清单。
-DecodeTarget parseDecodeTarget(const QString& message) {
-  DecodeTarget target;
-  const QStringList tokens =
-      message.trimmed().split(' ', Qt::SkipEmptyParts);
-  if (tokens.isEmpty()) return target;
-  for (int i = 1; i < tokens.size(); ++i) {
-    const QString& token = tokens[i];
-    if (looksLikeGrid(token)) {
-      if (target.grid.isEmpty()) target.grid = token;
-      continue;
-    }
-    if (target.call.isEmpty() && plausibleCall(token)) target.call = token;
-  }
-  return target;
 }
 
 QTableWidget* makeTable(const QStringList& headers, QWidget* parent) {
@@ -275,7 +231,7 @@ void WsjtxPanel::showEvent(QShowEvent* event) {
   QWidget::showEvent(event);
   if (auto_started_ || client_->isListening()) return;
   auto_started_ = true;
-  QSettings st;
+  auto st = radio::ui::appSettings();
   const QString group =
       st.value("wsjtx/group", QString::fromLatin1(radio::wsjtx::kDefaultGroup))
           .toString();
@@ -483,7 +439,7 @@ void WsjtxPanel::onSetLocation() {
     flash("Location 发送失败：未监听", true);
     return;
   }
-  QSettings st;
+  auto st = radio::ui::appSettings();
   st.setValue("wsjtx/my_grid", grid);
   flash(QString("已把操作位置设为 %1").arg(grid));
 }
@@ -512,6 +468,7 @@ void WsjtxPanel::onSettings() {
   form->addRow(buttons);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  radio::app::touch::fitDialog(&dialog);
   if (dialog.exec() != QDialog::Accepted) return;
 
   const QString new_group = group->text().trimmed();
@@ -521,7 +478,7 @@ void WsjtxPanel::onSettings() {
     flash("地址不能为空", true);
     return;
   }
-  QSettings st;
+  auto st = radio::ui::appSettings();
   st.setValue("wsjtx/group", new_group);
   st.setValue("wsjtx/port", new_port);
   client_->setClientId(new_id);

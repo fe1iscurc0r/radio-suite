@@ -1,83 +1,182 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/connect_dialog.h"
 
+#include "app/touch_dialog.h"
+
 #include <QClipboard>
 #include <QComboBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScreen>
 #include <QVBoxLayout>
+#include <QWidget>
 
-ConnectDialog::ConnectDialog(QWidget* parent) : QDialog(parent) {
+namespace app = radio::app;
+
+ConnectDialog::ConnectDialog(app::LinkPrefs prefs, QWidget* parent)
+    : QDialog(parent), prefs_(std::move(prefs)) {
   setWindowTitle("连接设置（Connect Setting）");
-  setMinimumWidth(460);
+  // 460 是桌面上的舒适宽度，但竖屏手机可用宽度只有 ~390dp：照写会把
+  // 「保存/关闭」整排挤出屏幕外，只剩横屏能用。按屏幕宽度取小。
+  const int avail =
+      QGuiApplication::primaryScreen()->availableGeometry().width();
+  setMinimumWidth(qMin(460, avail - 24));
   auto* root = new QVBoxLayout(this);
+
+  const bool bridge = app::bridgeAvailable();
 
   auto* row1 = new QHBoxLayout();
   row1->addWidget(new QLabel("链路", this));
   mode_ = new QComboBox(this);
   mode_->addItem("mock（内置模拟电台）");
-  mode_->addItem("C++ 原生 UDP（主线）");
-  mode_->addItem("rsba1-core Python 桥（后手兜底）");
+  mode_->addItem(bridge ? "C++ 原生 UDP（RS-BA1 直连电台）"
+                        : "C++ 原生 UDP（RS-BA1，电台侧要有网口/RS-BA1）");
+  mode_->addItem("CI-V over TCP（串口网关透传）");
+  if (bridge) mode_->addItem("rsba1-core Python 桥（后手兜底）");
+  mode_->setCurrentIndex(app::modeIndexFromLink(prefs_.link, bridge));
   row1->addWidget(mode_, 1);
   root->addLayout(row1);
 
   auto* row2 = new QHBoxLayout();
-  row2->addWidget(new QLabel("电台 IP", this));
-  host_ = new QLineEdit("192.168.0.31", this);
+  row2->addWidget(new QLabel("电台 / 网关 IP", this));
+  host_ = new QLineEdit(prefs_.host.empty() ? QStringLiteral("192.168.0.31")
+                                            : QString::fromStdString(prefs_.host),
+                        this);
   row2->addWidget(host_, 1);
   root->addLayout(row2);
 
+  // 端口只有 CI-V over TCP 用得上：RS-BA1 的端口是协议里写死的三信道，
+  // 摆一个填了也不生效的输入框只会让人以为能改。
+  port_row_ = new QWidget(this);
+  auto* port_lay = new QHBoxLayout(port_row_);
+  port_lay->setContentsMargins(0, 0, 0, 0);
+  port_lay->addWidget(new QLabel("网关端口", port_row_));
+  port_ = new QLineEdit(QString::number(prefs_.port), port_row_);
+  port_->setPlaceholderText("例：4533");
+  port_lay->addWidget(port_, 1);
+  root->addWidget(port_row_);
+  port_row_->setVisible(app::modeIndexFromLink(prefs_.link, bridge) == 2);
+
   auto* row3 = new QHBoxLayout();
   row3->addWidget(new QLabel("用户名", this));
-  user_ = new QLineEdit("linnan", this);
+  user_ = new QLineEdit(QString::fromStdString(prefs_.user), this);
   row3->addWidget(user_, 1);
   root->addLayout(row3);
 
   auto* row4 = new QHBoxLayout();
   row4->addWidget(new QLabel("密码", this));
-  pass_ = new QLineEdit(this);
+  pass_ = new QLineEdit(QString::fromStdString(prefs_.pass), this);
   pass_->setEchoMode(QLineEdit::Password);
   row4->addWidget(pass_, 1);
   root->addLayout(row4);
+
+  if (bridge) {
+    auto* row5 = new QHBoxLayout();
+    row5->addWidget(new QLabel("Python", this));
+    python_ = new QLineEdit(QString::fromStdString(prefs_.python_exe), this);
+    python_->setPlaceholderText("留空 = 用 PATH 上的 python");
+    row5->addWidget(python_, 1);
+    root->addLayout(row5);
+  }
 
   cmdline_ = new QLabel(this);
   cmdline_->setStyleSheet("color:#8fe; font-family:Consolas;");
   cmdline_->setWordWrap(true);
   root->addWidget(cmdline_);
 
-  auto refresh = [this] {
-    QString cmd = "radio-suite.exe";
-    if (mode_->currentIndex() == 1)
-      cmd += QString(" --radio %1 --user %2 --pass %3")
-                 .arg(host_->text(), user_->text(), pass_->text());
-    else if (mode_->currentIndex() == 2)
-      cmd += QString(" --radio %1 --user %2 --pass %3 --radio-py")
-                 .arg(host_->text(), user_->text(), pass_->text());
-    else
-      cmd += " --mock";
-    cmdline_->setText(cmd);
-  };
-  connect(mode_, &QComboBox::currentTextChanged, refresh);
-  connect(host_, &QLineEdit::textChanged, refresh);
-  connect(user_, &QLineEdit::textChanged, refresh);
-  connect(pass_, &QLineEdit::textChanged, refresh);
-  refresh();
+  auto* hint = new QLabel(
+      "保存即写入设置文件（电台口令明文存在用户设置目录），重启 radio-suite 生效。",
+      this);
+  hint->setWordWrap(true);
+  hint->setStyleSheet("color:#8a93a5;");
+  root->addWidget(hint);
+
+  connect(mode_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+          [this](int index) {
+            port_row_->setVisible(index == 2);
+            syncPreview();
+          });
+  connect(host_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
+  connect(port_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
+  connect(user_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
+  connect(pass_, &QLineEdit::textChanged, this, [this] { syncPreview(); });
+  syncPreview();
 
   auto* rowBtn = new QHBoxLayout();
   rowBtn->addStretch(1);
+#ifndef Q_OS_ANDROID
+  // 桌面上仍可以只抄一行命令去脚本里跑，不动持久化偏好
   auto* copy = new QPushButton("复制命令行", this);
   connect(copy, &QPushButton::clicked, this, &ConnectDialog::onCopy);
   rowBtn->addWidget(copy);
+#endif
+  auto* save = new QPushButton("保存", this);
+  connect(save, &QPushButton::clicked, this, &ConnectDialog::onSave);
+  rowBtn->addWidget(save);
   auto* close = new QPushButton("关闭", this);
-  connect(close, &QPushButton::clicked, this, &QDialog::accept);
+  close->setDefault(true);
+  connect(close, &QPushButton::clicked, this, &QDialog::reject);
   rowBtn->addWidget(close);
   root->addLayout(rowBtn);
+  radio::app::touch::fitDialog(this);
+}
+
+app::LinkPrefs ConnectDialog::collect() const {
+  app::LinkPrefs p;
+  p.link = static_cast<app::Link>(
+      app::linkFromModeIndex(mode_->currentIndex(), app::bridgeAvailable()));
+  // 表单是用户当面表态，优先级与命令行同级；把当前内容当作「cli」侧喂给
+  // resolveLink，可以让同一套降级判定（缺 UDP / IP 为空 / 没有 python）生效
+  p.explicit_cli = true;
+  p.host = host_->text().toStdString();
+  p.port = port_->text().toUShort();
+  if (p.port == 0) p.port = app::LinkPrefs{}.port;  // 填了个不存在的端口：回默认
+  p.user = user_->text().toStdString();
+  p.pass = pass_->text().toStdString();
+  p.python_exe = python_ ? python_->text().toStdString() : std::string{};
+  return p;
+}
+
+void ConnectDialog::syncPreview() {
+  const app::LinkPrefs wanted = collect();
+  const app::LinkPrefs eff = app::resolveLink(wanted, app::LinkPrefs{});
+  QString text = QString("下次启动 → %1").arg(app::linkStatusText(eff));
+  if (eff.link != wanted.link)
+    text += QString("（所选链路在本机建不出来，实际落到 %1）")
+                .arg(app::linkName(eff.link));
+#ifndef Q_OS_ANDROID
+  if (eff.link == app::Link::Tcp) {
+    text += QStringLiteral(
+        "\nCI-V over TCP 没有命令行开关：保存后重启 radio-suite 生效");
+  } else {
+    QString cmd = "radio-suite.exe";
+    if (eff.link == app::Link::Udp)
+      cmd += QString(" --radio %1 --user %2 --pass %3")
+                 .arg(QString::fromStdString(wanted.host),
+                      QString::fromStdString(wanted.user),
+                      QString::fromStdString(wanted.pass));
+    else if (eff.link == app::Link::PyBridge)
+      cmd += QString(" --radio %1 --user %2 --pass %3 --radio-py")
+                 .arg(QString::fromStdString(wanted.host),
+                      QString::fromStdString(wanted.user),
+                      QString::fromStdString(wanted.pass));
+    else
+      cmd += " --mock";
+    text += "\n" + cmd;
+  }
+#endif
+  cmdline_->setText(text);
+}
+
+void ConnectDialog::onSave() {
+  prefs_ = collect();
+  accept();
 }
 
 void ConnectDialog::onCopy() {
   QGuiApplication::clipboard()->setText(cmdline_->text());
-  cmdline_->setText(cmdline_->text() + "   ✓ 已复制（重启 radio-suite 生效）");
 }

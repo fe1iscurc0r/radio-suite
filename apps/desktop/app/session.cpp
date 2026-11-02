@@ -18,6 +18,9 @@ RadioSession::RadioSession(std::shared_ptr<core::ICivTransport> transport,
 }
 
 void RadioSession::start() {
+  started_ = true;
+  last_rx_ms_ = 0;   // 「还没收到过回帧」和「刚断」必须区分开
+  link_alive_ = false;
   if (!transport_->isOpen()) {
     std::string err;
     if (!transport_->open(&err)) {
@@ -31,13 +34,32 @@ void RadioSession::start() {
 }
 
 void RadioSession::stop() {
+  started_ = false;
   poll_timer_.stop();
   tick_timer_.stop();
+  if (link_alive_) {
+    link_alive_ = false;
+    emit linkChanged(false);
+  }
   if (gate_.phase() == core::PttPhase::Tx) {
     gate_.requestRx(nowMs());
     sendPtt(false);
   }
   transport_->close();
+}
+
+qint64 RadioSession::replyAgeMs() const {
+  if (last_rx_ms_ == 0) return -1;
+  return static_cast<qint64>(nowMs() - last_rx_ms_);
+}
+
+void RadioSession::refreshLinkLiveness(uint64_t now) {
+  if (!started_) return;
+  const bool alive =
+      last_rx_ms_ != 0 && now - last_rx_ms_ <= link_timeout_ms_;
+  if (alive == link_alive_) return;
+  link_alive_ = alive;
+  emit linkChanged(alive);
 }
 
 uint64_t RadioSession::nowMs() const {
@@ -84,6 +106,7 @@ void RadioSession::pollRadio() {
 
 void RadioSession::onTick() {
   const uint64_t now = nowMs();
+  refreshLinkLiveness(now);
   const core::PttPhase before = gate_.phase();
   gate_.tick(now);
   const core::PttPhase after = gate_.phase();
@@ -100,6 +123,9 @@ void RadioSession::onTick() {
 void RadioSession::onFrame(std::span<const uint8_t> raw) {
   auto f = core::civ::parseFrame(raw);
   if (!f) return;
+  // 任何能解析的回帧都算「电台还在说话」。解析不出的字节不算——那可能只是
+  // 流错位，拿它续命会把断链显示成在线。
+  last_rx_ms_ = nowMs();
 
   core::RadioState s = store_.snapshot();
   bool changed = false;
@@ -218,7 +244,13 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
     s.dtcs_tx_polarity = di->tx_polarity;
     changed = true;
   } else if (core::civ::isNak(*f)) {
-    qWarning() << "radio NAK — 命令被拒（频段限制或参数）";  // M3：进原始帧抽屉
+    // 0xFA 的 payload[0] 是被拒的那条命令。以前只 qWarning，UI 完全不知道命令
+    // 被电台拒了，tuneTo 这类返回值也就成了假成功。
+    const quint8 rejected =
+        f->payload.empty() ? core::civ::kNak : f->payload.front();
+    qWarning() << "radio NAK — 命令被拒（频段限制或参数），opcode=0x"
+               << QString::number(rejected, 16);
+    emit commandRejected(rejected);
   }
   if (changed) {
     s.last_update_ms = nowMs();

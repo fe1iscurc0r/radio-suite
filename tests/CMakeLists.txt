@@ -16,6 +16,8 @@ add_executable(radio_tests
   test_aprs.cpp
   test_wsjtx.cpp
   test_ft8.cpp
+  test_ft8_slot.cpp
+  test_ft8_tx.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
@@ -42,7 +44,8 @@ catch_discover_tests(radio_tests)
 # transport_udp.cpp，即 RADIO_SUITE_UDP=ON 且找到 Qt6::Network。
 find_package(Qt6 QUIET COMPONENTS Network)
 if(RADIO_SUITE_UDP AND Qt6Network_FOUND)
-  target_sources(radio_tests PRIVATE test_rsba1_loopback.cpp fake_rsba1_server.cpp)
+  target_sources(radio_tests PRIVATE test_rsba1_loopback.cpp fake_rsba1_server.cpp
+                                     test_transport_tcp.cpp)
   target_link_libraries(radio_tests PRIVATE Qt6::Network)
 endif()
 
@@ -89,7 +92,8 @@ if(BUILD_GUI AND TARGET radio::aprs_db)
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_panel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_map.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_messages_dialog.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_rf.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/aprs_rf.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp")
   target_link_libraries(radio_aprs_ui_tests PRIVATE
     radio::aprs_db
     Qt6::Widgets
@@ -112,8 +116,11 @@ if(BUILD_GUI)
   find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
   add_executable(radio_wsjtx_ui_tests
     test_wsjtx_ui.cpp
+    test_multicast_lock.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_client.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/multicast_lock.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp")
   target_link_libraries(radio_wsjtx_ui_tests PRIVATE
     radio::wsjtx
     Qt6::Widgets
@@ -124,6 +131,34 @@ if(BUILD_GUI)
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   set_target_properties(radio_wsjtx_ui_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_wsjtx_ui_tests)
+
+  # FT8 本机解码面板：PCM→槽解码→表格，双击回填（离屏）
+  add_executable(radio_ft8_ui_tests
+    test_ft8_ui.cpp
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/ft8_panel.cpp")
+  target_link_libraries(radio_ft8_ui_tests PRIVATE
+    radio::ft8_codec
+    Qt6::Widgets
+    Catch2::Catch2WithMain)
+  target_include_directories(radio_ft8_ui_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/desktop")
+  set_target_properties(radio_ft8_ui_tests PROPERTIES AUTOMOC ON)
+  catch_discover_tests(radio_ft8_ui_tests)
+
+  # 本机声学环回：扬声器播一槽、麦克风收一槽。要真出声故默认跳过，不进 CI。
+  if(TARGET radio::audio)
+    add_executable(radio_ft8_acoustic_tests test_ft8_acoustic.cpp)
+    target_link_libraries(radio_ft8_acoustic_tests PRIVATE
+      radio::ft8_codec
+      radio::audio
+      Qt6::Core
+      Catch2::Catch2WithMain)
+    target_include_directories(radio_ft8_acoustic_tests PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${CMAKE_SOURCE_DIR}/apps/desktop")
+    catch_discover_tests(radio_ft8_acoustic_tests)
+  endif()
 endif()
 
 if(TARGET radio::aprs_db)
@@ -154,16 +189,24 @@ endif()
 
 # 对话框接线测试：需要 Widgets（BUILD_GUI=OFF 的 CI 任务自动跳过）
 if(BUILD_GUI AND TARGET radio::ui_common)
-  find_package(Qt6 REQUIRED COMPONENTS Widgets)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
   add_executable(radio_ui_tests
     test_dialogs.cpp
     test_audio_ui.cpp
+    test_touch_dialog.cpp
+    test_launch_config.cpp
+    test_device_report.cpp
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/set_mode_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/repeater_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/device_report.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/self_check_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_stats.cpp")
   target_include_directories(radio_ui_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -171,6 +214,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
   target_link_libraries(radio_ui_tests PRIVATE
     radio::core
     Qt6::Widgets
+    Qt6::Network
     Catch2::Catch2WithMain)
   set_target_properties(radio_ui_tests PROPERTIES AUTOMOC ON)
   catch_discover_tests(radio_ui_tests)

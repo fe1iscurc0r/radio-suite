@@ -12,6 +12,7 @@
 #include <QVBoxLayout>
 
 #include "app/session.h"
+#include "app/touch_dialog.h"
 
 namespace radio::app {
 
@@ -114,6 +115,8 @@ MemoryChannelDialog::MemoryChannelDialog(RadioSession* session, QWidget* parent)
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   connect(session_, &RadioSession::stateChanged, this,
           &MemoryChannelDialog::syncFromState);
+
+  radio::app::touch::fitDialog(this);
 }
 
 void MemoryChannelDialog::readChannel() {
