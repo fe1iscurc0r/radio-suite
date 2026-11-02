@@ -13,6 +13,9 @@ set(APP_SRC
   audio_stats.cpp
   audio_dialog.cpp
   MainWindow.cpp
+  MainWindow_panels.cpp
+  MainWindow_android.cpp
+  MainWindow_actions.cpp
   WaterfallWidget.cpp
   meter_widgets.cpp
   dial_widget.cpp
