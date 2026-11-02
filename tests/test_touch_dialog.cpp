@@ -29,6 +29,9 @@ namespace {
 
 QApplication& app() {
   qputenv("QT_QPA_PLATFORM", "offscreen");
+  // Qt 把这两个开关读成函数里的 static，一旦有测试先滚动过就来不及了；
+  // 放在建 QApplication 之前，和 main.cpp 的顺序保持一致
+  radio::app::touch::installScrollRepaintWorkaround();
   static int argc = 1;
   static char name[] = "radio-ui-tests";
   static char* argv[] = {name, nullptr};
@@ -157,9 +160,8 @@ void spin(int ms = 200) {
 
 TEST_CASE("scrolling repaints the rows that never left the screen",
           "[touch][ui]") {
-  // 安卓启动时靠这个调用压掉 Qt 的搬像素快滚动；不装的话下面那条
-  // CHECK 会挂（实测 mid paints=0），手机上就是屏幕左端慢一排的滞后带
-  radio::app::touch::installScrollRepaintWorkaround();
+  // 开关在 app() 里装（建 QApplication 之前）。不装的话下面那条 CHECK
+  // 会挂（实测 mid paints=0），手机上就是屏幕左端慢一排的滞后带
   app();
   qputenv("RADIO_SUITE_TOUCH_FIT", "1");
 
