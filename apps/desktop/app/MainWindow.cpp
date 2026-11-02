@@ -219,6 +219,7 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
   // Windows 默认定时器粒度 15.6 ms，33 ms 实测只跑到 21 fps（间隔 47 ms）；
   // PreciseTimer 才会去要 1 ms 粒度。安卓本来就是单调时钟精确唤醒
   bench_timer_.setTimerType(Qt::PreciseTimer);
+  bench_timer_.setTimerType(Qt::PreciseTimer);  // 33ms 不被 15.6ms 粒度抖成 47ms
   bench_timer_.start(33);
 
   // 显示层刷新：倒计时/确认窗口剩余秒走秒（判定与死限都在 core）

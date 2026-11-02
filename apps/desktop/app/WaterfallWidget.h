@@ -48,6 +48,7 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   unsigned tex_format_ = 0;    // GL_RED 或 GL_LUMINANCE
   int next_row_ = 0;  // 下一个写入行 = 当前最旧行（也是显示底边）
   bool row_pending_ = false;
+  bool line_dirty_ = true;  // 谱线顶点脏标志（GPU 调度：脏才重算+重传）
   std::vector<uint8_t> row_;
   std::vector<float> line_db_;
   std::vector<float> line_verts_;    // 谱线描边（2N）
@@ -58,6 +59,7 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   QOpenGLShaderProgram wf_prog_;
   QOpenGLShaderProgram line_prog_;
   unsigned quad_vbo_ = 0;
+  unsigned grid_vbo_ = 0;   // 静态网格（initializeGL 一次上传，paintGL 只 bind+draw）
   unsigned line_vbo_ = 0;
 
   float db_floor_ = -115.0f;
