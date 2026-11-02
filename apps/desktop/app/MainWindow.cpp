@@ -197,6 +197,20 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
           &MainWindow::onTuneRejected);
   connect(&session_, &radio::app::RadioSession::txBlocked, this,
           &MainWindow::onTxBlocked);
+  connect(&session_, &radio::app::RadioSession::linkChanged, this,
+          [this](bool alive) {
+            // G-6：断链要当场说破，不能继续显示上一次的值装作在线
+            flashStatus(alive ? QStringLiteral("电台链路恢复：又开始回话了")
+                              : QStringLiteral(
+                                    "电台链路失联：超过 2 s 没有任何回帧"),
+                        !alive);
+          });
+  connect(&session_, &radio::app::RadioSession::commandRejected, this,
+          [this](quint8 opcode) {
+            flashStatus(QStringLiteral("电台拒绝了命令 0x%1（频段限制或参数）")
+                            .arg(opcode, 2, 16, QLatin1Char('0')),
+                        true);
+          });
   connect(&bench_timer_, &QTimer::timeout, this, &MainWindow::onBenchTick);
   bench_timer_.start(66);  // ~15 fps（M0 红线验证在 M2 做满帧压测）
 
@@ -1561,6 +1575,8 @@ radio::app::ReportInput MainWindow::selfCheckInput() {
 #endif
   in.link_name = QString::fromLatin1(radio::app::linkName(link_.link));
   in.rig_host = QString::fromStdString(link_.host);
+  in.rig_link_alive = session_.linkAlive();
+  in.rig_reply_age_ms = session_.replyAgeMs();
   if (link_.link == radio::app::Link::Tcp && !link_.host.empty())
     in.rig_host += QStringLiteral(":%1").arg(link_.port);
   if (wsjtx_panel_ && wsjtx_panel_->client()) {

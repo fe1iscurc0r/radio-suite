@@ -94,6 +94,17 @@ class RadioSession : public QObject {
   void pttPhaseChanged(int phase);
   void tuneRejected(quint64 hz);  // RX 范围外拒绝设频（UI 提示用）
   void txBlocked(quint64 hz);     // 发射门禁：非业余段拒绝进入 TX
+  // 链路活性：超过 kLinkTimeoutMs 没有任何一个能解析的回帧就算断。
+  // CI-V 帧里没有事务号，「有没有活着」只能靠「还在回话」判，别拿
+  // 「命令发出去了」当在线证据——那是 G-6 要打的假。
+  void linkChanged(bool alive);
+  void commandRejected(quint8 opcode);  // 电台回了 0xFA（NAK）
+
+ public:
+  // 链路活性（-1 = 这条链路至今一个回帧都没给过，别把它当「刚断」）
+  bool linkAlive() const { return link_alive_; }
+  qint64 replyAgeMs() const;
+  void setLinkTimeoutMs(uint64_t ms) { link_timeout_ms_ = ms; }
 
  private:
   void onFrame(std::span<const uint8_t> raw);
@@ -101,6 +112,7 @@ class RadioSession : public QObject {
   void onTick();
   void sendPtt(bool on);
   uint64_t nowMs() const;
+  void refreshLinkLiveness(uint64_t now);
 
   std::shared_ptr<core::ICivTransport> transport_;
   uint8_t radio_addr_;
@@ -111,6 +123,10 @@ class RadioSession : public QObject {
   QTimer cw_timer_;  // CW 文本预计发完 → endScriptedTx
   bool last_ptt_sent_ = false;
   core::PttPhase last_phase_ = core::PttPhase::Rx;
+  bool started_ = false;
+  bool link_alive_ = false;
+  uint64_t last_rx_ms_ = 0;
+  uint64_t link_timeout_ms_ = 2000;
 };
 
 }  // namespace radio::app
