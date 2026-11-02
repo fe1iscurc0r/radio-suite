@@ -325,7 +325,10 @@ TEST_CASE("session: liveness comes from replies and silence is reported honestly
   qtTestApp();
   auto t = std::make_shared<ScriptedTransport>();
   radio::app::RadioSession session(t);
-  session.setLinkTimeoutMs(80);
+  // 活性判定挂在 100 ms 的 tick 上：阈值必须明显大于 tick 周期，否则「评估那一刻
+  // 的帧龄」本身就已超阈值，在线永远翻不真。CI 的 Windows runner 把这个时序错误
+  // 抓了出来（本地 0.47 s 通过是撞运气）。这里留 5 倍余量。
+  session.setLinkTimeoutMs(500);
   std::vector<int> flips;  // 1=恢复 0=失联
   QObject::connect(&session, &radio::app::RadioSession::linkChanged,
                    [&flips](bool alive) { flips.push_back(alive ? 1 : 0); });
@@ -334,24 +337,24 @@ TEST_CASE("session: liveness comes from replies and silence is reported honestly
   // 一个回帧都没有：既不算在线，也不该凭空发「断了」信号（没连上 ≠ 刚断）
   CHECK_FALSE(session.linkAlive());
   CHECK(session.replyAgeMs() == -1);
-  waitUntil([&] { return !flips.empty(); }, 250);
+  waitUntil([&] { return !flips.empty(); }, 200);
   CHECK(flips.empty());
 
   // buildFrame 的 body 是「cmd + 数据」，不是纯数据
   const std::vector<uint8_t> read_freq_body = {0x03};
   t->reply(radio::core::civ::buildFrame(
       0xE0, 0x00, std::span<const uint8_t>(read_freq_body)));
-  CHECK(waitUntil([&] { return session.linkAlive(); }));
+  CHECK(waitUntil([&] { return session.linkAlive(); }, 2000));
   CHECK(session.replyAgeMs() >= 0);
   REQUIRE(flips.size() == 1);
   CHECK(flips.at(0) == 1);
 
   // 之后装死：超过阈值必须报失联——这是清单 G-6 的代码侧依据
-  CHECK(waitUntil([&] { return flips.size() == 2; }));
+  CHECK(waitUntil([&] { return flips.size() == 2; }, 3000));
   REQUIRE(flips.size() == 2);
   CHECK(flips.at(1) == 0);
   CHECK_FALSE(session.linkAlive());
-  CHECK(session.replyAgeMs() >= 80);
+  CHECK(session.replyAgeMs() >= 500);
 }
 
 TEST_CASE("session: a NAK is surfaced to the UI instead of only hitting the log",
