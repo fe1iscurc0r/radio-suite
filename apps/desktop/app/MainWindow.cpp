@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCloseEvent>
+#include <QElapsedTimer>
 #include <QDateTime>
 #include <QDialog>
 #include <QEvent>
@@ -212,7 +213,13 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
                         true);
           });
   connect(&bench_timer_, &QTimer::timeout, this, &MainWindow::onBenchTick);
-  bench_timer_.start(66);  // ~15 fps（M0 红线验证在 M2 做满帧压测）
+  // 33 ms ≈ 30 fps。不能更慢：FFT 窗只有 2048/48000 = 42.7 ms，原来 66 ms
+  // 一拍等于每两拍之间有 23 ms 音频根本没被分析过（信号会整段漏掉），
+  // 画面上也就是这种一格一格的段落感
+  // Windows 默认定时器粒度 15.6 ms，33 ms 实测只跑到 21 fps（间隔 47 ms）；
+  // PreciseTimer 才会去要 1 ms 粒度。安卓本来就是单调时钟精确唤醒
+  bench_timer_.setTimerType(Qt::PreciseTimer);
+  bench_timer_.start(33);
 
   // 显示层刷新：倒计时/确认窗口剩余秒走秒（判定与死限都在 core）
   connect(&ui_timer_, &QTimer::timeout, this, &MainWindow::refreshPtt);
