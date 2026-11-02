@@ -15,7 +15,10 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   Q_OBJECT
  public:
   static constexpr int kTexW = 1024;  // 显示列数
-  static constexpr int kTexH = 256;   // 瀑布保留行数（环形）
+  // 环形行数：512 行 @30fps = 17 s 存量，画面上可见的是其中 0.65（≈11 s）。
+  // 行数跟着帧率一起翻倍，否则提帧率会把历史时长砍半（原来 256 行 @15fps
+  // 同样是 17 s 存量 / 11 s 可见）
+  static constexpr int kTexH = 512;
 
   explicit WaterfallWidget(QWidget* parent = nullptr);
   ~WaterfallWidget() override;
