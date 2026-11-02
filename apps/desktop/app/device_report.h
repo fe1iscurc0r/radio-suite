@@ -48,6 +48,10 @@ struct ReportInput {
   bool rig_http_bus_built = false;  // 编进了 HTTP 总线 / rigctld 服务端
   QString link_name;                // linkName(Link)：mock / udp / bridge
   QString rig_host;
+  // 链路活性由 session 判（阈值只活在那一处），这里只转述：
+  // rig_reply_age_ms = -1 表示这条链路至今没给过一个能解析的回帧。
+  bool rig_link_alive = false;
+  qint64 rig_reply_age_ms = -1;
 
   bool wsjtx_listening = false;
   QString wsjtx_group;

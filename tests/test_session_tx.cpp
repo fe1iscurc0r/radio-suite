@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <catch2/catch_test_macros.hpp>
 
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QThread>
+
+#include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "app/session.h"
+#include "core/civ.h"
 #include "core/transport_mock.h"
 #include "qt_test_app.h"
 
@@ -279,4 +287,88 @@ TEST_CASE("session ctcss and dtcs settings roundtrip", "[session][tone]") {
   CHECK(s.dtcs_code == 23);
   CHECK(s.dtcs_rx_polarity == 1);
   CHECK(s.dtcs_tx_polarity == 0);
+}
+
+namespace {
+
+// 能自己决定「什么时候回一帧、回什么」的传输：链路活性只能由回帧证明，
+// 所以测它必须有一个可以装死、也可以开口的对端。
+class ScriptedTransport final : public radio::core::ICivTransport {
+ public:
+  bool open(std::string*) override { return open_ = true; }
+  void close() override { open_ = false; }
+  bool isOpen() const override { return open_; }
+  bool send(std::span<const uint8_t>) override { return open_; }
+
+  void reply(std::vector<uint8_t> frame) { emitFrame(frame); }
+
+ private:
+  bool open_ = false;
+};
+
+// 活性判定挂在 100 ms 的 tick 上，所以要转事件循环；不为此引 Qt6::Test，
+// 用仓库里其它用例同款的 waitUntil。
+bool waitUntil(const std::function<bool()>& pred, int timeout_ms = 1500) {
+  QElapsedTimer timer;
+  timer.start();
+  while (!pred() && timer.elapsed() < timeout_ms) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    QThread::msleep(2);
+  }
+  return pred();
+}
+
+}  // namespace
+
+TEST_CASE("session: liveness comes from replies and silence is reported honestly",
+          "[session][link]") {
+  qtTestApp();
+  auto t = std::make_shared<ScriptedTransport>();
+  radio::app::RadioSession session(t);
+  session.setLinkTimeoutMs(80);
+  std::vector<int> flips;  // 1=恢复 0=失联
+  QObject::connect(&session, &radio::app::RadioSession::linkChanged,
+                   [&flips](bool alive) { flips.push_back(alive ? 1 : 0); });
+
+  session.start();
+  // 一个回帧都没有：既不算在线，也不该凭空发「断了」信号（没连上 ≠ 刚断）
+  CHECK_FALSE(session.linkAlive());
+  CHECK(session.replyAgeMs() == -1);
+  waitUntil([&] { return !flips.empty(); }, 250);
+  CHECK(flips.empty());
+
+  // buildFrame 的 body 是「cmd + 数据」，不是纯数据
+  const std::vector<uint8_t> read_freq_body = {0x03};
+  t->reply(radio::core::civ::buildFrame(
+      0xE0, 0x00, std::span<const uint8_t>(read_freq_body)));
+  CHECK(waitUntil([&] { return session.linkAlive(); }));
+  CHECK(session.replyAgeMs() >= 0);
+  REQUIRE(flips.size() == 1);
+  CHECK(flips.at(0) == 1);
+
+  // 之后装死：超过阈值必须报失联——这是清单 G-6 的代码侧依据
+  CHECK(waitUntil([&] { return flips.size() == 2; }));
+  REQUIRE(flips.size() == 2);
+  CHECK(flips.at(1) == 0);
+  CHECK_FALSE(session.linkAlive());
+  CHECK(session.replyAgeMs() >= 80);
+}
+
+TEST_CASE("session: a NAK is surfaced to the UI instead of only hitting the log",
+          "[session][nak]") {
+  qtTestApp();
+  auto t = std::make_shared<ScriptedTransport>();
+  radio::app::RadioSession session(t);
+  std::vector<int> naks;
+  QObject::connect(&session, &radio::app::RadioSession::commandRejected,
+                   [&naks](quint8 opcode) { naks.push_back(opcode); });
+  session.start();
+
+  const std::vector<uint8_t> nak_body = {radio::core::civ::kNak,
+                                         0x03};  // 被拒的是设频命令
+  t->reply(radio::core::civ::buildFrame(0xE0, 0x00,
+                                       std::span<const uint8_t>(nak_body)));
+  // emitFrame 是同步回调，不需要等事件循环
+  REQUIRE(naks.size() == 1);
+  CHECK(naks.at(0) == 0x03);
 }

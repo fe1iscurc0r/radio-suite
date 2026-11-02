@@ -198,3 +198,30 @@ TEST_CASE("probe state text covers all four states", "[report]") {
   CHECK(radio::app::probeStateText(radio::app::ProbeState::NotApplicable) ==
         QStringLiteral("不适用"));
 }
+
+TEST_CASE("device report: link liveness comes from replies, never from sends",
+          "[report]") {
+  auto in = androidInput();
+  in.rig_reply_age_ms = -1;  // 一个回帧都没给过
+  auto rows = radio::app::buildDeviceReport(in);
+  const auto* age = rowOf(rows, QStringLiteral("回帧活性"));
+  REQUIRE(age != nullptr);
+  CHECK(age->state == radio::app::ProbeState::Warn);
+
+  in.rig_reply_age_ms = 120;
+  in.rig_link_alive = true;
+  rows = radio::app::buildDeviceReport(in);
+  age = rowOf(rows, QStringLiteral("回帧活性"));
+  REQUIRE(age != nullptr);
+  CHECK(age->state == radio::app::ProbeState::Ok);
+  CHECK(age->note.contains(QStringLiteral("120")));
+
+  in.rig_reply_age_ms = 5000;
+  in.rig_link_alive = false;
+  rows = radio::app::buildDeviceReport(in);
+  age = rowOf(rows, QStringLiteral("回帧活性"));
+  REQUIRE(age != nullptr);
+  CHECK(age->state == radio::app::ProbeState::Missing);
+  // 断链的措辞必须点破「不许再显示在线」，这是 G-6 的口径
+  CHECK(age->note.contains(QStringLiteral("在线")));
+}

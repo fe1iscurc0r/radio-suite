@@ -90,6 +90,18 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
           ? QStringLiteral("%1 —— 内置模拟电台，不是真机链路；凡是判电台的条目都不许拿它打勾")
                 .arg(in.link_name.isEmpty() ? QStringLiteral("未选择") : in.link_name)
           : QStringLiteral("%1 → %2").arg(in.link_name).arg(in.rig_host));
+  if (in.rig_reply_age_ms < 0)
+    rows << makeRow("电台链路", "回帧活性", ProbeState::Warn,
+                    QStringLiteral("这条链路至今没给过一个能解析的回帧"
+                                   "（没连上或刚启动）——不能据此显示在线"));
+  else if (in.rig_link_alive)
+    rows << makeRow("电台链路", "回帧活性", ProbeState::Ok,
+                    QStringLiteral("最近一次回帧在 %1 ms 前").arg(in.rig_reply_age_ms));
+  else
+    rows << makeRow("电台链路", "回帧活性", ProbeState::Missing,
+                    QStringLiteral("已经 %1 秒没有回帧：链路断了，"
+                                   "UI 不许再显示在线")
+                        .arg(in.rig_reply_age_ms / 1000));
   rows << makeRow("电台链路", "UDP（RS-BA1）传输",
                   in.rig_udp_built ? ProbeState::Ok : ProbeState::Missing,
                   in.rig_udp_built
