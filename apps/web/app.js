@@ -28,24 +28,42 @@ function fmtFreq(hz) {
   return mhz.slice(0, 3) + '.' + mhz.slice(3, 6) + '.' + mhz.slice(6);
 }
 
-/* ---- 频谱轮询（250ms 快照）→ canvas ---- */
+/* ---- 频谱：SSE 实时推送优先（273"M5 全量再上 SSE"提前落地），轮询兜底 ---- */
 const cv = $('spectrum'), g = cv.getContext('2d');
+let sseMode = false;
+function drawSpectrum(d) {
+  const n = d.length;
+  g.fillStyle = '#070a10';
+  g.fillRect(0, 0, cv.width, cv.height);
+  g.strokeStyle = '#6f6';
+  g.beginPath();
+  for (let i = 0; i < n; i++) {
+    const x = i / n * cv.width;
+    const y = cv.height - Math.max(0, Math.min(1, (d[i] + 110) / 100)) * (cv.height - 4);
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
 async function pollSpectrum() {
+  if (sseMode) return;  // SSE 已接管
   try {
     const r = await fetch('/api/spectrum');
     const j = await r.json();
-    const d = j.power_db, n = d.length;
-    g.fillStyle = '#070a10';
-    g.fillRect(0, 0, cv.width, cv.height);
-    g.strokeStyle = '#6f6';
-    g.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = i / n * cv.width;
-      const y = cv.height - Math.max(0, Math.min(1, (d[i] + 110) / 100)) * (cv.height - 4);
-      i ? g.lineTo(x, y) : g.moveTo(x, y);
-    }
-    g.stroke();
+    drawSpectrum(j.power_db);
   } catch { /* 断线时保留上一帧 */ }
+}
+
+/* SSE：服务端每帧推 power_db，断开自动重连（EventSource 原生） */
+function openSse() {
+  const es = new EventSource('/api/spectrum/stream');
+  es.onmessage = e => {
+    sseMode = true;
+    const j = JSON.parse(e.data);
+    if (!j.power_db) return;
+    connEl.textContent = '频谱：SSE 实时推送';
+    drawSpectrum(j.power_db);
+  };
+  es.onerror = () => { sseMode = false; };
 }
 
 /* ---- 控制出口（走 session 唯一出口，门禁在引擎侧） ---- */

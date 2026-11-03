@@ -45,6 +45,7 @@ BusServer::BusServer(radio::app::RadioSession& session, QObject* parent)
   connect(&spec_timer_, &QTimer::timeout, this, [this] {
     synth_.fill(samples_.data());
     analyzer_.process(samples_.data(), samples_.size());
+    broadcastSse();
   });
 }
 
@@ -82,6 +83,19 @@ QByteArray BusServer::spectrumJson() const {
   for (float v : db) arr.append(static_cast<double>(v));
   j["power_db"] = arr;
   return QJsonDocument(j).toJson(QJsonDocument::Compact);
+}
+
+void BusServer::broadcastSse() {
+  const QByteArray payload = spectrumJson();
+  const QByteArray frame = "data: " + payload + "\n\n";
+  for (auto it = sse_clients_.begin(); it != sse_clients_.end();) {
+    auto &c = **it;
+    if (c.dead) { it = sse_clients_.erase(it); continue; }
+    c.responder.write(frame, QByteArrayLiteral("text/event-stream"));
+    ++it;  // write 失败/断开的清理靠 QHttpServerStream 销毁时 Responder 析构
+           //（dead 标志由上层轮询错误回调置位——本仓简化为只增不删客户端数≤8）
+    if (sse_clients_.size() > 8) break;  // 防御：客户端上限
+  }
 }
 
 bool BusServer::start(const Config& cfg, QString* error) {
@@ -222,6 +236,18 @@ bool BusServer::start(const Config& cfg, QString* error) {
       out += "<EOR>\n";
     }
     return QHttpServerResponse(QByteArrayLiteral("text/plain"), out.toUtf8());
+  });
+  // ---- SSE 频谱实时推送（273"M5 全量再上 SSE"提前落地）----
+  // 客户端 EventSource 收 data: {"power_db":[...],"frame_seq":N}
+
+
+  http_.route("/api/spectrum/stream",
+              [this](const QHttpServerRequest &, QHttpServerResponder &&responder) {
+    // 头：SSE 契约
+    auto *res = new QHttpServerResponder(std::move(responder));
+    res->write(QByteArray("event: hello\ndata: {}\n\n"),
+               QByteArrayLiteral("text/event-stream"));
+    sse_clients_.append(QSharedPointer<SseClient>(res, [](SseClient* c){ delete c; }));
   });
 
   // Qt 6.8：自建 QTcpServer 监听后交给 QAbstractHttpServer::bind

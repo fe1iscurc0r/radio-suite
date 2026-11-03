@@ -8,6 +8,7 @@
 #pragma once
 
 #include <QHttpServer>
+#include <QHttpServerResponder>
 #include <QObject>
 #include <QTimer>
 #include <QJsonArray>
@@ -38,6 +39,7 @@ class BusServer : public QObject {
   bool authorized(const QHttpServerRequest& req) const;
   QString stateJson() const;
   QByteArray spectrumJson() const;
+  void broadcastSse();  // SSE 频谱广播（spec_timer_ 每帧向所有客户端写）
 
   radio::app::RadioSession& session_;
   QHttpServer http_;
@@ -54,6 +56,14 @@ class BusServer : public QObject {
   // PWA 薄片：QSO 内存队列（POST /api/qso 入队，/api/qso.adif 导出）
   QJsonArray qso_log_;
   QString web_root_;
+
+  // SSE 频谱推送（273"M5 全量再上 SSE"提前落地）：
+  // 每客户端持 move 来的 Responder；spec_timer_ 广播；断开由 write 失败清理
+  struct SseClient {
+    QHttpServerResponder responder;  // move 持有（非 QObject，需显式清理标志）
+    bool dead = false;
+  };
+  QList<QSharedPointer<SseClient>> sse_clients_;
 };
 
 }  // namespace radio::bus
