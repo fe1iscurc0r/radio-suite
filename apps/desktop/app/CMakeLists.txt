@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # radio-suite 可执行：Qt Widgets + QOpenGLWidget 瀑布 + HamLog 融合 + APRS 面板
+# PWA 资产在 apps/web/（bus 进程内服务 / 与 /app.js 等，无需编译）
 # + --headless --bus HTTP 总线（bus/session 已独立成库，这里只链不编）
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets OpenGLWidgets Network)
 find_package(Qt6 QUIET COMPONENTS SerialPort)

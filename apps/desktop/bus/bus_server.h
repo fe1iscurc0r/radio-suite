@@ -10,6 +10,7 @@
 #include <QHttpServer>
 #include <QObject>
 #include <QTimer>
+#include <QJsonArray>
 #include <vector>
 
 #include "session/session.h"
@@ -49,6 +50,10 @@ class BusServer : public QObject {
   radio::dsp::SignalSynth synth_{kFftSize, 48000.0};
   radio::dsp::SpectrumAnalyzer analyzer_{kFftSize, 48000.0};
   std::vector<float> samples_;
+
+  // PWA 薄片：QSO 内存队列（POST /api/qso 入队，/api/qso.adif 导出）
+  QJsonArray qso_log_;
+  QString web_root_;
 };
 
 }  // namespace radio::bus

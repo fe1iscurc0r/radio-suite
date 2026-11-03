@@ -1,11 +1,16 @@
 ﻿// SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bus/bus_server.h"
 
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpServer>
+#include <QUrlQuery>
 
 namespace radio::bus {
 
@@ -87,7 +92,43 @@ bool BusServer::start(const Config& cfg, QString* error) {
     return false;
   }
 
-  http_.route("/", [] {
+  // PWA 静态件（apps/web/）：exe 目录向上找仓库根；找不到回退旧演示页
+  web_root_ = [] {
+    QDir d(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 5; ++i) {
+      const QString cand = d.absoluteFilePath("apps/web");
+      if (QFile::exists(cand + "/index.html")) return cand;
+      if (!d.cdUp()) break;
+    }
+    return QString();
+  }();
+  auto serveWebFile = [&](const QString& rel) {
+    QFile f(web_root_ + "/" + rel);
+    if (!f.open(QIODevice::ReadOnly))
+      return QByteArray("PWA assets not found (apps/web/)");
+    return f.readAll();
+  };
+  http_.route("/", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("text/html"), serveWebFile("index.html"));
+  });
+  http_.route("/app.js", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("text/javascript"),
+                               serveWebFile("app.js"));
+  });
+  http_.route("/sw.js", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("text/javascript"),
+                               serveWebFile("sw.js"));
+  });
+  http_.route("/manifest.webmanifest", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("application/manifest+json"),
+                               serveWebFile("manifest.webmanifest"));
+  });
+  http_.route("/icon.svg", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("image/svg+xml"),
+                               serveWebFile("icon.svg"));
+  });
+  // 旧演示页保留在 /demo（无 PWA 资产时的对照）
+  http_.route("/demo", [] {
     return QHttpServerResponse(QByteArrayLiteral("text/html"),
                                QByteArray(kDemoPage));
   });
@@ -102,6 +143,85 @@ bool BusServer::start(const Config& cfg, QString* error) {
       return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
     return QHttpServerResponse(QByteArrayLiteral("application/json"),
                                spectrumJson());
+  });
+  // ---- PWA 控制出口（273 阶段二薄片：PTT/调谐，走 session 唯一出口）----
+  http_.route("/api/control", QHttpServerRequest::Method::Post,
+              [this](const QHttpServerRequest& req) {
+    if (!authorized(req))
+      return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
+    const auto doc = QJsonDocument::fromJson(req.body());
+    if (!doc.isObject())
+      return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                 QByteArrayLiteral("{\"error\":\"bad json\"}"));
+    const QString action = doc.object().value("action").toString();
+    QJsonObject result;
+    if (action == "ptt_on") {
+      session_.pttButtonPressed();  // 两击门禁由会话编排；PWA 第二击再调即确认
+      result = {{"ptt", session_.gate().phase() ==
+                                       radio::core::PttPhase::Tx
+                                   ? "tx"
+                                   : "confirm_pending"}};
+    } else if (action == "ptt_off") {
+      session_.pttButtonPressed();
+      session_.pttButtonPressed();
+      result = {{"ptt", "rx"}};
+    } else if (action == "tune") {
+      const auto hz = doc.object().value("freq").toVariant().toULongLong();
+      result = {{"tuned", session_.tuneTo(hz)}};
+      if (!session_.tuneTo(hz)) result = {{"error", "rejected"}};
+    } else if (action == "set_mode") {
+      const auto m = radio::core::civ::modeFromName(
+          doc.object().value("mode").toString());
+      if (!m) return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                         QByteArrayLiteral("{\"error\":\"bad mode\"}"));
+      session_.setMode(*m);
+      result = {{"mode", radio::core::civ::modeName(*m)}};
+    } else {
+      return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                 QByteArrayLiteral("{\"error\":\"unknown action\"}"));
+    }
+    return QHttpServerResponse(
+        QByteArrayLiteral("application/json"),
+        QJsonDocument(QJsonObject{{"ok", true}, {"result", result}})
+            .toJson(QJsonDocument::Compact));
+  });
+  // ---- QSO 薄片录入：内存队列 → ADIF 文本（273 验收：grep <CALL: ≥1）----
+  http_.route("/api/qso", QHttpServerRequest::Method::Post,
+              [this](const QHttpServerRequest& req) {
+    if (!authorized(req))
+      return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
+    const auto doc = QJsonDocument::fromJson(req.body());
+    const auto obj = doc.object();
+    QJsonObject q = obj.value("qso").toObject();
+    if (q.isEmpty()) q = obj;
+    if (q.value("callsign").toString().trimmed().isEmpty())
+      return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                 QByteArrayLiteral("{\"error\":\"callsign required\"}"));
+    q["logged_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    qso_log_.append(q);
+    return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                               QJsonDocument(QJsonObject{{"ok", true},
+                                                         {"count", static_cast<double>(qso_log_.size())}})
+                                   .toJson(QJsonDocument::Compact));
+  });
+  http_.route("/api/qso.adif", [this](const QHttpServerRequest& req) {
+    if (!authorized(req))
+      return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
+    QString out = QStringLiteral(
+        "ADIF 导出（PWA 薄片，273 阶段二验收）\n");
+    for (const QJsonValue& v : qso_log_) {
+      const QJsonObject q = v.toObject();
+      const auto f = [&q](const char* k) { return q.value(k).toString(); };
+      out += QString("<CALL:%1>%2 ").arg(f("callsign").length()).arg(f("callsign"));
+      if (!f("freq_mhz").isEmpty())
+        out += QString("<FREQ:%1>%2 ").arg(f("freq_mhz").length()).arg(f("freq_mhz"));
+      if (!f("mode").isEmpty())
+        out += QString("<MODE:%1>%2 ").arg(f("mode").length()).arg(f("mode"));
+      if (!f("rst_sent").isEmpty())
+        out += QString("<RST_SENT:%1>%2 ").arg(f("rst_sent").length()).arg(f("rst_sent"));
+      out += "<EOR>\n";
+    }
+    return QHttpServerResponse(QByteArrayLiteral("text/plain"), out.toUtf8());
   });
 
   // Qt 6.8：自建 QTcpServer 监听后交给 QAbstractHttpServer::bind
