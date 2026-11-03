@@ -1,0 +1,10 @@
+WO-273 阶段二验收 · 延迟测量（2026-10-26，桌面 Chrome 等价路径，本机 bus 8799，mock 电台）
+测量口径：HTTP 往返（发出→响应体收完），无真机无线电环节（真机线路搁置）
+
+control(tune) RTT min/median/max: 1.6 / 13.2 / 45.5 ms
+state GET RTT min/median/max: 0.9 / 11.7 / 26.9 ms
+spectrum GET RTT min/median/max: 2.2 / 12.3 / 31.6 ms
+
+结论：control/频谱/state 的 RTT 均远低于 200ms 换路门槛；
+WebAudio 未纳入薄片（音频流属 M5 全量），不存在 100ms 缓冲问题。
+E1′ PWA 主路维持；K40 实拍待真机线路恢复后补。
