@@ -1,4 +1,4 @@
-# radio-suite 交接说明（2026-10-30 更新，2026-11-01 补 §5.1 手机端路线）
+# radio-suite 交接说明（2026-10-30 更新，2026-11-01 补 §5.1 手机端路线，2026-11-04 §6 按 refs 重核）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
@@ -595,56 +595,93 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
-### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈）
+### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈，2026-11-04 按 refs 实况重核）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
-  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
-  `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
-  → #6/#7 **均未合并**，合并需逐次授权。
-- **安卓这条线的 PR 栈（2026-11-01 深夜实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
-  **已合并**（远端 main = `5a08fa4`）；以下这条链**没有一条进过 main**，且只能从底往上合。
-  #15 `fix/wasapi-capture-measurement`（35570c7）、
-  #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
-  （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
-  → #19 `fix/android-settings-persistence`（`5de74a2`，base #18 的 head）
-  → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
-  → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
-  → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
-  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head；
-  **head 现在就是 `c3d5573`，28 commits**，仍 open）
-  - **已合进 `fix/android-touch-dialogs` 的六条**（都按仓库惯例用 merge commit，
-    与 #12/#13/#14 同法）：#24 → `648658b`（Android 自建 HamLog 库、补出「日志」页）；
-    #25 → `2e3a7ff`（纯文档状态补记）；#27 → `338d8c0`（Wi-Fi 组播锁 JNI + manifest
-    声明 `CHANGE_WIFI_MULTICAST_STATE`）；#28 → `711238d`（面板页「自检 / 台账」，
-    把验收清单 §2b 搬进 app，含「上次启动失败原因」）；#29 → `12140a1`（§6 栈状态 +
-    §2b.1 真机第二轮）；#30 → `c3d5573`（**CI-V over TCP 传输**：`core/transport_tcp`
-    按 FD 切帧 + `Link::Tcp` + 端口偏好 + 台账「网关」那一行）。
-  - ⚠️ 这条链的「合并」只把改动交给上一层分支：**上面六条进的都是
-    `fix/android-touch-dialogs`，不是 `main`**，`main` 仍是 `5a08fa4`，
-    要落到 main 还得从 #15 往上逐条合。
-  - #28 原本 base 在 #27 的分支上；#27 一合，那个 base 就成了已消化的中间分支，
-    所以把 #28 的 base 改到 `fix/android-touch-dialogs` 再合（否则台账会停在死路上）。
-    改 base 后核对过 diff 恰好是台账那三笔：`multicast_lock.*` 与 `AndroidManifest.xml`
-    都不重复出现，`wsjtx_client.cpp` 只剩 `lastError` 那部分改动。
-  - **仍 open 的文档 PR：#26**（`docs/android-roadmap`，§5.1 手机端路线）。它和本节
-    改的是同一个文件的**不同区段**，所以能各自合，不会互相覆盖。
-  - ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-    `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19；`d72b98a`/`de34e74`/`bea2db5`/
-    `895ee1c`/`05296c8`/`7414172`/`18b2fec`/`2d90564` 这批（C9 落地、ADIF 补记、PR 栈、
-    台账与真机补记）现在都算 #23 的 diff——本节这次补记同样如此。
-  回滚点（**倒着撤**，merge commit 要 `-m 1`）：
-  `git revert -m 1 c3d5573`（#30）→ `git revert -m 1 12140a1`（#29）→
-  `git revert -m 1 711238d`（#28）→ `git revert -m 1 338d8c0`（#27）→
-  `git revert -m 1 2e3a7ff`（#25）→ `git revert -m 1 648658b`（#24）；
-  另有 `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、
-  `git revert af7e8d1`（#17）。把分支退回旧 sha 属改写已共享历史（要 force-push），不做。
-  **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
-- **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
+  **AGPL-3.0**），默认分支 `main`（现 `dcebfd7`）。
+- **安卓这条线的 PR 栈（2026-11-04 实况）**
+  - ⚠️ **`main` 已经不是 `5a08fa4`**。远端 main = `dcebfd7`，靠的是四笔消息里带
+    `(local equiv)` 的**本地 merge commit**：`2c4ea48`←#32 的 head `9bcb07a`、
+    `1911970`←#33 `ba53018`、`3b63e6f`←#34 `5da4b8c`、`dcebfd7`←#35 `c521a47`。
+    而 `9bcb07a` 本身叠在 #16→…→#23→#24…#31 这条链上，所以 `2c4ea48` **一笔把
+    #16–#32 的全部内容带进了 main**。GitHub 上 #17–#23 仍显示 open，只是因为它们的
+    base 是已被消化的中间分支——refs 差还在，内容差没有。**确实没进 main 的只有 #15**
+    （`35570c7`，采集冒烟稳态口径）。
+  - 判「这条到底进没进 main」只用 `git merge-base --is-ancestor <sha> origin/main`，
+    不要看 PR 的 open/closed，也不要看 `merged_at`：#33/#34/#35 都有 `merged_at`，
+    但那是合进各自的 base 侧分支，当时离 main 还隔着一层。
+  - 集成分支 `fix/android-touch-dialogs`（= #23 的 head，现 `2d56498`）与 main 的
+    **内容差只剩 6 个文件**：`touch_dialog.{h,cpp}` + `main.cpp` + `tests/test_touch_dialog.cpp`
+    这四个是 #34 那套 `QT_NO_FAST_MOVE` / `QT_NO_FAST_SCROLL`（真机已证伪，见下面那条），
+    main 里在、集成分支故意不带；剩下两个是文档：`docs/HANDOVER.md`（含 §5.1）和
+    `docs/android-真机验收清单.md`，都是集成分支领先、main 还没拿到的补记。
+  - 已合进集成分支的（都按仓库惯例用 merge commit，与 #12/#13/#14 同法）：#24 → `648658b`、
+    #25 → `2e3a7ff`、#27 → `338d8c0`、#28 → `711238d`、#29 → `12140a1`、#30 → `c3d5573`、
+    #31 → `f9ca7ef`、#32 → `d4b056c`、#37 → `2d56498`（#37 是 cherry-pick 落地的
+    「#33 网关 + #35 瀑布图流畅度」，**明确不含 #34**）。
+  - #26（`docs/android-roadmap`，§5.1 手机端路线）GitHub 合不动：`mergeable_state=dirty`
+    （§6 与 #29–#31 那几笔改到了同一区段）。本次把它 replay 成本分支的第一笔
+    （`-x 05b2bb5`，§6 冲突按「保留已更新的实况、只取 §5.1 净新增」解），
+    所以 **#26 由本 PR 取代，不 force-push、不改写它的历史**。
+  - ⚠️ **共享工作树的 HEAD 会被别的会话切走**：本轮另一会话把主工作树切到
+    `feat/arch-cleanup` 时，把我未提交的 `start(33)` 一起卷进了它的提交。
+    之后所有落地动作都改在独立 worktree 里做（`git worktree add`），验完再推分支。
+  - 回滚点（**倒着撤**，merge commit 要 `-m 1`）：
+    `git revert -m 1 2d56498`（#37）→ `git revert -m 1 f9ca7ef`（#31）→
+    `git revert -m 1 d4b056c`（#32）→ `git revert -m 1 c3d5573`（#30）→
+    `git revert -m 1 12140a1`（#29）→ `git revert -m 1 711238d`（#28）→
+    `git revert -m 1 338d8c0`（#27）→ `git revert -m 1 2e3a7ff`（#25）→
+    `git revert -m 1 648658b`（#24）；main 侧那四笔 `(local equiv)` 同理
+    `git revert -m 1 dcebfd7 3b63e6f 1911970 2c4ea48`（**撤到 #34 那笔即可撤掉
+    证伪的滚动开关**，#33/#32 的内容要留意别跟着撤）。把分支退回旧 sha 属改写已共享
+    历史（要 force-push），不做。
+- **手机端滚动左端割裂：三次实验全负，#34 是证伪的（2026-11-02/03 真机 Redmi K40）**
+  - 现象：任何可滚动界面（自检台账、对话框）甩动时，屏幕**左端固定一条**（探针量到
+    割裂线落在屏幕 x≈148 附近）不跟着更新，右侧有拖拽感。
+  - 已试并**已否**的三条：① `QT_NO_FAST_MOVE` + `QT_NO_FAST_SCROLL`（#34 的方案）——
+    设备上 `RSDBG fastmove=[1] fastscroll=[1]` 证明两个开关真的生效了，逐帧像素探针里
+    那根「左端墨迹起点」的梳齿照旧，割裂带一条没少；
+    ② 父控件 `update()` / `window()->update()` 逐拍强绘——桌面侧量到子控件
+    `paintEvent` 次数为 0，非脏区不重绘；③ 换 Qt 6.8.3 / 把该页改成 GL 控件——同样没消。
+    **所以 #34 没进集成分支**，但它已经在 main 上：main 现在带着一个「关掉 Qt 搬像素快滚动」
+    的性能负债而收益为零，要不要撤请拍板（回滚点见上）。
+  - 甩动期间的绘制节奏实测 **15.9 fps（帧间隔 62–63 ms）**。`gfxinfo` /
+    `SurfaceFlinger --latency` 对 Qt 的 ANativeWindow 表面在这台机上取不到有效数，
+    只能自己埋点 + `screencap` 逐帧像素探针。剩余嫌疑指向 Qt 安卓侧 backing store
+    → ANativeWindow 的**部分区域 flush**，未定因，任务 #101 仍 open。
+  - 瀑布图那条线是真修好了（#35→#37）：定时从 66 ms 提到 33 ms（≈30 fps）+
+    `Qt::PreciseTimer`（Windows 默认 15.6 ms 粒度，33 ms 实测只跑到 21 fps/47 ms 间隔），
+    FFT 窗 2048/48000 = 42.7 ms，原来 66 ms 一拍等于每两拍之间有 23 ms 音频根本没被分析；
+    纹理 `kTexH` 256→512、放大改 `GL_LINEAR`（`GL_NEAREST` 在 2.25 px/列时有台阶感）。
+    中途加过「不可见就不算」的 `isVisible()` 节流，真机上把历史冻成了一条平的预填充带，
+    已撤（`c521a47` / 集成分支 `923d540`）。
+- **`feat/arch-cleanup` 这条线（#36 → main，PR #38 在修它）**
+  - 自 `radio_bus` 独立成库以来**这条线的 CI 没有一次全绿**（run 102/103/104/105/106 全红），
+    三处独立破损：① Windows `Configure`——`find_package(Qt6HttpServer REQUIRED)` 让没有
+    qthttpserver 的套件（安卓交叉套件）直接失败；② macOS `Build`——`SseClient` 用
+    `QSharedPointer::create()` 默认构造 `QHttpServerResponder`（该类只有移动构造 +
+    `QHttpServerStream*` 构造，没有默认构造）；③ Ubuntu `Build`——apt 给的是 **Qt 6.4.2**，
+    它的 HttpServer 与 6.8 API 形状互斥：`req.headers()` 返回 `QList<QPair<…>>`（`value()`
+    要下标）、`QAbstractHttpServer::bind()` 返回 `void`、route 视图的 Responder **只收 `&&`**，
+    而 6.8 反过来 `headers()` 是 `QHttpHeaders`、`bind()` 返回 `bool`、Responder **只收 `&`**
+    （两边写谁都会炸另一个，这是 6.8 的有意变更，不是我们写错）。
+  - #38 的处置：①② 真修（QUIET + 目录跳过 / 带 responder 一起构造），③ 把 bus 的真实依赖
+    写进 CMake（`find_package(Qt6HttpServer 6.8 QUIET)`，低于 6.8 整个目录跳过并在 configure
+    里明说），不给发行版旧 Qt 铺 `#if` 梯。顺带修了两处**从未被编译过**的安卓源码
+    （`MainWindow_android.cpp` 在桌面构建里也参与编译，缺 `meter_widgets.h`/`QListWidget`
+    两个 include——它以前只在安卓侧构建里被触发过），并补了本仓**第一个 SSE 端到端用例**。
+  - 本地口径：Qt 6.8.3 msvc2022_64 全量构建 + `ctest` **213/213 通过**（含新增的
+    `bus streams spectrum frames over SSE to a kept-open client`）。
+- **PR #1–#14 均已合并进 main**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
-  WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
-- **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
-  macOS Qt。
+  WSJT-X UDP 接入（`9b3e9ac`）、QSO 直写 HamLog（#6 `bef3eec`）、审查修复 + 算法优化
+  （#7 `f531346`）、50003 设备可选与诊断（#9）、ft8_lib vendor（#11 `4ff82d9`）、
+  安卓工具链（#12 `fff069f`）、AAudio 后端（#13 `f4091f6`）、APK 打包（#14 `5a08fa4`）；
+  每次合并后 main 推送 CI 三平台 success。
+- **CI 三平台全绿**只对 `main` 与安卓那条链成立：Windows 用 install-qt-action 的
+  `6.8.*`、macOS 用 brew `qt@6`、**Ubuntu 用 apt 的 6.4.2**——三者里 Ubuntu 的 Qt 最老，
+  也正是它编不动 bus（见上面那条 arch-cleanup）。bus 的版本门槛写进 CMake 后，
+  Ubuntu 走「跳过 bus」这条路，不再是「红在 Build」。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
   两条路：① git push 成功时直接用；② 不通时用 REST API 推
   （`gh api` 或仓外脚本：create blob → create tree(base_tree) → create commit
@@ -674,8 +711,15 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
    声明）要到 ninja regenerate 才暴露——改完头文件先 `touch` 源文件再编。
 4. **Qt 6.8 HttpServer**：模块名 `qthttpserver`（依赖 `qtwebsockets`），
    `find_package(Qt6 COMPONENTS HttpServer)` 不置 _FOUND，用
-   `find_package(Qt6HttpServer)`；API 与 6.4 差异大（`bind(QTcpServer*)`、
-   `QHttpHeaders.value()`、双参构造 (mimeType,data)）。
+   `find_package(Qt6HttpServer)`；API 与 6.4 差异大且**互斥**，不是「新旧都能编」：
+   route 视图的 Responder 在 6.4 **只收 `&&`**、在 6.8 **只收 `&`**（写反了各自撞
+   `qhttpserverrouterviewtraits.h` 的 static_assert）；`req.headers()` 6.4 是
+   `QList<QPair<QByteArray,QByteArray>>`（`value()` 要下标）、6.7+ 才是 `QHttpHeaders`
+   （`value(name)`）；`QAbstractHttpServer::bind(QTcpServer*)` 6.4 返回 `void`、
+   6.8 返回 `bool`。本仓的处置是不铺 `#if` 梯，直接
+   `find_package(Qt6HttpServer 6.8 QUIET)` + 低于 6.8 跳过整个 bus 目录。
+   另：`QHttpServerResponder` 没有默认构造（只有移动构造 + `QHttpServerStream*`），
+   要长期持有必须带着它一起构造。
 5. **WASAPI**：见 §6/文档。
 6. **截图 DPI**：本机 150% 缩放，截图脚本必须 `SetProcessDPIAware`，否则只截到
    窗口左上 2/3（曾因此误判 UI 缺控件）。UIA 枚举比视觉模型可靠。
