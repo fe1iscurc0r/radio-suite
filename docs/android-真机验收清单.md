@@ -451,6 +451,37 @@ grep Qt6SerialPort_DIR build-android/CMakeCache.txt
 
 ---
 
+### 2b.2 等网络的一轮（三条，都不需要电台）
+
+三条都卡在同一个前提：手机连上**和 PC 同网段**的 Wi-Fi AP。现在过不了是因为
+`wlan0: NO-CARRIER`（Wi-Fi 开关开着但没连 AP），不是代码问题。
+
+- [ ] **N1 组播收包实证**（= §2b 判据②，判据①已通）
+  操作：PC 起真 WSJT-X，或用我们的编码往 `224.0.0.1:2237` 发一包 Decode；
+  手机 WSJT-X 面板「开始监听」（默认组播）。
+  判定：面板**出解码行**。`"$ADB" logcat | grep -i multicast` 里本应用 uid 的
+  `acquireMulticastLock` 后面**不**该紧跟 `releaseMulticastLock`（一拿就放 = join 失败）。
+  ⚠️ 「join 成功」不算证据——不持锁时它也返回成功，必须有真的包进来。
+
+- [ ] **N2 CI-V over TCP 端到端（无电台版，验 #30 那条链路）**
+  操作：PC 上 `ncat -l 4533`（或任何能收字节的 TCP 监听），记下 PC 的局域网 IP；
+  手机「连接…」→ 链路选「CI-V over TCP（串口网关透传）」→ 网关 IP 填 PC 的 IP →
+  保存 → 重启应用（TCP 档没有命令行开关）。
+  判定：① 状态栏从 `transport: mock` 变成 `transport: tcp · <PC-IP>:4533`；
+  ② 台账「当前链路」不再是 mock 那条降级文案；③ **杀掉 PC 上的监听**后 UI 如实显示
+  失联——这正是清单 G-6 判的事，`poll()` 里主动收状态就是为它写的。
+  ⚠️ 这条只证明「字节管道 + 链路状态如实」，**不证明任何电台语义**；CI-V 往返要真电台
+  （G-1…G-5），别拿它给 G 线打勾。
+
+- [ ] **N3 B1 撤销分支（按纠正后的走法）**
+  操作：`"$ADB" shell su -c 'pm revoke org.radiosuite.app android.permission.RECORD_AUDIO'`
+  → **必须冷启动**（运行中撤销会被系统直接杀进程，见 §2b.1 最后两条）
+  → 进 FT8 面板选「本机麦克风」→ 开始解码。
+  判定：如实失败并给出去系统设置的路径（台账那一行显示 `缺失`），不崩、不静默。
+  验完 `pm grant` 还原，并回台账确认翻回 `可用`。
+
+---
+
 ## 3. Gate C — 手机分辨率上的 UI 与触控
 
 - [ ] **C1 窗口尺寸** —— **真机不通过**（2026-10-31 竖屏实测，见下面「实测」）

@@ -499,14 +499,15 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
   → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
   → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head；
-  **head 现在就是 `711238d`，24 commits**，仍 open）
-  - **已合进 `fix/android-touch-dialogs` 的四条**（都按仓库惯例用 merge commit，
-    与 #12/#13/#14 同法）：#24 `feat/android-local-logbook`（Android 自建 HamLog 库、
-    补出「日志」页）→ `648658b`；#25 `docs/handover-pr24-merged`（纯文档状态补记）→
-    `2e3a7ff`；#27 `feat/android-multicast-lock`（Wi-Fi 组播锁 JNI + manifest 声明
-    `CHANGE_WIFI_MULTICAST_STATE`）→ `338d8c0`；#28 `feat/android-self-check`
-    （面板页「自检 / 台账」，把验收清单 §2b 搬进 app，含「上次启动失败原因」）→ `711238d`。
-  - ⚠️ 这条链的「合并」只把改动交给上一层分支：**上面四条进的都是
+  **head 现在就是 `c3d5573`，28 commits**，仍 open）
+  - **已合进 `fix/android-touch-dialogs` 的六条**（都按仓库惯例用 merge commit，
+    与 #12/#13/#14 同法）：#24 → `648658b`（Android 自建 HamLog 库、补出「日志」页）；
+    #25 → `2e3a7ff`（纯文档状态补记）；#27 → `338d8c0`（Wi-Fi 组播锁 JNI + manifest
+    声明 `CHANGE_WIFI_MULTICAST_STATE`）；#28 → `711238d`（面板页「自检 / 台账」，
+    把验收清单 §2b 搬进 app，含「上次启动失败原因」）；#29 → `12140a1`（§6 栈状态 +
+    §2b.1 真机第二轮）；#30 → `c3d5573`（**CI-V over TCP 传输**：`core/transport_tcp`
+    按 FD 切帧 + `Link::Tcp` + 端口偏好 + 台账「网关」那一行）。
+  - ⚠️ 这条链的「合并」只把改动交给上一层分支：**上面六条进的都是
     `fix/android-touch-dialogs`，不是 `main`**，`main` 仍是 `5a08fa4`，
     要落到 main 还得从 #15 往上逐条合。
   - #28 原本 base 在 #27 的分支上；#27 一合，那个 base 就成了已消化的中间分支，
@@ -517,9 +518,10 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     改的是同一个文件的**不同区段**，所以能各自合，不会互相覆盖。
   - ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
     `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19；`d72b98a`/`de34e74`/`bea2db5`/
-    `895ee1c`/`05296c8`/`7414172`/`18b2fec` 这批（C9 落地、ADIF 补记、PR 栈、台账与
-    真机补记）现在都算 #23 的 diff。
+    `895ee1c`/`05296c8`/`7414172`/`18b2fec`/`2d90564` 这批（C9 落地、ADIF 补记、PR 栈、
+    台账与真机补记）现在都算 #23 的 diff——本节这次补记同样如此。
   回滚点（**倒着撤**，merge commit 要 `-m 1`）：
+  `git revert -m 1 c3d5573`（#30）→ `git revert -m 1 12140a1`（#29）→
   `git revert -m 1 711238d`（#28）→ `git revert -m 1 338d8c0`（#27）→
   `git revert -m 1 2e3a7ff`（#25）→ `git revert -m 1 648658b`（#24）；
   另有 `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、
