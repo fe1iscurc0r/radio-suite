@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -120,6 +121,18 @@ std::vector<uint8_t> buildFrame(uint8_t to, uint8_t from,
 // 首字节必须 FE、末字节必须 FD、跳过全部前导 FE、前导后至少 to/from/cmd 三字节。
 // 任何不满足返回 std::nullopt（线上数据可能是垃圾，不走异常）。
 std::optional<CivFrame> parseFrame(std::span<const uint8_t> data);
+
+// 从**流式字节**里按 FD 定界切帧：每切出一帧调一次 on_frame（含 FE 前导与 FD 尾），
+// 返回从 buffer 头部消费掉的字节数，调用方把剩下的留到下次。帧前垃圾与短于
+// kMinFrameBytes 的碎片都不上抛，字节数累加进 discarded。
+//
+// 定界规则只写这一处：TCP 客户端与 PC 侧网关都必须按同一套规则切帧，
+// 而且 ICivTransport::send() 的契约是「一次一条完整帧」——TCP 会把多条粘成一包，
+// 两边各写一遍迟早漂。
+inline constexpr size_t kMinFrameBytes = 6;  // FE FE to from cmd FD
+size_t extractFrames(std::span<const uint8_t> buffer,
+                     const std::function<void(std::span<const uint8_t>)>& on_frame,
+                     size_t* discarded = nullptr);
 
 // ---- 频率 BCD（5 字节、LSB-first）----
 // 例：14270000 Hz -> {00 00 70 42 01}（hex 字面）。

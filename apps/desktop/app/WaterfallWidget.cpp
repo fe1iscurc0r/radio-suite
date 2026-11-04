@@ -132,7 +132,8 @@ void WaterfallWidget::initializeGL() {
   glBindTexture(GL_TEXTURE_2D, tex_);
   glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(tex_internal_), kTexW,
                kTexH, 0, tex_format_, GL_UNSIGNED_BYTE, nullptr);
-  // 预填充底色行（噪底亮度），避免启动后前 ~17s（256 行 @15fps）下半屏全黑
+  // 预填充底色行（噪底亮度）：不填的话刚启动时还没写过的行是全黑的，
+  // 要等瀑布把它们从画面上挤出去才正常
   {
     std::vector<uint8_t> pre(static_cast<size_t>(kTexW), 26);
     for (int r = 0; r < kTexH; ++r)
@@ -142,7 +143,10 @@ void WaterfallWidget::initializeGL() {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  // 手机上纹理被放大显示（1024 列铺满约 2300 物理像素，一列 2.25 px），
+  // NEAREST 会把每条频迹画成 2 px 宽的台阶——就是「段落感」。双线性把台阶
+  // 摊成斜坡；纵向跨环尾的那一次插值取的是时间上相邻的两行，不会串画面
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
   // 瀑布满幅四边形（两个三角形）
   const float quad[] = {-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1};
