@@ -241,13 +241,15 @@ bool BusServer::start(const Config& cfg, QString* error) {
   // 客户端 EventSource 收 data: {"power_db":[...],"frame_seq":N}
 
 
+  // Qt 6.8.3 的 ViewTraits 只认 QHttpServerResponder&（写成 && 会撞
+  // static_assert：can only be passed as a reference），要长期持有就自己 move 走
   http_.route("/api/spectrum/stream",
-              [this](const QHttpServerRequest &, QHttpServerResponder &&responder) {
-    // 头：SSE 契约
-    auto *res = new QHttpServerResponder(std::move(responder));
-    res->write(QByteArray("event: hello\ndata: {}\n\n"),
-               QByteArrayLiteral("text/event-stream"));
-    sse_clients_.append(QSharedPointer<SseClient>(res, [](SseClient* c){ delete c; }));
+              [this](const QHttpServerRequest &, QHttpServerResponder &responder) {
+    // SSE 契约：先下一行 event: hello，让 EventSource 立刻进入 open 态
+    auto client = QSharedPointer<SseClient>::create(std::move(responder));
+    client->responder.write(QByteArray("event: hello\ndata: {}\n\n"),
+                            QByteArrayLiteral("text/event-stream"));
+    sse_clients_.append(client);
   });
 
   // Qt 6.8：自建 QTcpServer 监听后交给 QAbstractHttpServer::bind

@@ -60,6 +60,10 @@ class BusServer : public QObject {
   // SSE 频谱推送（273"M5 全量再上 SSE"提前落地）：
   // 每客户端持 move 来的 Responder；spec_timer_ 广播；断开由 write 失败清理
   struct SseClient {
+    // QHttpServerResponder 只有移动构造和 QHttpServerStream* 那个构造函数，
+    // 没有默认构造，所以 SseClient 必须带着 responder 一起建
+    // （原来先 new 一个 responder 再当 SseClient* 塞进 QSharedPointer，类型不过）
+    explicit SseClient(QHttpServerResponder r) : responder(std::move(r)) {}
     QHttpServerResponder responder;  // move 持有（非 QObject，需显式清理标志）
     bool dead = false;
   };
