@@ -7,6 +7,7 @@
 // + 一个工厂，优先级：命令行 > 持久化偏好（Android 唯一通路）> mock。
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -20,7 +21,7 @@ class ICivTransport;
 
 namespace radio::app {
 
-enum class Link : int { Mock = 0, Udp = 1, PyBridge = 2 };
+enum class Link : int { Mock = 0, Udp = 1, PyBridge = 2, Tcp = 3 };
 
 struct LinkPrefs {
   Link link = Link::Mock;
@@ -31,6 +32,7 @@ struct LinkPrefs {
   std::string user;
   std::string pass;
   std::string python_exe;  // 空 = 用 PATH 上的 python
+  uint16_t port = 4533;    // 仅 Link::Tcp 用：CI-V over TCP 网关的端口
 };
 
 // 命令行 → 偏好。纯函数，便于把优先级钉在用例里。
@@ -53,6 +55,10 @@ void saveLinkPrefs(QSettings& st, const LinkPrefs&);
 
 // 这个构建里有没有编入真机链路（缺 Qt6::Network 就没有，只能退回 mock）。
 bool udpLinkBuilt();
+
+// CI-V over TCP 走的是同一个 Qt6::Network 依赖，但单独给一个名字：
+// 调用点要说清「这条链路建不建得出来」，别拿 udp 的旗子替 tcp 说话。
+bool tcpLinkBuilt();
 
 // 这台设备能不能用 Python 桥（Android 上没有 python 解释器可拉 rsba1_bridge.py）。
 bool bridgeAvailable();

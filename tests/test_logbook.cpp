@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include <catch2/catch_test_macros.hpp>
 
+#include <QDir>
+#include <QFileInfo>
 #include <QSqlDatabase>
-#include <QSqlQuery>
 #include <QTemporaryDir>
 
 #include "logbook/logbook.h"
@@ -12,21 +13,7 @@ namespace {
 
 QString makeTemporaryDatabase(const QTemporaryDir& dir) {
   const QString path = dir.filePath("Log.db");
-  {
-    auto db = QSqlDatabase::addDatabase("QSQLITE", "logbook_test_schema");
-    db.setDatabaseName(path);
-    REQUIRE(db.open());
-    QSqlQuery q(db);
-    REQUIRE(q.exec("CREATE TABLE log ("
-                   "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                   "Callsign TEXT,Freq REAL,Year INTEGER,Month INTEGER,Day INTEGER,"
-                   "Time TEXT,Mode TEXT,Power_self TEXT,Power_side TEXT,"
-                   "Rst_self TEXT,Rst_side TEXT,QTH TEXT,Device TEXT,"
-                   "QSL_RX TEXT,QSL_SEND TEXT,Remarks TEXT,CreateTime TEXT)"));
-    REQUIRE(q.exec("CREATE TABLE settings (key TEXT PRIMARY KEY,value TEXT)"));
-    db.close();
-  }
-  QSqlDatabase::removeDatabase("logbook_test_schema");
+  REQUIRE(radio::logbook::HamLogDb::createDatabase(path));
   return path;
 }
 
@@ -78,6 +65,31 @@ TEST_CASE("logbook CRUD and search use a real temporary SQLite database", "[logb
   REQUIRE(db.remove(qso->id));
   CHECK_FALSE(db.getById(qso->id).has_value());
   CHECK(db.search("").empty());
+  QSqlDatabase::removeDatabase("radio_logbook");
+}
+
+TEST_CASE("logbook createDatabase makes missing folders and never wipes rows",
+          "[logbook][sqlite]") {
+  qtTestApp();
+  QTemporaryDir dir;
+  REQUIRE(dir.isValid());
+  // Android 自建库就是这种形状：库上一层目录还不存在（<可写目录>/HamLog/Log.db）
+  const QString path = QDir(dir.path()).filePath(QStringLiteral("HamLog/Log.db"));
+  REQUIRE_FALSE(QFileInfo(QDir(dir.path()).filePath("HamLog")).exists());
+  REQUIRE(radio::logbook::HamLogDb::createDatabase(path));
+
+  radio::logbook::HamLogDb db(path);
+  REQUIRE(db.available());
+  REQUIRE(db.insert(sampleQso()));
+  REQUIRE(db.recent().size() == 1);
+
+  // 二次调用（每次启动都会跑）必须静默通过，而且不能动已有数据
+  QString err;
+  REQUIRE(radio::logbook::HamLogDb::createDatabase(path, &err));
+  QSqlDatabase::removeDatabase("radio_logbook");  // 断开缓存连接，逼它真从盘上重开
+  radio::logbook::HamLogDb reopened(path);
+  CHECK(reopened.recent().size() == 1);
+  CHECK(reopened.myCallsign().isEmpty());  // settings 表建成了，只是还没写过
   QSqlDatabase::removeDatabase("radio_logbook");
 }
 

@@ -21,6 +21,7 @@ set(APP_SRC
   meter_widgets.cpp
   dial_widget.cpp
   connect_dialog.cpp
+  touch_dialog.cpp
   sstv_dialog.cpp
   dtmf_dialog.cpp
   voice_memory.cpp
@@ -33,6 +34,9 @@ set(APP_SRC
   aprs_messages_dialog.cpp
   aprs_rf.cpp
   wsjtx_client.cpp
+  multicast_lock.cpp
+  device_report.cpp
+  self_check_dialog.cpp
   wsjtx_panel.cpp
   ft8_panel.cpp)
 

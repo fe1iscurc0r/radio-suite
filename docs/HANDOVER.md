@@ -1,4 +1,4 @@
-# radio-suite 交接说明（2026-10-30 更新）
+# radio-suite 交接说明（2026-10-30 更新，2026-11-01 补 §5.1 手机端路线，2026-11-04 §6 按 refs 重核）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
@@ -143,7 +143,8 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、G-0 的配置半条、K1/K3）；
     D3 只到「写侧」（顺带把 APK 没打 SQLite 驱动这个打包缺陷修了，见下面那条）；**判「链路通不通」的 G-1…G-5 仍是空的**——手上没有可连的电台（只有全盛 UVK6，
     不是 IC-705、没有 50003 音频口），所以「手机上保存 → 重启 → 真连上电台」只到
-    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D2/D4 本轮没覆盖。
+    「按偏好建出 UDP 链路并老实报连不上」为止。B3/B5/B6、Gate E/F、A8、D4 本轮没覆盖
+    （D2 当时也没覆盖，11-01 随 C9 一起做掉了）。
     清单里写「代码事实」的部分只是 PC 静态核对（源码行号、aapt 出包信息、jar 字节码），
     不构成真机结论——打勾要换成设备上取到的 ini 字节 / logcat / 截屏。
     - **K1（APK 只能跑 mock）代码侧已修**（`fix/android-link-prefs`）：新增
@@ -228,17 +229,204 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       **真机五页逐页截图过（2026-10-31 23:5x，横屏 843×376dp）**，C1/C6 那批碰撞全部消失。
       交付前最后一改（HamLog 不可用时不出「日志」页签，手机变四页签）装包后进程存活无崩溃，
       但**那一版没截到图**：手机午夜自动锁屏，MIUI 在锁屏状态拒绝截屏（`screencap` 回 0 字节，
-      `wm dismiss-keyguard` 无效）——四页签版式的真机视觉证据待补，其余构建证据
+      `wm dismiss-keyguard` 无效）——该补记 11-01 15:24 已完成：页签栏确为频谱/调谐/制式/面板
+      四页（验收清单 C9 正文），逐页版式与交互另见 C10 那轮真机复验。其余构建证据
       （MSVC `ctest` 181/181、Android clang 交叉编译通过）齐全。
-    - **C9（HamLog 在 Android 上从未可用）**：`RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，
-      但真机 `hamlog_.available()` 恒假——`HamLogDb::defaultDbPath()` 指的文件不存在，
-      `available()` 要求「库在且 log 表可读」。旧布局里这组控件静默隐藏，分页版第一稿
-      才把它摆成一页死内容；现处置为**不可用就不建这一页**，另开条目待补建库逻辑。
+    - **C9（HamLog 在 Android 上从未可用）已修并合并（PR #24 → `fix/android-touch-dialogs`，
+      merge commit `648658b`）**：
+      `RADIO_SUITE_HAVE_LOGBOOK=1` 编进了包，但真机 `hamlog_.available()` 恒假——
+      `HamLogDb::defaultDbPath()` 指的文件不存在，`available()` 要求「库在且 log 表可读」。
+      旧布局里这组控件静默隐藏，分页版第一稿才把它摆成一页死内容；处置仍是**不可用就不建
+      这一页**，但补上了建库：`HamLogDb::createDatabase()`（log 18 列 + settings，全
+      `IF NOT EXISTS`，不动已有行）+ Android-only `ensureLocalDb()`，Android 上库路径改走
+      已验证可写的 `radio::ui::settingsDir()`，`MainWindow` 构造在建 UI 前确保库存在。
+      11-01 17:46 真机复验：库自动建出、第五个页签「日志」出现、记 QSO 写通；17:53 同页
+      「ADIF 导出」也验通（Qt 把 `QFileDialog` 交给系统 SAF 选择器，`QFile` 往返回的
+      `content://` URI 直写出合法 ADIF 3.1.4）。导出回显打的是裸 URI，手机上看不出文件落在
+      哪，这一条算未修的小瑕疵（改文案属产品口径）。详见验收清单 C9 正文。
+    - **手机对话框/面板「能滚、能关」已修（C10，`fix/android-touch-dialogs`）**：用户真机报
+      「音频设置没有退出键、cancel 无效，应用中继没有关闭键，频差/模拟亚音/DTCS 选不到，
+      估计无法滑动；连接关闭键失效，APRS/WSJT-X 无退出键，切 WSJT-X 页面有问题，
+      SSTV 依旧无法滑动；波段点击不显示亮度」。根因是 Android 没有窗口管理器：
+      `QDialog` 无标题栏、尺寸不受屏幕约束（中继 560 宽、SSTV 更高），376dp 高的内容区
+      把底部按钮整排推到屏外；面板连关闭键都没有，系统返回键 hide 顶层窗后主窗大按键
+      仍是 checked，再点一下只是关掉「看不见的已开窗」。
+      修法：新增 Android-only 的 `apps/desktop/app/touch_dialog.{h,cpp}`——
+      `fitDialog` 把根布局整体搬进 `QScrollArea`、底部钉常驻「关闭」（→ reject）、
+      交互控件（按钮/下拉/数字框/输入框/勾选）抬到 ≥44dp、窗口压进
+      `QScreen::availableGeometry()`，并给滚动区挂
+      `QScroller` 左键拖动（QScrollArea 默认不认手指拖动），分页主窗的滚动页同样挂上；`addCloseBar` 给
+      APRS/WSJT-X/FT8 三个顶层面板插「标题 + 关闭 ✕」；`showInfo` 替代
+      `QMessageBox`（长文案会滚，滚动区同样挂 QScroller）。接线覆盖 12 个对话框（音频设置、
+      中继/亚音、连接、SSTV、DTMF、语音、CW、SET、MEM、APRS 消息、APRS RF、WSJT-X UDP）。
+      主窗侧：三个面板 `QEvent::Hide` → 复位对应大按键；三个面板大按键互斥并加
+      `:checked` 琥珀背光；波段/广播预置改 `checkable`，`syncBandHighlight()` 在
+      `refreshState()` 按 `[low, high)` 回读点亮。三个离屏 UI 测试目标补编
+      `touch_dialog.cpp`（原先只构 app 目标没暴露，Windows/macOS CI 链接期
+      `LNK2019 fitDialog` 才抓到）。
+      **真机上又抓到一个搬布局的缺陷（已修 `f540c30`）**：`QBoxLayout::takeAt()` 返回的
+      item 就是子布局对象本身，`addLayout()` 收养它并把控件改父到滚动页；随后再
+      `delete it` 等于删掉滚动页仍在引用的布局——真机上表单行停在旧坐标（「扬声器」
+      跑到确定/取消下方、拖不动），离屏回归用例直接 `0xC0000409`。修法是子布局分支
+      只交给 `addLayout` 收养，不再删除；新增
+      `tests/test_touch_dialog.cpp::fitDialog reparents form rows into scroll content`，
+      桌面用 `RADIO_SUITE_TOUCH_FIT=1` 打开同一套逻辑跑断言。
+      **已验**：桌面 MSVC 构建、`ctest` 183/183、Android clang 交叉编译出新包；
+      真机第一轮（解锁后）确认波段高亮生效、音频设置对话框底部出现常驻「关闭」，
+      随即发现上面那个表单错位缺陷。
+      **11-01 13:30 第二轮真机复验通过**：方向下拉可选、应用频差后 TX 立即显示
+      `14.870000 MHz +600.0 kHz`（上差）/`13.670000 MHz −600.0 kHz`（下差）；模式下拉
+      8 项含 DTCS（数字亚音），选完可滚到「码 / 收极性 / 发极性」；音频设置 Cancel 与
+      连接/中继对话框的常驻「关闭」都生效；20m/40m 波段高亮随频率回读；APRS / WSJT-X
+      有「关闭 ✕」且返回键能收面板并复位大按键；SSTV 面板可拖。这一轮又定位两个根因：
+      ① **下拉弹窗触摸错位**——Qt 6.7 安卓顶层窗口的触摸换算按窗口位置（dp÷dpr）偏移，
+      窗口在 (0,0) 才准，而弹窗永远贴在控件旁边，点任何选项都命中错行（就是用户说的
+      「模拟亚音模式无法设置 / 数字亚音未看到」）；修法是启动时装
+      `installPopupOriginFix()`，弹窗 `Show` 后钉到 (0,0)、二次 `singleShot(0)` 再钉，
+      并在列表 viewport 上自装 `PopupClickFilter` 按 `indexAt` 选行（Qt 自己的
+      itemSelected 在触摸合成鼠标事件时根本不触发），选行/收起推迟到下一轮事件循环。
+      ② **第二个顶层窗口丢帧**——控件状态与模型都更新了，屏幕却停在前一帧，要再点一下
+      才刷新（应用频差后 TX 标签迟一步、下拉选完不刷新、甩动回弹的横向偏移留在屏上）；
+      修法是对话框内每次 `MouseButtonRelease` 后 60ms 补一次整窗 `update()` +
+      `QWindow::requestUpdate()`，`QScroller` 回 `Inactive` 后再补一帧，并把滚动页横向
+      范围钉死为 0（手指横向抖动不再把整页拖偏切掉左侧标签）。
+      **11-01 15:28 又补点了 SET / MEM / CW / DTMF / VOICE 五个对话框**：都按全屏贴边
+      打开、底部常驻「关闭」一点即回面板页；SET 内容一屏放得下，MEM/CW/DTMF 滑到底
+      分别能见到名称与选组/选信道、回读提示与应用设置/发送、生成 .wav，左侧标签不被切。
+      另注意 `fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效，`QFileDialog`
+      这类 Qt 自带文件框不在范围内——11-01 17:53 实测：Android 上 `QFileDialog` 根本
+      **不是 Qt 窗口**，Qt 6.7.3 把它交给系统 SAF 选择器（`documentsui/PickActivity`），
+      所以不需要 `fitDialog`，也不受本仓触摸修复的影响。
+    - **手机端权限（OTG / 存储 / 组播）已核清，缺口不在弹窗**（11-01 18:40 静态核对 +
+      一次真机 `dumpsys`，矩阵与判据在验收清单 §2b）：麦克风已声明并在启动时申请、真机
+      `granted=true`；`WRITE_EXTERNAL_STORAGE` 是 Qt6Core 依赖清单注入的历史遗留，
+      targetSdk 34 上系统根本不给授（`granted=false`），而导出走 SAF 已经能用，
+      **不该再去要「存储权限」**（只剩「所有文件访问」这种安全设置，不申请）；
+      **USB OTG 串口缺的是后端不是权限**——安卓 Qt 不带 QtSerialPort
+      （`Qt6SerialPort_DIR-NOTFOUND`），`RADIO_SUITE_HAVE_SERIALPORT` 在安卓构建里是关的，
+      APRS 面板走的是「本构建未启用串口…请用 KISS TCP」那句降级，要做 OTG 得自己接
+      `UsbManager`（JNI + `usb.host` feature + `requestPermission`）或 vendor
+      usb-serial-for-android，且台架上没有可插设备、手机 USB 口被 adb 占着，**今天证不了**；
+      WSJT-X 组播缺 `CHANGE_WIFI_MULTICAST_STATE` + `MulticastLock`（也要 JNI），
+      只声明权限不拿锁等于没做——**能先做的替代是单播数据通路，不需要电台**。
     - **顺带一条与本次无关的老坑**：手工 `reg add` 平铺写出的 `wsjtx/group` 应用读不到
       ——QSettings 把 `wsjtx/group` 理解成「组 `wsjtx` 里的键 `group`」，值要落在子键
       `wsjtx` 下才算。本机就留着这么一对平铺值，所以 WSJT-X 面板一直按默认组播
       224.0.0.1 去 join 并报「加入组播失败」。改监听地址要走面板里的「设置」，别用 `reg add`。
     - 判链路/判音源的条目**不许拿 mock 行为打勾**，那会写出假报告。
+
+### 5.1 手机端路线（2026-11-01 起草，规划不是进度）
+
+这一节写的是**下一步该怎么排**，不是已完成。所有能力现状都对着代码核过，行号在下面。
+
+**排期的硬约束**：台架上是 Redmi K40 + 全盛 UV-K6，**没有 IC-705**。所以每条规划都必须
+回答「没有真电台能不能收口」；不能的那条只能停在「等硬件」，不许用 mock 或假服务器
+给它打真机勾。
+
+**技术前提（逐条核过的事实）**
+
+- `ICivTransport` 是纯字节管道：`open/close/isOpen/send/poll` + `setFrameCallback`
+  （[apps/desktop/core/transport.h:17](../apps/desktop/core/transport.h#L17)），CIV 编解码与它解耦
+  （`core/civ.h`），`RadioSession` 只持 `shared_ptr<ICivTransport>`
+  （[apps/desktop/app/session.h:105](../apps/desktop/app/session.h#L105)）→ **加一条链路 = 加一个
+  transport，不动引擎**。这是手机端所有扩展的地基。
+- 现有 transport 三个：RS-BA1 UDP（进 APK）、PyBridge（代码在包里，但 `bridgeAvailable()`
+  在 `Q_OS_ANDROID` 直接 `return false`，
+  [apps/desktop/app/launch_config.cpp:37](../apps/desktop/app/launch_config.cpp#L37)）、Mock。
+  **串口 CAT transport：不存在**。`Qt6SerialPort` 在安卓构建里是 `NOTFOUND`
+  （`build-android/CMakeCache.txt:408`），`RADIO_SUITE_HAVE_SERIALPORT` 因此关着
+  （[apps/desktop/app/CMakeLists.txt:65](../apps/desktop/app/CMakeLists.txt#L65)）。
+- bus（`bus_server` + `rigctld_server`）整块依赖 `Qt6HttpServer`，安卓上 `NOTFOUND`
+  （`build-android/CMakeCache.txt:396`）→ **APK 里根本没有 bus**。
+- `rigctld_server` 的方向是**服务端**（`QTcpServer::listen`，
+  [apps/desktop/bus/rigctld_server.cpp:14](../apps/desktop/bus/rigctld_server.cpp#L14)，把我们的
+  `RadioSession` 暴露给 WSJT-X/fldigi）。**rigctld 客户端不存在**，写它是新工作面。
+- 请求/响应**没有序号也没有超时**：250 ms 轮询 + fire-and-forget
+  （[apps/desktop/app/session.cpp:28](../apps/desktop/app/session.cpp#L28)），帧靠 opcode 去复用。
+  序号只存在于 RS-BA1 串口通道内部（`sseq_`，
+  [apps/desktop/core/transport_udp.h:92](../apps/desktop/core/transport_udp.h#L92)）。
+- WSJT-X 面板只在 `address.isMulticast()` 时才 join
+  （[apps/desktop/app/wsjtx_client.cpp:44](../apps/desktop/app/wsjtx_client.cpp#L44)），地址/端口来自
+  QSettings `wsjtx/group` / `wsjtx/port` → **单播今天就能用，安卓上也不需要新权限**。
+- FT8 音源枚举只有 `Network` / `Microphone`
+  （[apps/desktop/app/ft8_panel.h:35](../apps/desktop/app/ft8_panel.h#L35)），**文件输入没有**。
+- 打包参数：minSdk **26** / targetSdk **34** / 只有 arm64-v8a
+  （[apps/desktop/app/CMakeLists.txt:88](../apps/desktop/app/CMakeLists.txt#L88) → 落进
+  `build-android/.../gradle.properties:19`）。manifest 里**没有前台服务**、没有
+  `usb.host`、没有组播权限，运行期权限只有麦克风
+  （`packaging/android/AndroidManifest.xml:11`）。
+
+**A 线｜让手机先成为「能验的遥控头」（推荐先做，不需要电台）**
+
+1. 新增 `TcpCivTransport`（裸 TCP 字节管道，天然满足 `ICivTransport`）+ PC 侧一个
+   CIV-over-TCP 转发小工具（照 `tools/rsba1_bridge.py` 的形状做，工具目录注意
+   `tools/CMakeLists.txt` 现在把 ANDROID 排除了）。
+   验收：手机 → PC → MockTransport，写频/制式/PTT 两端一致；断链（拔网/关进程）后 UI
+   如实显示失联（清单 G-6）。
+2. ⚠️ **这条线的真正成本不在 transport，在会话层**：没有序号/超时，TCP 上多请求并发会
+   互相错配回包。同一次交付里要么给 session 加请求序号，要么钉死一问一答，否则 G 线
+   会出现**假通过**（看着对，其实是上一帧的回声）。
+3. 链路选择 UI 加「TCP」这一档（`connect_dialog.cpp:32-70` 那套表单 + `link/mode|host|…`
+   持久化）；Android 上连接对话框是唯一链路入口，别开第二条。
+
+**B 线｜权限与链路台账进 UI（可独立验收，不依赖 A）**
+
+- manifest 补 `CHANGE_WIFI_MULTICAST_STATE`，并**真的去拿 `MulticastLock`**（JNI，
+  生命周期跟着 wsjtx_client 的 open/close）。只声明权限不拿锁 = 没做，这条在验收清单
+  §2b 已经写明判据。
+- 先验**单播**：PC 发 Decode 包 → 手机面板出解码行。这条是三条里最快出结果的，零新权限。
+- 统一一个权限薄封装（查状态 → 该弹才弹 → 被永久拒绝时给**该机型的具体退路**）。现状是
+  启动时只在 `Undetermined` 才申请，且回调写成空的
+  （[apps/desktop/app/MainWindow.cpp:130](../apps/desktop/app/MainWindow.cpp#L130)
+  `requestPermission(mic, [](const QPermission&) {})`）——授没授上 UI 都不知道，
+  永久拒绝后**没有任何出口**。
+- 加「链路 + 权限自检」页：把验收清单 §2b 那张表搬进 app，一行一条显示 grant/feature
+  状态与降级说明。它顺手收掉 B2「提前授权路径」，而且**在手机上可直接验收**。
+- 明确不做：`MANAGE_EXTERNAL_STORAGE`（是安全设置，且商店政策敏感）、legacy 存储权限
+  （targetSdk 34 上系统不给，SAF 已真机验过够用）。
+
+**C 线｜后台活着（Gate E 的根因候选）**
+
+前台服务：`FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_AUDIO`（34 起要单独声明）+
+`POST_NOTIFICATIONS`（33+）。Qt 6.7.3 安卓侧**没有**前台服务封装 → 要 JNI 自己起，或引
+第三方。判据用清单 E1（灭屏 30 s）/E2（切后台）/E3（音频焦点被抢）/E5（低内存重建），
+同一条线里顺手收 B3（AAudio 真实出声，**至今未验**）与 B5（首帧延迟与稳态预算）。
+
+**D 线｜USB OTG 串口（实验线，要你点头才投）**
+
+缺的是**后端不是弹窗**：JNI + `UsbManager` + `uses-feature usb.host` + `device_filter.xml`
+（FTDI `0403` / CH340 `1a86` / CP210x `10ac`）+ 运行期 `requestPermission`。注意那是
+**USB 授权弹窗，不是 Android 运行时权限**，别混进 grant 台账；或 vendor
+usb-serial-for-android（Apache-2.0，与 AGPL-3.0-or-later 兼容）。
+UV-K6 的写频线是现成 OTG 靶子，但它是 QYT 协议不是 CI-V → **只能证明「fd 打开、读写、
+热插拔、授权弹窗」这一层，不能给 705 语义打勾**。台架冲突也要先解决：手机 USB 口被 adb
+占着，OTG 与 adb 不能同时要，得走无线 adb（`adb tcpip` + 同网段）或另找 adb 主机。
+
+**Root 的定位（建议：只做取证与解释，不做功能前提）**
+
+- 认可：① **验收工装**——`su -c` 读 `/data/data/org.radiosuite.app/files`、
+  `pm install -r` 装机、`uiautomator dump` 拿权威 bounds。这类只活在脚本/Bash 层，
+  **不进产品代码**。② **只读能力探测**（ABI / API level / 有无 su / SELinux 状态），
+  用途是让自检面板解释「这条功能在你这台机器上为什么降级」，而不是靠 root 解锁功能。
+- 不做：静默提权；用 root 绕 MIUI 后台限制/省电白名单/deviceidle 白名单（那是改系统
+  安全与电源设置，要动由人在系统 UI 里动）；改 SELinux enforcing；用 root `chmod`
+  `/dev/ttyUSB*` 绕开 `UsbManager`（技术可行，但「只在已 root 机子上能跑」的功能不进
+  默认路径，要做就做成 experimental）；任何「不 root 就不能用」的功能。
+- root 帮不上组播：`MulticastLock` 是 API 层的事，不是权限层的事。
+
+**待拍板（不拍就不动）**
+
+1. D 线 OTG 投不投。投的话第一步只买一个 OTG 头 + 一块 FTDI/CH340 板，只做字节管道。
+2. Root 只当诊断工装，还是也要 root 旁路。
+3. APRS 要不要吃手机自身 GPS 上报位置（决定 `ACCESS_FINE_LOCATION` 进不进台账）。
+
+**建议顺序**：B（台账 + 单播）→ A（TCP 遥控，含会话层序号）→ C（前台服务 / Gate E）→
+D（OTG，看拍板）。B 先行的理由是它零外部依赖、每步都能在手机上验收，而且能顺带把
+「为什么某条功能不可用」变成用户看得见的文字，而不是散在文档里。
+
+**交付纪律（不变）**：新分支一律从 `fix/android-touch-dialogs` 的当前 head 切；
+#15–#23 那条栈没有逐次授权就不碰；`main` 不推；文档与代码分开提，别蹭 open PR 的分支；
+每条都附回滚点。
 
 ## 6. 构建与验证（本机环境）
 
@@ -389,10 +577,16 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （FT8 面板「本机麦克风 · 已解 0 槽」+ 进程内 `AudioRecord` 线程吃 CPU）。
   逐项证据与判据在 `docs/android-真机验收清单.md` §K4。
 - **仍然没验的**：AAudio 真出声与首帧延迟（B3：竖屏下发射按钮在屏外，点不到）、后台存活与
-  音频焦点（Gate E）、FT8 时间基准（Gate F）、以及一切要真电台的 G-1…G-5
+  音频焦点（Gate E）、FT8 时间基准（Gate F），以及一切要真电台的 G-1…G-5
   （手上只有全盛 UVK6，不是 IC-705、无 50003 音频口）。主窗布局已按用户拍板改成
   **锁横屏 + 分页**（C8，`feat/android-paged-ui`），竖屏不再支持；分页版最后一改
-  （HamLog 不可用时不出日志页签）的真机截图还欠着，见 §5 第 11 条。
+  （HamLog 不可用时不出日志页签）已于 11-01 15:24 真机核对：底部只有
+  频谱/调谐/制式/面板 四页签，日志页签不存在（C9 正文）——C9 当晚修掉自建库后，
+  17:46 再验已是五页签，「日志」在手机上可用且记 QSO 写通（C9 正文）。
+  手机对话框/面板可滚可关（C10，`fix/android-touch-dialogs`）已在 11-01 13:30 真机复验通过
+  （频差/亚音下拉、音频设置 Cancel、连接/中继/APRS/WSJT-X 关闭、返回键、SSTV 滚动），
+  15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框，两个新根因（下拉弹窗触摸错位、
+  第二顶层窗口丢帧）已修，证据见 `docs/android-真机验收清单.md` C10 正文与 §5 第 11 条。
 - 手机上跑：照 `docs/android-真机验收清单.md` 从上往下跑（每项都写了确切的
   adb/aapt/apksigner 命令与判定标准，含签名步骤——产物是 **release-unsigned**，
   不签名装不上）。该清单第 0 节的 K1/K2/K3 是三条必读前置；**先看 §K4**，
@@ -401,31 +595,108 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
-### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈）
+### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈，2026-11-04 按 refs 实况重核）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
-  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
-  `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
-  → #6/#7 **均未合并**，合并需逐次授权。
-- **安卓这条线的 PR 栈（2026-10-31 实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
-  **已合并**（远端 main = `5a08fa4`）；以下**全部 open、均未合并**，且是一条链，
-  合的顺序只能从底往上：#15 `fix/wasapi-capture-measurement`（35570c7）、
-  #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
-  （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
-  → #19 `fix/android-settings-persistence`（`5de74a2`，base #18 的 head）
-  → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
-  → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
-  → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）。
-  ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-  `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19。回滚点：
-  `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、`git revert af7e8d1`（#17）。
-  **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
-- **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
+  **AGPL-3.0**），默认分支 `main`（现 `dcebfd7`）。
+- **安卓这条线的 PR 栈（2026-11-04 实况）**
+  - ⚠️ **`main` 已经不是 `5a08fa4`**。远端 main = `dcebfd7`，靠的是四笔消息里带
+    `(local equiv)` 的**本地 merge commit**：`2c4ea48`←#32 的 head `9bcb07a`、
+    `1911970`←#33 `ba53018`、`3b63e6f`←#34 `5da4b8c`、`dcebfd7`←#35 `c521a47`。
+    而 `9bcb07a` 本身叠在 #16→…→#23→#24…#31 这条链上，所以 `2c4ea48` **一笔把
+    #16–#32 的全部内容带进了 main**。GitHub 上 #17–#23 仍显示 open，只是因为它们的
+    base 是已被消化的中间分支——refs 差还在，内容差没有。**确实没进 main 的只有 #15**
+    （`35570c7`，采集冒烟稳态口径）。
+  - 判「这条到底进没进 main」只用 `git merge-base --is-ancestor <sha> origin/main`，
+    不要看 PR 的 open/closed，也不要看 `merged_at`：#33/#34/#35 都有 `merged_at`，
+    但那是合进各自的 base 侧分支，当时离 main 还隔着一层。
+  - 集成分支 `fix/android-touch-dialogs`（= #23 的 head，现 `2d56498`）与 main 的
+    **内容差只剩 6 个文件**：`touch_dialog.{h,cpp}` + `main.cpp` + `tests/test_touch_dialog.cpp`
+    这四个是 #34 那套 `QT_NO_FAST_MOVE` / `QT_NO_FAST_SCROLL`（真机已证伪，见下面那条），
+    main 里在、集成分支故意不带；剩下两个是文档：`docs/HANDOVER.md`（含 §5.1）和
+    `docs/android-真机验收清单.md`，都是集成分支领先、main 还没拿到的补记。
+  - 已合进集成分支的（都按仓库惯例用 merge commit，与 #12/#13/#14 同法）：#24 → `648658b`、
+    #25 → `2e3a7ff`、#27 → `338d8c0`、#28 → `711238d`、#29 → `12140a1`、#30 → `c3d5573`、
+    #31 → `f9ca7ef`、#32 → `d4b056c`、#37 → `2d56498`（#37 是 cherry-pick 落地的
+    「#33 网关 + #35 瀑布图流畅度」，**明确不含 #34**）。
+  - #26（`docs/android-roadmap`，§5.1 手机端路线）GitHub 合不动：`mergeable_state=dirty`
+    （§6 与 #29–#31 那几笔改到了同一区段）。本次把它 replay 成本分支的第一笔
+    （`-x 05b2bb5`，§6 冲突按「保留已更新的实况、只取 §5.1 净新增」解），
+    所以 **#26 由本 PR 取代，不 force-push、不改写它的历史**。
+  - ⚠️ **共享工作树的 HEAD 会被别的会话切走**：本轮另一会话把主工作树切到
+    `feat/arch-cleanup` 时，把我未提交的 `start(33)` 一起卷进了它的提交。
+    之后所有落地动作都改在独立 worktree 里做（`git worktree add`），验完再推分支。
+  - 回滚点（**倒着撤**，merge commit 要 `-m 1`）：
+    `git revert -m 1 2d56498`（#37）→ `git revert -m 1 f9ca7ef`（#31）→
+    `git revert -m 1 d4b056c`（#32）→ `git revert -m 1 c3d5573`（#30）→
+    `git revert -m 1 12140a1`（#29）→ `git revert -m 1 711238d`（#28）→
+    `git revert -m 1 338d8c0`（#27）→ `git revert -m 1 2e3a7ff`（#25）→
+    `git revert -m 1 648658b`（#24）；main 侧那四笔 `(local equiv)` 同理
+    `git revert -m 1 dcebfd7 3b63e6f 1911970 2c4ea48`（**撤到 #34 那笔即可撤掉
+    证伪的滚动开关**，#33/#32 的内容要留意别跟着撤）。把分支退回旧 sha 属改写已共享
+    历史（要 force-push），不做。
+- **手机端滚动左端割裂：三次实验全负，#34 是证伪的（2026-11-02/03 真机 Redmi K40）**
+  - 现象：任何可滚动界面（自检台账、对话框）甩动时，屏幕**左端固定一条**（探针量到
+    割裂线落在屏幕 x≈148 附近）不跟着更新，右侧有拖拽感。
+  - 已试并**已否**的三条：① `QT_NO_FAST_MOVE` + `QT_NO_FAST_SCROLL`（#34 的方案）——
+    设备上 `RSDBG fastmove=[1] fastscroll=[1]` 证明两个开关真的生效了，逐帧像素探针里
+    那根「左端墨迹起点」的梳齿照旧，割裂带一条没少；
+    ② 父控件 `update()` / `window()->update()` 逐拍强绘——桌面侧量到子控件
+    `paintEvent` 次数为 0，非脏区不重绘；③ 换 Qt 6.8.3 / 把该页改成 GL 控件——同样没消。
+    **所以 #34 没进集成分支**，但它已经在 main 上：main 现在带着一个「关掉 Qt 搬像素快滚动」
+    的性能负债而收益为零，要不要撤请拍板（回滚点见上）。
+  - 甩动期间的绘制节奏实测 **15.9 fps（帧间隔 62–63 ms）**。`gfxinfo` /
+    `SurfaceFlinger --latency` 对 Qt 的 ANativeWindow 表面在这台机上取不到有效数，
+    只能自己埋点 + `screencap` 逐帧像素探针。剩余嫌疑指向 Qt 安卓侧 backing store
+    → ANativeWindow 的**部分区域 flush**，未定因，任务 #101 仍 open。
+  - 瀑布图那条线是真修好了（#35→#37）：定时从 66 ms 提到 33 ms（≈30 fps）+
+    `Qt::PreciseTimer`（Windows 默认 15.6 ms 粒度，33 ms 实测只跑到 21 fps/47 ms 间隔），
+    FFT 窗 2048/48000 = 42.7 ms，原来 66 ms 一拍等于每两拍之间有 23 ms 音频根本没被分析；
+    纹理 `kTexH` 256→512、放大改 `GL_LINEAR`（`GL_NEAREST` 在 2.25 px/列时有台阶感）。
+    中途加过「不可见就不算」的 `isVisible()` 节流，真机上把历史冻成了一条平的预填充带，
+    已撤（`c521a47` / 集成分支 `923d540`）。
+- **`feat/arch-cleanup` 这条线（#36 → main，PR #38 在修它）**
+  - 自 `radio_bus` 独立成库以来**这条线的 CI 没有一次全绿**（run 102/103/104/105/106 全红），
+    三处独立破损：① Windows `Configure`——`find_package(Qt6HttpServer REQUIRED)` 让没有
+    qthttpserver 的套件（安卓交叉套件）直接失败；② macOS `Build`——`SseClient` 用
+    `QSharedPointer::create()` 默认构造 `QHttpServerResponder`（该类只有移动构造 +
+    `QHttpServerStream*` 构造，没有默认构造）；③ Ubuntu `Build`——apt 给的是 **Qt 6.4.2**，
+    它的 HttpServer 与 6.8 API 形状互斥：`req.headers()` 返回 `QList<QPair<…>>`（`value()`
+    要下标）、`QAbstractHttpServer::bind()` 返回 `void`、route 视图的 Responder **只收 `&&`**，
+    而 6.8 反过来 `headers()` 是 `QHttpHeaders`、`bind()` 返回 `bool`、Responder **只收 `&`**
+    （两边写谁都会炸另一个，这是 6.8 的有意变更，不是我们写错）。
+  - #38 的处置：①② 真修（QUIET + 目录跳过 / 带 responder 一起构造），③ 把 bus 的真实依赖
+    写进 CMake（`find_package(Qt6HttpServer 6.8 QUIET)`，低于 6.8 整个目录跳过并在 configure
+    里明说），不给发行版旧 Qt 铺 `#if` 梯。顺带修了两处**从未被编译过**的安卓源码
+    （`MainWindow_android.cpp` 在桌面构建里也参与编译，缺 `meter_widgets.h`/`QListWidget`
+    两个 include——它以前只在安卓侧构建里被触发过），并补了本仓**第一个 SSE 端到端用例**。
+  - 本地口径：Qt 6.8.3 msvc2022_64 全量构建 + `ctest` **213/213 通过**（含新增的
+    `bus streams spectrum frames over SSE to a kept-open client`）。
+  - ⚠️ **但 SSE 到浏览器为止一直是断的**（`49c0a0c` 修，CI 全绿也抓不到，是真浏览器实测撞出来的）：
+    ① 服务端 `responder.write(data, mime)` 发的是「一个完整响应」，头里带 `content-length: 23`——
+    裸 `QTcpSocket` 继续沿同一条连接读能读到后面的帧（4 秒 51 帧，所以旧用例是绿的），
+    而 `EventSource` 按 `content-length` 读完第一段就判定流结束、断开重连，频谱一帧进不了 JS，
+    每几秒还在 `sse_clients_` 里多攒一个不回收的客户端。改成
+    `writeBeginChunked` + `writeChunk`，上限改成真封顶（挤掉最老的并 `writeEndChunked` 收尾）。
+    ② `apps/web/app.js` 里 `openSse()` **定义了却从没被调用**，启动只有轮询——
+    「SSE 优先、轮询兜底」那句注释是愿望不是事实。
+    用例已加固成浏览器看得见的形状（断言 `transfer-encoding: chunked` 且无 `content-length`），
+    并做变异对照：换回旧写法两条断言双双 FAIL。
+    验完的口径：PWA 标签切成「频谱：SSE 实时推送」、canvas 持续重绘、
+    独立 `EventSource` 3 秒 45 帧（≈66 ms/帧）。
+    坑：**总线给 PWA 静态件没带 `Cache-Control`**，浏览器按启发式缓存旧 `app.js`，
+    改完 JS 同端口刷新仍跑旧脚本（`ignoreCache` 导航都换不掉子资源）——本轮靠换端口绕过，
+    验证 SSE/前端改动时要记得这一手。
+- **PR #1–#14 均已合并进 main**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
-  WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
-- **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
-  macOS Qt。
+  WSJT-X UDP 接入（`9b3e9ac`）、QSO 直写 HamLog（#6 `bef3eec`）、审查修复 + 算法优化
+  （#7 `f531346`）、50003 设备可选与诊断（#9）、ft8_lib vendor（#11 `4ff82d9`）、
+  安卓工具链（#12 `fff069f`）、AAudio 后端（#13 `f4091f6`）、APK 打包（#14 `5a08fa4`）；
+  每次合并后 main 推送 CI 三平台 success。
+- **CI 三平台全绿**只对 `main` 与安卓那条链成立：Windows 用 install-qt-action 的
+  `6.8.*`、macOS 用 brew `qt@6`、**Ubuntu 用 apt 的 6.4.2**——三者里 Ubuntu 的 Qt 最老，
+  也正是它编不动 bus（见上面那条 arch-cleanup）。bus 的版本门槛写进 CMake 后，
+  Ubuntu 走「跳过 bus」这条路，不再是「红在 Build」。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
   两条路：① git push 成功时直接用；② 不通时用 REST API 推
   （`gh api` 或仓外脚本：create blob → create tree(base_tree) → create commit
@@ -455,8 +726,15 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
    声明）要到 ninja regenerate 才暴露——改完头文件先 `touch` 源文件再编。
 4. **Qt 6.8 HttpServer**：模块名 `qthttpserver`（依赖 `qtwebsockets`），
    `find_package(Qt6 COMPONENTS HttpServer)` 不置 _FOUND，用
-   `find_package(Qt6HttpServer)`；API 与 6.4 差异大（`bind(QTcpServer*)`、
-   `QHttpHeaders.value()`、双参构造 (mimeType,data)）。
+   `find_package(Qt6HttpServer)`；API 与 6.4 差异大且**互斥**，不是「新旧都能编」：
+   route 视图的 Responder 在 6.4 **只收 `&&`**、在 6.8 **只收 `&`**（写反了各自撞
+   `qhttpserverrouterviewtraits.h` 的 static_assert）；`req.headers()` 6.4 是
+   `QList<QPair<QByteArray,QByteArray>>`（`value()` 要下标）、6.7+ 才是 `QHttpHeaders`
+   （`value(name)`）；`QAbstractHttpServer::bind(QTcpServer*)` 6.4 返回 `void`、
+   6.8 返回 `bool`。本仓的处置是不铺 `#if` 梯，直接
+   `find_package(Qt6HttpServer 6.8 QUIET)` + 低于 6.8 跳过整个 bus 目录。
+   另：`QHttpServerResponder` 没有默认构造（只有移动构造 + `QHttpServerStream*`），
+   要长期持有必须带着它一起构造。
 5. **WASAPI**：见 §6/文档。
 6. **截图 DPI**：本机 150% 缩放，截图脚本必须 `SetProcessDPIAware`，否则只截到
    窗口左上 2/3（曾因此误判 UI 缺控件）。UIA 枚举比视觉模型可靠。

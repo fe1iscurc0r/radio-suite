@@ -14,10 +14,12 @@
 class QHBoxLayout;
 class QVBoxLayout;
 class QCloseEvent;
+class QEvent;
 class QStackedWidget;
 class QWidget;
 
 #include "app/WaterfallWidget.h"
+#include "app/device_report.h"
 #include "app/launch_config.h"
 #include "app/session.h"
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
@@ -58,6 +60,8 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
  protected:
   // 副面板是无父顶层窗口：主窗关闭时要一起收掉，否则进程不会退出
   void closeEvent(QCloseEvent* event) override;
+  // 面板被系统返回键隐藏时复位大按键（手机没有标题栏，容易点成"关不掉"）
+  bool eventFilter(QObject* watched, QEvent* event) override;
 
  private slots:
   void refreshState();    // RadioState → 标签 + 模式/功能按钮回读同步
@@ -70,6 +74,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
   void onMemSave();       // 本地记忆：当前频/模存入所选槽
   void onMemRecall();     // 本地记忆：取出槽内频/模
+  radio::app::ReportInput selfCheckInput();  // 台账：只收集事实，判定在 device_report
   void onAudioSettings();  // 音频设备选择 + 50003 链路质量读数
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   void onLogQso();        // 记一条 QSO（自动填频率/模式/UTC，写 HamLog 库）
@@ -107,6 +112,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
 #endif
   void flashStatus(const QString& text, bool warn);
   void syncTogglesFromState(const radio::core::RadioState& s);
+  void syncBandHighlight(uint64_t hz);  // 当前频率落在哪个频段/波段快捷上
 
   // 启动链路偏好：状态栏文案的唯一来源，「连接…」对话框的初始值
   radio::app::LinkPrefs link_;
@@ -139,6 +145,11 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   QPushButton* vfo_equal_btn_ = nullptr;  // A=B
   QPushButton* dtmf_big_btn_ = nullptr;
   std::vector<QPushButton*> step_btns_;  // 排他 checkable 步进档（100Hz/1k/10k/100k）
+  // 频段/波段快捷：可点亮，但没有 QButtonGroup——区间互相重叠不看顺序，
+  // 每次回读按 [low, high) 现算，一根频率落在两个区间也只亮一个（区间不重叠）
+  std::vector<QPushButton*> band_btns_;
+  std::vector<uint64_t> band_low_;
+  std::vector<uint64_t> band_high_;
   std::vector<QPushButton*> mode_btns_;  // 模式组（LSB/USB/AM/CW/FM/WFM，互斥 + 回读驱动）
   // 与 mode_btns_ 一一对应的制式值：按钮行没有 RTTY，下标≠枚举值，回读按这个比
   std::vector<radio::core::civ::Mode> mode_vals_;

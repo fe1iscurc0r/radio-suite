@@ -16,6 +16,7 @@
 #include <cmath>
 
 #include "app/session.h"
+#include "app/touch_dialog.h"
 
 namespace radio::app {
 namespace {
@@ -216,6 +217,7 @@ RepeaterDialog::RepeaterDialog(RadioSession* session, QWidget* parent)
           [this] { syncFromState(false); });
 
   syncFromState(true);
+  radio::app::touch::fitDialog(this);
 }
 
 void RepeaterDialog::applyDuplex() {

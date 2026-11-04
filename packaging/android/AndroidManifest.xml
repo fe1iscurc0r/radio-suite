@@ -7,8 +7,12 @@
     android:installLocation="auto"
     android:versionCode="-- %%INSERT_VERSION_CODE%% --"
     android:versionName="-- %%INSERT_VERSION_NAME%% --">
-    <!-- INTERNET / ACCESS_NETWORK_STATE 由 androiddeployqt 自动注入，这里只补麦克风 -->
+    <!-- INTERNET / ACCESS_NETWORK_STATE 由 androiddeployqt 自动注入，这里只补麦克风与组播。
+         CHANGE_WIFI_MULTICAST_STATE 是 normal 权限（装机即授），但没有它
+         WifiManager.createMulticastLock() 会抛 SecurityException，
+         表现为「加入组播成功却一个包都收不到」。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- %%INSERT_PERMISSIONS -->
     <!-- %%INSERT_FEATURES -->

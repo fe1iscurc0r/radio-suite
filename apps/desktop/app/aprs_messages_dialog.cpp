@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/aprs_messages_dialog.h"
+#include "app/touch_dialog.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -84,6 +85,8 @@ AprsMessagesDialog::AprsMessagesDialog(QWidget* parent) : QDialog(parent) {
   connect(read_btn, &QPushButton::clicked, this,
           [this] { emit markAllReadRequested(); });
   connect(close_btn, &QPushButton::clicked, this, &QDialog::hide);
+
+  radio::app::touch::fitDialog(this);
 }
 
 void AprsMessagesDialog::setMyCall(const QString& call) {

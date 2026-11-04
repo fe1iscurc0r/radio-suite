@@ -27,6 +27,7 @@
 #include "app/aprs_map.h"
 #include "app/aprs_messages_dialog.h"
 #include "app/aprs_rf.h"
+#include "app/touch_dialog.h"
 #include "app/network_audio.h"
 #include "aprs/persist.h"
 #include "core/audio_link.h"
@@ -808,6 +809,7 @@ void AprsPanel::openRfSettings() {
   form->addRow(buttons);
   connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+  radio::app::touch::fitDialog(&dlg);
   if (dlg.exec() != QDialog::Accepted) return;
 
   rf_mode_ = static_cast<RfMode>(mode->currentIndex());

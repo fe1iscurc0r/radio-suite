@@ -13,7 +13,13 @@ PR #16 之上）——`main`（`5a08fa4`）上还没有 FT8 面板（`apps/deskt
 D1 的 `radio-suite.ini` 原样保住（102 字节，13:46 那份），D3 的结论出自第二包。
 **本清单的状态:** 2026-10-31 手机第一次接上并跑了 K4 那批条目（装包、D1 持久化、G-0 的
 「保存→重启→按偏好建链路」这半条、K3 的离线不谎报），当夜又跑了 C3/C5/C6/C7/C8/C9
-（锁横屏、独立面板、分页重排、制式互斥、HamLog 不可用）。**其余每一条仍是
+（锁横屏、独立面板、分页重排、制式互斥、HamLog 不可用）。11-01 凌晨按用户报的一串手机
+缺陷修了 C10（对话框/面板能滚能关、波段高亮）；当天 13:30 手机解锁后按用户原话逐条复验，
+C10 全部通过，并补了两个新根因的修复（下拉弹窗触摸错位、第二顶层窗口丢帧），
+15:28 又补点了 SET/MEM/CW/DTMF/VOICE 五个对话框（同样全屏贴边、能滚、能关），
+结论都写在 C10 正文里；17:46 把 C9 的待办落地（Android 自建本地 HamLog 库），
+「日志」页签在手机上出得来、记 QSO 真写进库，17:53 顺带验了同页的 ADIF 导出
+（走系统 SAF 选择器，`content://` 直写成功）。**其余每一条仍是
 PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
 出包信息、jar 字节码，不代表真机行为。
 
@@ -327,6 +333,155 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 
 ---
 
+## 2b. 权限矩阵（麦克风 / 存储 / USB OTG / 组播）—— 2026-11-01 核对
+
+用户提的「手机端还要询问权限：OTG、存储等」，逐条查实。**这一节是静态核对 + 一次真机
+`dumpsys`（18:40），OTG 那条今天证不了**，原因写在下面，不假装做过。
+
+取证据的命令（一次跑完，别手搓）：
+```bash
+AAPT=/d/Android/sdk/build-tools/34.0.0/aapt2.exe
+"$AAPT" dump permissions "<APK>"   # 包里真正声明了什么
+"$AAPT" dump badging   "<APK>" | grep -iE "feature|targetSdk"
+"$ADB" shell dumpsys package org.radiosuite.app | sed -n '/runtime permissions/,/installed/p'
+ls /d/Qt/6.7.3/android_arm64_v8a/include/QtSerialPort   # 安卓 Qt 有没有串口模块
+grep Qt6SerialPort_DIR build-android/CMakeCache.txt
+```
+
+| 权限 / 特性 | 谁声明的 | 真机状态（11-01 18:40） | 结论 |
+| --- | --- | --- | --- |
+| `RECORD_AUDIO` | 我们（`packaging/android/AndroidManifest.xml:11`） | `granted=true` | 启动时按 B1 申请，行为对 |
+| `INTERNET` / `ACCESS_NETWORK_STATE` | androiddeployqt 注入 | 安装期权限 | 无需弹窗 |
+| `WRITE_EXTERNAL_STORAGE`（隐含 `READ_`） | **Qt6Core 的 `lib/Qt6Core_arm64-v8a-android-dependencies.xml` 注入，不是我们写的** | 两条都 `granted=false`（`RESTRICTION_INSTALLER_EXEMPT`） | targetSdk 34 上这是**死权限**，见下 |
+| `CHANGE_WIFI_MULTICAST_STATE` | 我们（`packaging/android/AndroidManifest.xml`，11-01 补） | 未复测 | normal 权限，装机即授；锁已在代码里取（见下） |
+| `android.hardware.usb.host` / USB 权限 | 未声明（包里只有 microphone[not-required] + 两条 implied） | — | 缺口不在弹窗，在后端 |
+
+**存储：不该问，也问不出东西。** Android 13 / targetSdk 34 已经没有「存储」这个运行时权限，
+`WRITE_EXTERNAL_STORAGE` 是 Qt Core 依赖清单带进来的历史遗留，系统直接不给授（真机
+`granted=false`），而应用一点没受影响——写路径本来就不靠它：私有目录一直在写
+（`radio-suite.ini`、`aprs.db`、11-01 新建的 `HamLog/Log.db`），对外导出走 SAF
+（17:53 ADIF 导出实测落 `/sdcard/Download/radio-suite.adi`，全程没弹任何权限框）。
+再往上只剩 `MANAGE_EXTERNAL_STORAGE`（所有文件访问），那是系统安全设置、MIUI 还要单独放行——
+**不申请**，一个电台面板不该要整机的文件系统。
+
+**USB OTG：真正缺的是后端，不是弹窗。** 安卓版 Qt 6.7.3 **不带 QtSerialPort**
+（`include/QtSerialPort` 不存在、`Qt6SerialPort_DIR-NOTFOUND`），所以
+`RADIO_SUITE_HAVE_SERIALPORT` 在安卓构建里是关的，APRS 面板的串口入口走的是
+`apps/desktop/app/aprs_panel.cpp:847` 那句降级「本构建未启用串口（缺少 Qt6::SerialPort），
+请用 KISS TCP」。要做 OTG 串口得自己接 `UsbManager`：JNI + 清单加
+`<uses-feature android:name="android.hardware.usb.host">` + `USB_DEVICE_ATTACHED` 的
+`device_filter.xml` + `UsbManager.requestPermission()`（USB 授权不是运行时权限组，只能这么要），
+或 vendor `usb-serial-for-android`（Apache-2.0）。**今天证不了**：手机唯一的 USB 口被 adb
+占着，台架上也没有可插的串口设备/电台；只加清单声明、不加后端是自欺，所以整条按工单排。
+
+**组播：只声明权限不拿锁等于没做——这轮把锁补上了，但真机还没验。** WSJT-X 面板默认监听
+`224.0.0.1:2237`（`apps/desktop/app/wsjtx_client.cpp` `joinMulticastGroup`），Android 上不持
+`WifiManager.MulticastLock` 时组播帧一般收不到（**join 会返回成功，一个包都不来**，所以这条
+缺陷的表象是「没数据」而不是「报错」）。11-01 深夜代码落地：新增
+`apps/desktop/app/multicast_lock.{h,cpp}`（JNI 走
+`QNativeInterface::QAndroidApplication::context()` → `getSystemService("wifi")` →
+`createMulticastLock(tag)`，`setReferenceCounted(false)` 后 `acquire()`），
+`WsjtxClient::start()` 在 `joinMulticastGroup` **之前**取锁、`stop()` 释放，取锁失败时把原因
+写进错误串并提示改单播；manifest 补 `CHANGE_WIFI_MULTICAST_STATE`（新包
+`aapt2 dump permissions` 实测已在）。非 Android 上这类是空实现且 `held()` 保持 false，
+不会假装持有。**未验的部分**：真机上锁是否真的拿到（`SecurityException` 路径没跑过）、
+拿到后组播帧是否真的进来——见下面判据。单播不受影响：把地址指成手机可达的单播地址就能
+先证数据通路——**这条是能做的，且不需要电台**。
+
+判据（下次真机补，别照抄本节结论）：
+- 新包 `aapt2 dump permissions` 的期望集合（11-01 构建后实测这七项）：`RECORD_AUDIO`、
+  **`CHANGE_WIFI_MULTICAST_STATE`**、`INTERNET`、`ACCESS_NETWORK_STATE`、
+  `WRITE_EXTERNAL_STORAGE`、`READ_EXTERNAL_STORAGE`、
+  `org.radiosuite.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`。前两条是我们自己声明的，
+  其余都要能说出谁注入的；对不上就当场查，别写「大概」；
+- 撤销 `RECORD_AUDIO` 后 FT8 选「本机麦克风」要如实失败（B1 的撤销分支至今没走过）；
+- 若做了 OTG：插上设备弹 `UsbManager` 授权框，点拒绝后面板如实报错、不崩；
+- **组播锁（代码已落地，真机两条分支都要走）**：① `logcat` 里不该出现
+  `SecurityException ... CHANGE_WIFI_MULTICAST_STATE`；WSJT-X 面板按默认组播启动后不报错；
+  ② 同一网段 PC 发 Decode 包 → 手机面板出解码行（这才是锁真起作用的证据；只「没报错」
+  不算，因为不持锁时 join 也成功）；③ 对照：同机器改单播地址仍能出解码行。
+
+---
+
+**台账已经进 app（11-01 深夜）**：面板页新增「自检 / 台账」大按键
+（`apps/desktop/app/self_check_dialog.cpp` + `device_report.cpp`），一屏列出设备、权限、
+电台链路、WSJT-X、音频、数据六组的**现场事实**与降级原因，可刷新，Android 上还带一个
+「申请麦克风」出口（被永久拒绝时给的是去系统设置的路径，不是死路）。
+它只报读到的事实：判定与措辞都在 `buildDeviceReport()` 这个纯函数里，所以**安卓的说法
+在桌面上就能跑断言**（`tests/test_device_report.cpp`，10 条）。
+⚠️ 别拿这页当验收结论——它证明的是「程序读到了什么」，不是「用户真收到了什么」：
+比如组播那行显示「已持有」只说明 JNI 调用没抛异常，**收到没收到包仍要按上面第 ② 条
+用 PC 发包证**。
+
+---
+
+### 2b.1 真机第二轮（21:43–22:40，装的是含 #27/#28 的包）
+
+**权限矩阵从「静态核对」升级成实测**（`dumpsys package org.radiosuite.app`，新包
+`lastUpdateTime=2026-11-01 21:43`）：`RECORD_AUDIO granted=true`、
+**`CHANGE_WIFI_MULTICAST_STATE granted=true`**（normal 权限，装机即给）、
+`INTERNET`/`ACCESS_NETWORK_STATE` 同装即给、两条 `*_EXTERNAL_STORAGE granted=false
+[RESTRICTION_INSTALLER_EXEMPT]` —— 上面那张表里「未复测」的两格现在都有值了，
+「存储是死权限」这条也从推断变成了实测。
+
+**组播锁判据①：通。** logcat 记到 `WifiService: acquireMulticastLock uid=10332`
+（10332 就是本应用的 uid，`dumpsys package` 对得上），全程**没有** `SecurityException`。
+紧跟的那次 `releaseMulticastLock` 不是泄漏，是 join 失败后 `stop()` 正常收尾。
+
+**组播锁判据②：没通，而且卡的原因不在代码。** 手机 Wi-Fi 开关是开的，但没连任何 AP
+（`ip addr show wlan0` → `NO-CARRIER ... state DOWN`），没有可加入组播的接口，
+面板如实报「加入组播失败（224.0.0.1）：Unknown error」。**要证「包真进来了」，
+必须先让手机连上和 PC 同网段的 AP**——在那之前这条不许打勾。
+
+**台账页逐行核对过（截图）**：`android · API 33 · arm64-v8a`、机型 `M2012K11AC`、
+设置落点 `/data/user/0/org.radiosuite.app/files/radio-suite.ini`、
+`当前链路 降级（mock）`、`串口 缺失（点名 UsbManager）`、`对外总线 不适用`、
+`HamLog 本地库 可用 · .../files/HamLog/Log.db`、`日志记录 可用`。
+**新事实：`USB Host 特性 可用`** —— K40 报告支持 USB Host，D 线（OTG 串口）的
+硬件前提成立，缺的确实只有后端代码。
+
+**⚠️ B1 撤销分支的走法要改**：运行中 `pm revoke RECORD_AUDIO` 会被系统**直接杀掉进程**
+（截图掉回桌面）。这是 Android 撤销运行时权限的既定行为，不是本应用崩溃。所以这条判据
+必须按「**撤销 → 冷启动 → 进 FT8 选本机麦克风**」走；边跑边撤只会看到进程没了，
+把它当成本应用的稳定性缺陷就是误判。
+
+**「申请麦克风」出口验过**：撤销后冷启动，台账该行判 `缺失`（文案指向系统设置路径）；
+点按钮能重新唤起系统三选弹窗（拒绝 / 本次运行允许 / 仅在使用中允许）。取证时用
+**返回键取消 + `pm grant` 还原**，不替用户点隐私授权。
+
+---
+
+### 2b.2 等网络的一轮（三条，都不需要电台）
+
+三条都卡在同一个前提：手机连上**和 PC 同网段**的 Wi-Fi AP。现在过不了是因为
+`wlan0: NO-CARRIER`（Wi-Fi 开关开着但没连 AP），不是代码问题。
+
+- [ ] **N1 组播收包实证**（= §2b 判据②，判据①已通）
+  操作：PC 起真 WSJT-X，或用我们的编码往 `224.0.0.1:2237` 发一包 Decode；
+  手机 WSJT-X 面板「开始监听」（默认组播）。
+  判定：面板**出解码行**。`"$ADB" logcat | grep -i multicast` 里本应用 uid 的
+  `acquireMulticastLock` 后面**不**该紧跟 `releaseMulticastLock`（一拿就放 = join 失败）。
+  ⚠️ 「join 成功」不算证据——不持锁时它也返回成功，必须有真的包进来。
+
+- [ ] **N2 CI-V over TCP 端到端（无电台版，验 #30 那条链路）**
+  操作：PC 上 `ncat -l 4533`（或任何能收字节的 TCP 监听），记下 PC 的局域网 IP；
+  手机「连接…」→ 链路选「CI-V over TCP（串口网关透传）」→ 网关 IP 填 PC 的 IP →
+  保存 → 重启应用（TCP 档没有命令行开关）。
+  判定：① 状态栏从 `transport: mock` 变成 `transport: tcp · <PC-IP>:4533`；
+  ② 台账「当前链路」不再是 mock 那条降级文案；③ **杀掉 PC 上的监听**后 UI 如实显示
+  失联——这正是清单 G-6 判的事，`poll()` 里主动收状态就是为它写的。
+  ⚠️ 这条只证明「字节管道 + 链路状态如实」，**不证明任何电台语义**；CI-V 往返要真电台
+  （G-1…G-5），别拿它给 G 线打勾。
+
+- [ ] **N3 B1 撤销分支（按纠正后的走法）**
+  操作：`"$ADB" shell su -c 'pm revoke org.radiosuite.app android.permission.RECORD_AUDIO'`
+  → **必须冷启动**（运行中撤销会被系统直接杀进程，见 §2b.1 最后两条）
+  → 进 FT8 面板选「本机麦克风」→ 开始解码。
+  判定：如实失败并给出去系统设置的路径（台账那一行显示 `缺失`），不崩、不静默。
+  验完 `pm grant` 还原，并回台账确认翻回 `可用`。
+
+---
+
 ## 3. Gate C — 手机分辨率上的 UI 与触控
 
 - [ ] **C1 窗口尺寸** —— **真机不通过**（2026-10-31 竖屏实测，见下面「实测」）
@@ -473,7 +628,7 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   右列大按键、底部 `transport: mock` 状态行全部与重构前一致——但这只是人眼对照，
   没有像素级基线。
 
-- [ ] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），未修
+- [x] **C9 HamLog 在 Android 上从未可用** —— 真机发现（2026-10-31 夜），已修，11-01 真机复验通过
   `RADIO_SUITE_HAVE_LOGBOOK=1` 确实编进了 Android 包（`build-android/build.ninja` 可查），
   但真机上 `hamlog_.available()` 恒为 false：`HamLogDb::defaultDbPath()` 指向的库文件
   在手机上不存在，而 `available()` 的契约是「库文件存在且 log 表可读」。
@@ -481,9 +636,118 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   分页版第一稿把「日志」页做出来才看见它是一页死内容。
   **当前处置**：`hamlog_.available()` 为假时**不建这一页、不出这个页签**（手机上是四页签：
   频谱/调谐/制式/面板），宁可少一页也不摆一个点不开的死页面。
-  **待办**：给 Android 定一个真正可写的 HamLog 库路径（或首次启动建库），
-  再做手机上的记 QSO / ADIF。这条与 D3（QSQLITE 驱动）不同——驱动已经打进包了，
-  缺的是库文件本身。
+  **11-01 15:24 真机核对**：最终包（代码止于 `e8ccabb`，之后只改文档）面板页底部确为
+  频谱/调谐/制式/面板 四个页签，日志页签不存在，与该处置一致；本轮截图只点了面板页，
+  其余三页在 13:30 那轮点过。
+  **待办**（提于 15:24，同日 17:46 已落地并复验，见下）：给 Android 定一个真正可写的 HamLog 库路径
+  （或首次启动建库），再做手机上的记 QSO / ADIF。这条与 D3（QSQLITE 驱动）不同——驱动已经
+  打进包了，缺的是库文件本身。
+  **修法（`373d2a2`）**：`HamLogDb` 新增 `createDatabase()`（log 18 列 + settings 两张表，
+  全部 `IF NOT EXISTS`——已有表和行一律不动，对 HamLog 自己的库重复调用也安全）和
+  Android-only 的 `ensureLocalDb()`；`defaultDbPath()` 在 Android 上改走
+  `radio::ui::settingsDir()`（本机已验证可写的 `QStandardPaths::AppDataLocation`），
+  落点 `/data/data/org.radiosuite.app/files/HamLog/Log.db`；`MainWindow` 构造在 `buildUi()`
+  **之前**调用建库，失败只 `qWarning`，不改「库拿不到就不出这一页」的处置。桌面路径不变。
+  **11-01 17:46 真机复验**（Redmi K40，签名包与桌面同码）：冷启动后 `files/HamLog/Log.db`
+  自动建出，从盘上读回的 DDL 确为 HamLog 的 18 列 `log` + `settings`；底部页签多出第五个
+  「日志」，点进去页面正常渲染；在「对方呼号」输入 `BG1TEST` 点「记 QSO」，顶栏绿色状态
+  `已写入 HamLog: BG1TEST @ 14.2700 MHz USB`，列表出现 `BG1TEST  14.2700 MHz USB  2026-11-01
+  0946`，输入框回到占位文案，pull 回的库文件里 `BG1TEST` 命中 1 次。
+  **17:53 同页「ADIF 导出」也验了**：`QFileDialog::getSaveFileName` 在 Android 上不是 Qt 自绘
+  对话框——Qt 6.7.3 把它交给系统 SAF 选择器（`dumpsys window` 里 `mCurrentFocus` 直接变成
+  `com.google.android.documentsui/com.android.documentsui.picker.PickActivity`），文件名框预填
+  `radio-suite.adi`、「保存」可点；选完 `QFile` 直接往返回的 `content://` URI 写，
+  `/sdcard/Download/radio-suite.adi` 落出 162 字节，逐字节是
+  `<ADIF_VER:5>3.1.4<PROGRAMID:11>radio-suite<EOH>` + `<CALL:7>BG1TEST<FREQ:9>14.270000<QSO_DATE:8>20261101<TIME_ON:6>094600<MODE:3>USB<RST_SENT:2>59<RST_RCVD:2>59<EOR>`，
+  顶栏回显「已导出 1 条 QSO → …」。**遗留小瑕疵（未修）**：那句回显把 URI 原样打出来，手机上
+  看到的是一串 `content://com.android.provide…` 截断文本，用户看不出文件落在哪；改成人话
+  （如「已导出 N 条 QSO → 下载/radio-suite.adi」）属产品口径，没擅自改。
+  **注意**：手机上这份库现在留了一条测试记录 `BG1TEST`（id 1），`/sdcard/Download/radio-suite.adi`
+  是本轮导出留下的 162 字节样本，两者都与真机通联无关，要清就直接删这两处。
+
+- [x] **C10 对话框与独立面板「能滚、能关」** —— 用户真机报缺陷，已修，11-01 真机复验通过
+  用户原话：「波段点击不显示亮度（在哪）音频设置没有退出键 cancel 无效，应用中继也
+  没有关闭键，频差无法设置，模拟亚音模式无法设置，数字亚音未看到，估计无法滑动。
+  电台连接关闭键失效，APRS，WSJTX 无退出键按钮切 wsjtx 页面切换有问题 SSTV 依旧
+  无法滑动」。
+  **根因（代码侧自查）**：Android 上没有窗口管理器，`QDialog` 与 `Qt::Window` 面板
+  既没有标题栏也没有关闭按钮；而对话框尺寸不受屏幕约束（中继对话框 560 宽、
+  音频设置 460 宽、SSTV 更高），376dp 高的内容区把底部「确定/取消」整排推到屏外，
+  于是表现为「没有退出键 / cancel 无效 / 频差与亚音选不到 / 不能滚」。面板（APRS /
+  WSJT-X / FT8）连关闭按钮都没有；系统返回键直接 hide 顶层窗，但主窗的大按键仍是
+  checked，再点一下只是把「看不见的已开窗」关掉——就是「切 wsjtx 页面切换有问题」。
+  波段按钮根本没有 `setCheckable`，点完没有任何回读高亮。
+  **修法**：新增 `apps/desktop/app/touch_dialog.{h,cpp}`（Android-only 生效）：
+  `fitDialog` 把对话框根布局整体搬进 `QScrollArea`，底部钉一条常驻「关闭」（→ reject），
+  交互控件（按钮、下拉框、数字框、输入框、勾选）统一抬到 ≥44dp，窗口压进
+  `QScreen::availableGeometry()`；滚动区挂
+  `QScroller::grabGesture(viewport, LeftMouseButtonGesture)`——QScrollArea 默认只认滚轮
+  和滚动条，手指拖动根本不会滚（安卓上触摸被合成成鼠标事件，所以选左键拖动这一档）；
+  分页主窗的 `wrapScroll` 同样挂上，调谐/制式页才真能用手拖着滚。
+  `addCloseBar` 给三个独立
+  面板各插一条「标题 + 关闭 ✕」顶栏；`QMessageBox` 换成语义相同的可滚动信息框
+  `showInfo`（同样常驻关闭，滚动区同样挂 QScroller）。接线覆盖：音频设置、中继/亚音、
+  连接设置、SSTV、DTMF、语音存储、CW、SET、MEM 信道、APRS 消息、APRS RF 设置、
+  WSJT-X UDP 设置。
+  **装包后在手机上抓到第二个缺陷，已修（`f540c30`）**：第一次解锁复验时波段高亮已
+  生效、音频设置对话框底部出现了常驻「关闭」，但对话框里「扬声器（RX 下行）」跑到了「取消/确定」
+  下方、中间一大段空白，往里拖也不滚。根因在 `fitDialog` 搬子布局那一步：
+  `QBoxLayout::takeAt()` 返回的 item **就是子布局对象本身**（Qt 6.8 `qboxlayout.cpp`
+  的 `takeAt` 直接返回 `b->item`），`addLayout()` 收养它时已经 `setParent(page)` 并把
+  里面的控件改父到滚动页；紧接着的 `delete it` 又把同一个布局删了——滚动页持悬空
+  指针。真机上是这些控件停在旧坐标、不再参与布局；离屏回归用例能稳定复现
+  （进程 `0xC0000409`）。修法：子布局分支不再 `delete it`，只交给 `addLayout` 收养
+  （控件分支的 `QWidgetItem` 仍可安全删除，它是布局项而不是控件）。
+  回归用例 [tests/test_touch_dialog.cpp](../tests/test_touch_dialog.cpp)：
+  `fitDialog reparents form rows into scroll content` 断言表单标签/下拉框确实是滚动页
+  的后代、纵向顺序「表单 < 分组框 < 按钮箱」、常驻关闭 ≥44dp；桌面靠
+  `RADIO_SUITE_TOUCH_FIT=1` 打开同一套触摸层逻辑跑这组断言。
+  主窗侧：三个面板事件过滤器收 `QEvent::Hide` → 复位对应大按键；三个面板大按键改为
+  互斥（开一个收掉另两个）并给 `:checked` 琥珀背光；波段/广播预置按钮改 `checkable`，
+  `syncBandHighlight()` 在 `refreshState()` 里按 `[low, high)` 回读点亮（40m 7.000–7.300、
+  20m 14.000–14.350、15m 21.000–21.450、10m 28.000–29.700、6m 50–54、2m 144–148、
+  70cm 430–440 MHz；AIR 118–137、BC-FM 87.5–108、BC-SW 9.4–9.9）。
+  **已验**：桌面 MSVC 构建（all 目标，含三个离屏 UI 测试）通过、`ctest` **182/182**
+  （含新增的 `fitDialog reparents form rows into scroll content`）；
+  Android clang 交叉编译通过并
+  出了新 APK（已 `adb install -r` 装到手机上，含后续补丁：输入控件触控高度 + `showInfo`
+  滚动）；桌面实窗（`--mock`，1105×768）截图
+  可见 14.070 MHz 时 **20m 亮琥珀**、其余频段暗色，与制式/步进按钮的选中态一致。
+  注：`tests/CMakeLists.txt` 的三个 UI 测试目标原先没编 `touch_dialog.cpp`，
+  Windows/macOS CI 在链接期报 `LNK2019 fitDialog`——已补源并重建验证；此前只构 app
+  目标时 `ctest` 用的是旧测试二进制，这是本轮漏检点。
+  **11-01 13:30 真机复验（已解锁，Redmi K40 / 873×393dp）：用户报的那串缺陷全部复测通过**
+  - 频差：方向下拉三行（同频 SPLX / 下差 DUP− / 上差 DUP+）都能点中；选「下差 DUP−」
+    → 应用频差 → TX 立刻变 `13.670000 MHz −600.0 kHz`；选「上差 DUP+」→
+    `14.870000 MHz +600.0 kHz`，不需要再点别处才刷新。
+  - 模拟/数字亚音：模式下拉列出全部 8 项（OFF / TONE / TSQL / DTCS / DTCS(T) /
+    TONE(T)/DTCS(R) / DTCS(T)/TSQL(R) / TONE(T)/TSQL(R)），选 DTCS（数字亚音）后
+    往下滚可见「码 023」「接收极性 / 发射极性」；应用模式后主窗中继键回读成
+    `中继 DUP-...[DTCS]`。
+  - 音频设置：Cancel/OK 都在屏内，Cancel 直接关闭；连接对话框、中继对话框的常驻
+    「关闭」都生效。
+  - 波段：14.270 时 20m 亮；点 40m 后 40m 亮、频率变 7.100000，调谐页拖动正常。
+  - 面板：APRS / WSJT-X 都有「关闭 ✕」；WSJT-X 关掉再开、系统返回键收面板都正常，
+    返回后面板大按键复位；SSTV 面板用 QScroller 拖得动。
+  - 15:28 补点 SET / MEM / CW / DTMF / VOICE：五个对话框都按全屏贴边打开、底部常驻
+    「关闭」一点即回面板页；SET 内容一屏放得下（滑动无位移、左侧标签完整）；MEM 滑到底
+    可见 `名称`、`Scan/DATA/Tone` 与 读取/写入/选组/选信道；CW 滑到底可见回读提示与
+    应用设置/发送；DTMF 滑到底可见「生成 .wav」（键盘 + 清空在首屏）。
+  **第三个根因（下拉弹窗点不中）**：Qt 6.7 安卓顶层窗口的触摸换算把窗口位置按
+  dp÷dpr 多减一次，只有窗口在 (0,0) 才准；而下拉弹窗永远贴在控件旁边（位置非零），
+  于是点哪个选项都命中错行——用户看到的就是「模拟亚音模式无法设置、数字亚音未看到」。
+  修法：`installPopupOriginFix()` 应用启动时装一个全局过滤器，`QComboBoxPrivateContainer`
+  弹出后钉到 (0,0)（`show` 内还会再算一次几何，用 `singleShot(0)` 二次钉）；Qt 自己的
+  itemSelected 在触摸合成鼠标事件的路径上不触发，另在列表 viewport 上装
+  `PopupClickFilter` 按 `indexAt` 选行，`setCurrentIndex`/`hidePopup` 推迟到下一轮事件循环。
+  **第四个根因（第二个顶层窗口丢帧）**：对话框里控件状态已变、新帧却合成不上屏
+  （应用频差后 TX 标签迟一步、下拉选完不刷新、甩动结束回弹的横向偏移留在屏上要再点
+  一下才回正）。修法：对话框内每次 `MouseButtonRelease` 后 60ms 补一次整窗
+  `update()` + `QWindow::requestUpdate()`（`TapRepaint`）；`QScroller` 回到 `Inactive`
+  后再补一帧；同时把滚动页横向范围钉死为 0，手指横向抖动不再把整页拖偏、切掉左侧标签。
+  **仍未验**：`fitDialog` 只对 `QBoxLayout`/`QFormLayout` 根布局生效（`QFileDialog` 这类
+  系统对话框不在范围内，SSTV 选图仍走 Qt 自带文件框）；SSTV 选图与真实收发、APRS 地图
+  之外的联网功能仍未在手机上跑过。
 
 ---
 
@@ -542,12 +806,14 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
   所以 WSJT-X 面板照旧按默认组播 224.0.0.1 去 join 并报「加入组播失败」。
   要改监听地址请走面板里的「设置」，别用 `reg add`。
 
-- [ ] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级**
-  代码事实：[apps/desktop/logbook/logbook.cpp:21-25](../apps/desktop/logbook/logbook.cpp#L21-L25) 读 `APPDATA`，
-  为空直接 `return {}`；Android 没有 `APPDATA` ⇒ 路径恒空。
-  判定：HamLog 相关按钮**不崩**、给出「库不存在（先运行一次 HamLog）」一类的真实提示、
-  且不出现「写了 QSO 但其实没落盘」的假成功。
-  这条判的是「诚实」，不是「能用」；要能用得换路径策略，属后续工单。
+- [x] **D2 HamLog 在 Android 上必然「不可用」，要的是如实降级** —— 降级半条已过，
+  「换路径策略」那半条 11-01 由 C9 做掉了（`373d2a2`：Android 自建本地库），故这一页现在
+  是真能用的第五个页签，判据随之改写为：**建库成功**时记 QSO 落盘（17:46 真机已过，见 C9）；
+  **建库失败**时仍然整页不出、不摆死页面（`MainWindow` 构造里失败只 `qWarning`，
+  `buildUi()` 照旧按 `hamlog_.available()` 决定这一页）。
+  原代码事实（`logbook.cpp` 读 `APPDATA`，Android 上恒空）**已改**：`defaultDbPath()`
+  在 `Q_OS_ANDROID` 下走 `radio::ui::settingsDir()`。
+  判定：HamLog 相关按钮**不崩**、给出真实提示、不出现「写了 QSO 但其实没落盘」的假成功。
 
 - [x] **D3 APRS 库落在哪**（写侧已验；「收下站点 → 重启 → 轨迹仍在」的读侧仍空，见下）
   代码事实：路径解析顺序 `RADIO_SUITE_APRS_DB` → `APPDATA` → `QStandardPaths::AppDataLocation`

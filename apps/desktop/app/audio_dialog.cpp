@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/audio_dialog.h"
 
+#include "app/touch_dialog.h"
+
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -72,6 +74,7 @@ AudioSettingsDialog::AudioSettingsDialog(QWidget* parent) : QDialog(parent) {
   timer_->setInterval(kStatsIntervalMs);
   connect(timer_, &QTimer::timeout, this, &AudioSettingsDialog::refreshStats);
   refreshStats();
+  radio::app::touch::fitDialog(this);
 }
 
 void AudioSettingsDialog::setDevices(const std::vector<Device>& inputs,

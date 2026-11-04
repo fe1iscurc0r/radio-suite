@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/cw_keyer.h"
 
+#include "app/touch_dialog.h"
+
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -81,6 +83,7 @@ CwKeyerDialog::CwKeyerDialog(RadioSession* session, QWidget* parent)
 
   session_->readCwSettings();
   syncFromState();
+  radio::app::touch::fitDialog(this);
 }
 
 void CwKeyerDialog::applySettings() {
