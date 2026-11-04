@@ -53,13 +53,19 @@ target_link_libraries(radio-suite PRIVATE
   Qt6::Network
   radio::core
   radio::session
-  radio::bus
   radio::dsp
   radio::audio
   radio::aprs
   radio::wsjtx
   radio::ft8_codec
   radio::ui_common)
+# bus 在缺 Qt6::HttpServer 的套件（安卓交叉编译套件）里整个不建；RADIO_SUITE_HAVE_BUS
+# 由 radio_bus 的 PUBLIC 定义带进来，没链上的时候 app 侧总线相关代码走 #ifdef 分支
+if(TARGET radio::bus)
+  target_link_libraries(radio-suite PRIVATE radio::bus)
+else()
+  message(STATUS "radio-suite: 本构建没有 radio::bus（缺 Qt6::HttpServer），对外总线不可用")
+endif()
 if(TARGET radio::aprs_db)
   target_link_libraries(radio-suite PRIVATE radio::aprs_db)
 endif()

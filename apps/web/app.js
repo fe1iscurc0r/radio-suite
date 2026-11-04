@@ -139,6 +139,9 @@ $('logqso').addEventListener('click', async () => {
 });
 
 /* ---- 调度：状态/频谱并行轮询 ---- */
+// openSse 必须在这里点将：不叫它就永远是轮询在跑，上面那套 SSE 分支等于死代码
+// （2026-11-04 真机浏览器实测：服务端 chunked 已经能推帧，页面标签却始终不切 SSE）
+openSse();
 setInterval(pollState, 250);
 setInterval(pollSpectrum, 250);
 pollState();

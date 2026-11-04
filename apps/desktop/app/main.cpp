@@ -11,8 +11,10 @@
 #include "app/touch_dialog.h"
 #include "ui_common/app_settings.h"
 #include "ui_common/font_proxy_settings.h"
+#ifdef RADIO_SUITE_HAVE_BUS
 #include "bus/bus_server.h"
 #include "bus/rigctld_server.h"
+#endif
 
 int main(int argc, char* argv[]) {
 #ifdef Q_OS_ANDROID
@@ -62,7 +64,9 @@ int main(int argc, char* argv[]) {
 
   if (cli.isSet(headless_opt) || cli.isSet(bus_opt)) {
     // ---- headless 总线模式（scratchpad/lumo 集成，M5 第一片）----
-    // bus 已独立成 radio_bus 库，无条件可用，不再按 RADIO_SUITE_HAVE_BUS 裁剪
+#ifdef RADIO_SUITE_HAVE_BUS
+    // bus 独立成 radio_bus 库；缺 Qt6::HttpServer 的套件（安卓交叉编译套件）
+    // 里它整个不建，走下面的 #else 明确拒绝，别静默退回 GUI 分支
     uint16_t port = static_cast<uint16_t>(cli.value(bus_opt).toInt());
     if (port == 0) port = 8765;
     std::shared_ptr<radio::core::ICivTransport> transport =
@@ -84,6 +88,10 @@ int main(int argc, char* argv[]) {
     if (!rigctld.start(rcfg, &rerr)) qWarning() << rerr;
     qInfo() << "headless 总线模式运行中，Ctrl+C 退出";
     return app.exec();
+#else
+    qCritical() << "本构建没编入 bus（套件缺 Qt6::HttpServer），不支持 --headless/--bus";
+    return 2;
+#endif
   }
 
   std::shared_ptr<radio::core::ICivTransport> transport =
