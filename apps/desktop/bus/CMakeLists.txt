@@ -2,8 +2,16 @@
 # radio_bus：本机集成总线——HTTP bus_server（Qt6::HttpServer）+ rigctld 服务器
 # （QTcpServer）。命令出口就是 RadioSession，故依赖 radio_session（PUBLIC）。
 # bus_server.h 还暴露 dsp/fft.h、dsp/synth.h（合成谱源），radio::dsp 也须 PUBLIC。
+#
+# Qt6::HttpServer 不是所有套件都有（Android 交叉编译的套件里就没有），所以这里
+# 静默查找、找不到就整个目录跳过，跟 tests/CMakeLists.txt 里 radio_bus_tests
+# 的守卫口径一致。别写 REQUIRED：那会让安卓侧全新配置直接失败。
 find_package(Qt6 REQUIRED COMPONENTS Network)
-find_package(Qt6HttpServer REQUIRED)
+find_package(Qt6HttpServer QUIET)
+if(NOT TARGET Qt6::HttpServer)
+  message(STATUS "radio_bus: 没有 Qt6::HttpServer，跳过 bus（rigctld/HTTP 总线不编）")
+  return()
+endif()
 
 add_library(radio_bus STATIC bus_server.cpp rigctld_server.cpp)
 
