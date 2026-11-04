@@ -672,6 +672,21 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     两个 include——它以前只在安卓侧构建里被触发过），并补了本仓**第一个 SSE 端到端用例**。
   - 本地口径：Qt 6.8.3 msvc2022_64 全量构建 + `ctest` **213/213 通过**（含新增的
     `bus streams spectrum frames over SSE to a kept-open client`）。
+  - ⚠️ **但 SSE 到浏览器为止一直是断的**（`49c0a0c` 修，CI 全绿也抓不到，是真浏览器实测撞出来的）：
+    ① 服务端 `responder.write(data, mime)` 发的是「一个完整响应」，头里带 `content-length: 23`——
+    裸 `QTcpSocket` 继续沿同一条连接读能读到后面的帧（4 秒 51 帧，所以旧用例是绿的），
+    而 `EventSource` 按 `content-length` 读完第一段就判定流结束、断开重连，频谱一帧进不了 JS，
+    每几秒还在 `sse_clients_` 里多攒一个不回收的客户端。改成
+    `writeBeginChunked` + `writeChunk`，上限改成真封顶（挤掉最老的并 `writeEndChunked` 收尾）。
+    ② `apps/web/app.js` 里 `openSse()` **定义了却从没被调用**，启动只有轮询——
+    「SSE 优先、轮询兜底」那句注释是愿望不是事实。
+    用例已加固成浏览器看得见的形状（断言 `transfer-encoding: chunked` 且无 `content-length`），
+    并做变异对照：换回旧写法两条断言双双 FAIL。
+    验完的口径：PWA 标签切成「频谱：SSE 实时推送」、canvas 持续重绘、
+    独立 `EventSource` 3 秒 45 帧（≈66 ms/帧）。
+    坑：**总线给 PWA 静态件没带 `Cache-Control`**，浏览器按启发式缓存旧 `app.js`，
+    改完 JS 同端口刷新仍跑旧脚本（`ignoreCache` 导航都换不掉子资源）——本轮靠换端口绕过，
+    验证 SSE/前端改动时要记得这一手。
 - **PR #1–#14 均已合并进 main**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
   （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
   WSJT-X UDP 接入（`9b3e9ac`）、QSO 直写 HamLog（#6 `bef3eec`）、审查修复 + 算法优化
