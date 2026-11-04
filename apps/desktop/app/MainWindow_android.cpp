@@ -1,9 +1,11 @@
-#include "app/MainWindow.h"
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // radio-suite · app/MainWindow_android.cpp — MainWindow Android UI 构建域（同一类的第三实现文件）：
 // 手机分页布局 + 桌面/手机共用的调谐台/频段/双 VFO/制式/开关/记忆/音频行控件构造。
 
+#include "app/MainWindow.h"
+
 #include "app/dial_widget.h"
+#include "app/meter_widgets.h"
 #include "app/network_audio.h"
 #include "app/repeater_dialog.h"
 #include "app/touch_dialog.h"
@@ -14,6 +16,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QListWidget>
 #include <QScrollArea>
 #include <QScroller>
 #include <QSignalBlocker>
