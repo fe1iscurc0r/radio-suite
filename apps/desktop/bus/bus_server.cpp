@@ -91,10 +91,10 @@ void BusServer::broadcastSse() {
   for (auto it = sse_clients_.begin(); it != sse_clients_.end();) {
     auto &c = **it;
     if (c.dead) { it = sse_clients_.erase(it); continue; }
-    c.responder.write(frame, QByteArrayLiteral("text/event-stream"));
-    ++it;  // write 失败/断开的清理靠 QHttpServerStream 销毁时 Responder 析构
-           //（dead 标志由上层轮询错误回调置位——本仓简化为只增不删客户端数≤8）
-    if (sse_clients_.size() > 8) break;  // 防御：客户端上限
+    // chunked 续写：responder 的 d-pointer 里 stream 是 QPointer，连接断了就自动变空，
+    // 所以这里对已断开的客户端写是安全的空操作（不会野指针），只是没法据此清理
+    c.responder.writeChunk(frame);
+    ++it;
   }
 }
 
@@ -243,13 +243,22 @@ bool BusServer::start(const Config& cfg, QString* error) {
 
   // Qt 6.8.3 的 ViewTraits 只认 QHttpServerResponder&（写成 && 会撞
   // static_assert：can only be passed as a reference），要长期持有就自己 move 走
+  //
+  // 必须走 chunked：responder.write(data, mime) 发的是「一个完整响应」，头里带
+  // content-length: 23。裸 socket 能继续读到后面的帧，但浏览器 EventSource 按
+  // content-length 读完 23 字节就认为流结束、断开重连——于是每几秒攒一个死客户端，
+  // 而频谱一帧都进不去。writeBeginChunked/writeChunk 才是 SSE 要的形状。
   http_.route("/api/spectrum/stream",
               [this](const QHttpServerRequest &, QHttpServerResponder &responder) {
     // SSE 契约：先下一行 event: hello，让 EventSource 立刻进入 open 态
-    auto client = QSharedPointer<SseClient>::create(std::move(responder));
-    client->responder.write(QByteArray("event: hello\ndata: {}\n\n"),
-                            QByteArrayLiteral("text/event-stream"));
-    sse_clients_.append(client);
+    responder.writeBeginChunked(QByteArrayLiteral("text/event-stream"));
+    responder.writeChunk(QByteArray("event: hello\ndata: {}\n\n"));
+    // 上限是硬上限：超了就挤掉最老的那个（给它一个正常的流结束，别让它悬着）
+    if (sse_clients_.size() >= kMaxSseClients) {
+      const auto oldest = sse_clients_.takeFirst();
+      if (!oldest->dead) oldest->responder.writeEndChunked(QByteArray());
+    }
+    sse_clients_.append(QSharedPointer<SseClient>::create(std::move(responder)));
   });
 
   // Qt 6.8：自建 QTcpServer 监听后交给 QAbstractHttpServer::bind

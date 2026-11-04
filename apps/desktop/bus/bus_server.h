@@ -58,7 +58,11 @@ class BusServer : public QObject {
   QString web_root_;
 
   // SSE 频谱推送（273"M5 全量再上 SSE"提前落地）：
-  // 每客户端持 move 来的 Responder；spec_timer_ 广播；断开由 write 失败清理
+  // 每客户端持 move 来的 Responder；spec_timer_ 用 writeChunk 广播。
+  // 断开检测做不到公开 API（QHttpServerStream 在 6.8 是私有类），但 responder 的
+  // d-pointer 里那个 stream 是 QPointer，断了就是空，所以对死客户端写是安全空操作；
+  // 代价是表只能靠上限挤掉最老的客户端来封顶，不做真正的回收。
+  static constexpr int kMaxSseClients = 8;
   struct SseClient {
     // QHttpServerResponder 只有移动构造和 QHttpServerStream* 那个构造函数，
     // 没有默认构造，所以 SseClient 必须带着 responder 一起建

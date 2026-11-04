@@ -152,6 +152,13 @@ TEST_CASE("bus streams spectrum frames over SSE to a kept-open client",
   }
   REQUIRE(raw.contains("event: hello"));
   CHECK(raw.contains("text/event-stream"));
+  // 这一条才是浏览器真正看得见的东西：SSE 必须是 chunked 流。写成
+  // responder.write(data, mime) 会带 content-length: 23，裸 socket 照样能读到后面的
+  // 帧（所以上面那条 power_db 断言抓不到），但 EventSource 按 content-length 读完
+  // 第一段就判定流结束、断开重连，频谱一帧都进不了 JS。
+  const QByteArray lowered = raw.toLower();  // QByteArray::contains 没有大小写参数
+  CHECK(lowered.contains("transfer-encoding: chunked"));
+  CHECK_FALSE(lowered.contains("content-length"));
 
   // spec_timer_ 每 66 ms 广播一次；能收到 power_db 就说明长期持有的 responder 有效
   timer.restart();
