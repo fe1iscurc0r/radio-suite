@@ -122,25 +122,22 @@ bool BusServer::start(const Config& cfg, QString* error) {
       return QByteArray("PWA assets not found (apps/web/)");
     return f.readAll();
   };
-  http_.route("/", [&, serveWebFile] {
-    return QHttpServerResponse(QByteArrayLiteral("text/html"), serveWebFile("index.html"));
-  });
-  http_.route("/app.js", [&, serveWebFile] {
-    return QHttpServerResponse(QByteArrayLiteral("text/javascript"),
-                               serveWebFile("app.js"));
-  });
-  http_.route("/sw.js", [&, serveWebFile] {
-    return QHttpServerResponse(QByteArrayLiteral("text/javascript"),
-                               serveWebFile("sw.js"));
-  });
-  http_.route("/manifest.webmanifest", [&, serveWebFile] {
-    return QHttpServerResponse(QByteArrayLiteral("application/manifest+json"),
-                               serveWebFile("manifest.webmanifest"));
-  });
-  http_.route("/icon.svg", [&, serveWebFile] {
-    return QHttpServerResponse(QByteArrayLiteral("image/svg+xml"),
-                               serveWebFile("icon.svg"));
-  });
+  // PWA 静态件一律 no-store。总线就跑在开发机上，改完 app.js 同端口刷新还在跑旧脚本
+  // ——没有缓存头时浏览器按启发式缓存，连 ignoreCache 的顶层导航都换不掉子资源，
+  // 真机验证 SSE 时就是这么被旧 app.js 骗过一次；sw.js 被缓存住更等于整套旧页面续命。
+  auto webFile = [serveWebFile](const QByteArray& mimeType, const char* rel) {
+    QHttpServerResponse resp(mimeType, serveWebFile(QString::fromUtf8(rel)));
+    auto hdr = resp.headers();
+    hdr.append(QByteArrayLiteral("Cache-Control"), QByteArrayLiteral("no-store"));
+    resp.setHeaders(std::move(hdr));
+    return resp;
+  };
+  http_.route("/", [webFile] { return webFile("text/html", "index.html"); });
+  http_.route("/app.js", [webFile] { return webFile("text/javascript", "app.js"); });
+  http_.route("/sw.js", [webFile] { return webFile("text/javascript", "sw.js"); });
+  http_.route("/manifest.webmanifest",
+              [webFile] { return webFile("application/manifest+json", "manifest.webmanifest"); });
+  http_.route("/icon.svg", [webFile] { return webFile("image/svg+xml", "icon.svg"); });
   // 旧演示页保留在 /demo（无 PWA 资产时的对照）
   http_.route("/demo", [] {
     return QHttpServerResponse(QByteArrayLiteral("text/html"),
