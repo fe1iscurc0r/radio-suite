@@ -1,4 +1,4 @@
-# radio-suite 交接说明（2026-10-30 更新）
+# radio-suite 交接说明（2026-10-30 更新，2026-11-05 §6 按 refs 重核）
 
 > 一句话：**独立 AGPL 桌面电台客户端**（Qt6/C++20），已完成 M0–M2 主体功能 +
 > 原厂功能对齐（含 2026-10-27 补齐的 CW / 双 VFO / Set Mode / Memory 四件 +
@@ -482,54 +482,62 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
-### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈）
+### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈，2026-11-05 按 refs 重核）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），默认分支 `main`（当前 `9b3e9ac`，PR #5 合并后）+
-  `feat/wsjtx-hamlog-bridge`（QSO 直写 HamLog + 双击回填，PR #6 待评审）+
-  `feat/review-audio-dsp`（审查修复 + 算法优化，**PR #7 栈在 #6 之上**，待评审）。
-  → #6/#7 **均未合并**，合并需逐次授权。
-- **安卓这条线的 PR 栈（2026-11-01 深夜实况）**：#12 工具链 / #13 AAudio 后端 / #14 APK 打包
-  **已合并**（远端 main = `5a08fa4`）；以下这条链**没有一条进过 main**，且只能从底往上合。
-  #15 `fix/wasapi-capture-measurement`（35570c7）、
-  #16 `feat/ft8-local-decode`（fe173c9，base `5a08fa4`）→ #17 `feat/ft8-mic-source`
-  （af7e8d1，base #16 的 head）→ #18 `fix/android-link-prefs`（cd0ffa2，base #17 的 head）
-  → #19 `fix/android-settings-persistence`（`5de74a2`，base #18 的 head）
-  → #20 `fix/mode-button-exclusivity`（`9cc986d`，base #19 的 head）
-  → #21 `feat/android-landscape-lock`（`cfcb4dd`，base #20 的 head）
-  → #22 `feat/android-paged-ui`（手机分页重排，base #21 的 head）
-  → #23 `fix/android-touch-dialogs`（手机对话框/面板可滚可关 + 频段高亮，base #22 的 head；
-  **head 现在就是 `711238d`，24 commits**，仍 open）
-  - **已合进 `fix/android-touch-dialogs` 的四条**（都按仓库惯例用 merge commit，
-    与 #12/#13/#14 同法）：#24 `feat/android-local-logbook`（Android 自建 HamLog 库、
-    补出「日志」页）→ `648658b`；#25 `docs/handover-pr24-merged`（纯文档状态补记）→
-    `2e3a7ff`；#27 `feat/android-multicast-lock`（Wi-Fi 组播锁 JNI + manifest 声明
-    `CHANGE_WIFI_MULTICAST_STATE`）→ `338d8c0`；#28 `feat/android-self-check`
-    （面板页「自检 / 台账」，把验收清单 §2b 搬进 app，含「上次启动失败原因」）→ `711238d`。
-  - ⚠️ 这条链的「合并」只把改动交给上一层分支：**上面四条进的都是
-    `fix/android-touch-dialogs`，不是 `main`**，`main` 仍是 `5a08fa4`，
-    要落到 main 还得从 #15 往上逐条合。
-  - #28 原本 base 在 #27 的分支上；#27 一合，那个 base 就成了已消化的中间分支，
-    所以把 #28 的 base 改到 `fix/android-touch-dialogs` 再合（否则台账会停在死路上）。
-    改 base 后核对过 diff 恰好是台账那三笔：`multicast_lock.*` 与 `AndroidManifest.xml`
-    都不重复出现，`wsjtx_client.cpp` 只剩 `lastError` 那部分改动。
-  - **仍 open 的文档 PR：#26**（`docs/android-roadmap`，§5.1 手机端路线）。它和本节
-    改的是同一个文件的**不同区段**，所以能各自合，不会互相覆盖。
-  - ⚠️ **文档提交会直接落在 open 且未合并的 PR 上**：`af7e8d1`（验收清单）挂在 #17、
-    `7b3d918`/`6eaa4b6`/`9c1c89f`（真机结论）挂在 #19；`d72b98a`/`de34e74`/`bea2db5`/
-    `895ee1c`/`05296c8`/`7414172`/`18b2fec` 这批（C9 落地、ADIF 补记、PR 栈、台账与
-    真机补记）现在都算 #23 的 diff。
-  回滚点（**倒着撤**，merge commit 要 `-m 1`）：
-  `git revert -m 1 711238d`（#28）→ `git revert -m 1 338d8c0`（#27）→
-  `git revert -m 1 2e3a7ff`（#25）→ `git revert -m 1 648658b`（#24）；
-  另有 `git revert 9c1c89f 6eaa4b6 7b3d918 f630ab1 1978099`（#19）、
-  `git revert af7e8d1`（#17）。把分支退回旧 sha 属改写已共享历史（要 force-push），不做。
-  **本地 `main` 的 sha 与远端不同（本机 `320f0a7` vs 远端 `5a08fa4`），别拿它当基线。**
-- **PR #1–#5 均已合并**：一键发射编排（`272bc5d`）、旋钮/频差/亚音
-  （`854bf42`）、50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、
-  WSJT-X UDP 接入（`9b3e9ac`）；每次合并后 main 推送 CI 均三平台 success。
-- **CI 三平台全绿**：Ubuntu headless（BUILD_GUI=OFF）/ Windows MSVC+Qt /
-  macOS Qt。
+  **AGPL-3.0**），默认分支 `main`（现 `79f4b51` = PR #36 的 merge commit）。
+- **判「这条 PR 到底进没进 main」只用 `git merge-base --is-ancestor <sha> origin/main`。**
+  不要看 PR 的 open/closed，也不要看 `merged_at`——两者都会骗人：
+  - 11-02 23:13 有四笔消息带 `(local equiv)` 的**本地 merge commit** 落上 main
+    （`2c4ea48`←#32 head `9bcb07a`、`1911970`←#33、`3b63e6f`←#34、`dcebfd7`←#35）。
+    `9bcb07a` 本身叠在 #16→…→#23→#24…#31 那条链顶端，所以 `2c4ea48` **一笔把
+    #16–#32 的全部内容带进了 main**；GitHub 上 #17–#23 至今还 open，只是因为它们的
+    base 是已被消化的中间分支——refs 差还在，内容差没有。
+  - #33/#34/#35 都有 `merged_at`，但当时合的是各自的 base 侧分支，离 main 还隔一层。
+  - **确实没进 main 的只有 #15**（`35570c7`，采集冒烟改测稳态口径），它仍 open。
+- **`main` 现在包含什么**（`79f4b51`）：安卓那条链的全部内容（#16–#35）+ 架构清理
+  （#36：`radio_session` / `radio_bus` / `radio_dsp` 独立成库、`MainWindow` 按域拆成
+  `MainWindow.cpp` + `_actions` + `_panels` + `_android` 四个文件、PWA `apps/web/`、
+  频谱 SSE、CI-V over TCP 网关、会话层回帧判活性、瀑布图 30 fps + 双线性放大）。
+  拆分完整性核过：main 上 `MainWindow::` 定义 61 处，拆成四份后合计仍是 61。
+  本地口径 Qt 6.8.3 msvc2022_64：全量构建 + `ctest` **212/212**。
+- ⚠️ **`QT_NO_FAST_MOVE` / `QT_NO_FAST_SCROLL` 那套（#34）已从 main 撤掉**（经 #40）。
+  它在真机上被证伪：设备上 `RSDBG fastmove=[1] fastscroll=[1]` 证明开关确实生效，
+  屏幕左端那条滞后带一条没少；另外三条路（父控件/`window()->update()` 逐拍强绘、
+  换 Qt 6.8.3、改 GL 控件）也全负。甩动期间绘制节奏实测 **15.9 fps（62–63 ms/帧）**，
+  根因仍未定位——`gfxinfo` / `SurfaceFlinger --latency` 对 Qt 的 ANativeWindow
+  在这台机上取不到有效数，只能自己埋点 + `screencap` 逐帧像素探针。
+  留着它的代价是实的：关掉快滚动后每步都要重画整块视口。
+  **滚动割裂这件事本身还没解决**，剩余嫌疑指向安卓侧 backing store → ANativeWindow
+  的部分区域 flush（缝在屏幕 x≈148）。
+- **bus 的 Qt 版本门槛是 6.8，不是保险丝**：CI 三个作业装的 Qt 根本不同
+  （Windows install-qt-action `6.8.*`、macOS brew `qt@6`、**Ubuntu apt 6.4.2**），
+  而 6.4.2 的 HttpServer 与 6.8 API 互斥——route 视图的 `QHttpServerResponder`
+  一边**只收 `&&`**、另一边**只收 `&`**；`req.headers()` 一边是 `QList<QPair<…>>`、
+  一边是 `QHttpHeaders`；`bind(QTcpServer*)` 一边返回 `void`、一边返回 `bool`。
+  写哪边都炸另一边，所以 `apps/desktop/bus/CMakeLists.txt` 用
+  `find_package(Qt6HttpServer 6.8 QUIET)` + 低于 6.8 整个目录跳过，
+  下游（app 与 tests）只认 `TARGET radio::bus` 这一个口径，别再各自判 `_FOUND`。
+  安卓侧：Qt **6.7.3** 的 arm64 套件没有 QtHttpServer（bus 自动跳过），
+  **6.8.3** 的有（实测 `bus_server.cpp` 能为 arm64-v8a 编过并链进可执行目标）——
+  所以「手机上有没有总线」取决于装哪个套件。
+- **SSE 的形状必须是 chunked**：`responder.write(data, mime)` 发的是「一个完整响应」，
+  头里带 `content-length`，裸 `QTcpSocket` 能继续读到后面的帧（所以旧用例是绿的），
+  而浏览器 `EventSource` 读完第一段就判定流结束、断开重连，频谱一帧都进不了 JS。
+  现在用 `writeBeginChunked` + `writeChunk`，用例也改成断言
+  `transfer-encoding: chunked` 且无 `content-length`（做过变异对照：换回旧写法就 FAIL）。
+  另：`apps/web/app.js` 里的 `openSse()` 之前定义了却没被调用，现已接上启动。
+- **待合进 main 的**：#41（PWA 静态件补 `Cache-Control: no-store`；总线不带缓存头时
+  浏览器按启发式缓存旧 `app.js`，改完前端同端口刷新还在跑旧脚本，`ignoreCache`
+  的顶层导航都换不掉子资源——验前端改动时记得这一手）。
+- **PR #1–#14 均已合并进 main**：一键发射编排（`272bc5d`）、旋钮/频差/亚音（`854bf42`）、
+  50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、WSJT-X UDP 接入（`9b3e9ac`）、
+  QSO 直写 HamLog（`bef3eec`）、审查修复 + 算法优化（`f531346`）、50003 设备可选与诊断
+  （`6d7040d`）、win deploy（`7073502`）、ft8_lib vendor（`4ff82d9`）、安卓工具链
+  （`fff069f`）、AAudio 后端（`f4091f6`）、APK 打包（`5a08fa4`）；每次合并后 main
+  推送 CI 三平台 success。
+- **CI 三平台全绿**只对 `main` 成立；`feat/arch-cleanup` 在 bus 独立成库后曾连续 5 次
+  全红（run 102–106），成因见上面那条，修在 #38。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
   两条路：① git push 成功时直接用；② 不通时用 REST API 推
   （`gh api` 或仓外脚本：create blob → create tree(base_tree) → create commit
