@@ -120,6 +120,9 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   radio::app::RadioSession* session_alias_ = nullptr;  // 指向 session_（对话框用，无所有权）
 
   WaterfallWidget* waterfall_ = nullptr;
+  // 瀑布图刻度/光标：这条轴是 0–24 kHz 音频带，控件里画的是 GL，文字放不住，
+  // 所以刻度说明挂在它下面一行，光标频率也写在这里（273 调研 E 线的第一块砖）
+  QLabel* wf_axis_label_ = nullptr;
   QLabel* freq_label_ = nullptr;
   QLabel* mode_label_ = nullptr;
   SMeterWidget* smeter_ = nullptr;      // 半圆指针 S 表（主信息）
@@ -196,9 +199,12 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
 
   // 合成谱工作台（M0 spike：2048 点 FFT → 1024 显示列）
   static constexpr size_t kFftSize = 2048;
+  // 谱源的采样率：瀑布图那条轴是音频带，不是 RF——刻度与光标读数都从这一个数派生，
+  // 别再在初始化列表里各写一遍 48000.0（改一处漏一处的老毛病）
+  static constexpr double kSampleRateHz = 48000.0;
   QTimer bench_timer_;
-  radio::dsp::SignalSynth synth_{kFftSize, 48000.0};
-  radio::dsp::SpectrumAnalyzer analyzer_{kFftSize, 48000.0};
+  radio::dsp::SignalSynth synth_{kFftSize, kSampleRateHz};
+  radio::dsp::SpectrumAnalyzer analyzer_{kFftSize, kSampleRateHz};
   radio::dsp::WaterfallProcessor wf_proc_{static_cast<size_t>(WaterfallWidget::kTexW)};
   std::vector<float> samples_;
   std::vector<float> col_db_;

@@ -11,6 +11,7 @@
 #include "app/meter_widgets.h"
 #include "app/network_audio.h"
 #include "app/touch_dialog.h"
+#include "app/spectrum_axis.h"  // 像素→音频偏移的纯映射（轴语义都写在那个头里）
 #include "app/wsjtx_panel.h"  // eventFilter 里比较面板指针需要完整类型
 
 #include <QApplication>
@@ -18,6 +19,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QEvent>
+#include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QTimer>
 
@@ -198,6 +200,27 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+  // 瀑布图光标读数。刻意只做「读」不做「点哪儿调哪儿」：这条轴是 0–24 kHz 的
+  // 音频带，不是 RF 跨度，把像素当 RF Hz 去设频会把人骗得很舒服——本仓现在没有
+  // 任何 RF 谱数据源（IC-705 的 CI-V 没有谱流，RS-BA1 只给音频）。
+  if (watched == waterfall_ && wf_axis_label_) {
+    const auto type = event->type();
+    if (type == QEvent::MouseMove || type == QEvent::MouseButtonPress ||
+        type == QEvent::MouseButtonRelease) {
+      if (const auto* me = dynamic_cast<QMouseEvent*>(event)) {
+        const double hz = radio::app::columnToAudioHz(
+            static_cast<int>(me->position().x()), waterfall_->width(), kSampleRateHz);
+        wf_axis_label_->setText(
+            QStringLiteral("轴：RX 音频带 0–%1 kHz（非 RF 频谱）· 光标 %2 Hz")
+                .arg(static_cast<int>(kSampleRateHz / 2000.0))
+                .arg(hz, 0, 'f', 0));
+      }
+    } else if (type == QEvent::Leave) {
+      wf_axis_label_->setText(
+          QStringLiteral("轴：RX 音频带 0–%1 kHz（非 RF 频谱）· 光标 —")
+              .arg(static_cast<int>(kSampleRateHz / 2000.0)));
+    }
+  }
   // 手机系统返回键 / 关闭 ✕ 都是直接 hide 顶层窗，按钮不跟着复位就会
   // 出现「第一下点了没反应、第二下才关」的幻觉
   if (event->type() == QEvent::Hide) {

@@ -24,6 +24,7 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   ~WaterfallWidget() override;
 
   // 显示映射（dB → 纹理亮度 / 谱线高度）
+  // 这条轴是什么、像素怎么换 Hz：见 app/spectrum_axis.h（纯函数，不在这里重复）
   float dbFloor() const { return db_floor_; }
   float dbCeil() const { return db_ceil_; }
   void setDbRange(float floor_db, float ceil_db);

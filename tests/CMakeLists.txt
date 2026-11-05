@@ -200,6 +200,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     test_touch_dialog.cpp
     test_launch_config.cpp
     test_device_report.cpp
+    test_waterfall_axis.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
