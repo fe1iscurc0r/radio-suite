@@ -18,6 +18,7 @@ add_executable(radio_tests
   test_ft8.cpp
   test_ft8_slot.cpp
   test_ft8_tx.cpp
+  test_transport_serial.cpp
   test_engine_spike.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
 
