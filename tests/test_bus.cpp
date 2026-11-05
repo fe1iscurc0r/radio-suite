@@ -24,6 +24,7 @@ void pumpEvents() {
 struct HttpResponse {
   int status = 0;
   QByteArray body;
+  QByteArray head;  // 状态行 + 响应头，验缓存头这类东西要用
 };
 
 HttpResponse httpGet(uint16_t port, const QByteArray& target,
@@ -46,7 +47,8 @@ HttpResponse httpGet(uint16_t port, const QByteArray& target,
   const int split = raw.indexOf("\r\n\r\n");
   REQUIRE(split >= 0);
   HttpResponse response;
-  response.status = raw.left(raw.indexOf("\r\n")).split(' ').value(1).toInt();
+  response.head = raw.left(split);
+  response.status = response.head.left(response.head.indexOf("\r\n")).split(' ').value(1).toInt();
   response.body = raw.mid(split + 4);
   return response;
 }
@@ -168,4 +170,16 @@ TEST_CASE("bus streams spectrum frames over SSE to a kept-open client",
   }
   CHECK(raw.contains("power_db"));
   socket.abort();
+}
+
+// PWA 静态件必须 no-store。总线跑在开发机上，没缓存头时浏览器按启发式缓存旧
+// app.js——改完前端同端口刷新还在跑旧脚本，SSE 那次就是这么被骗的（顶层导航
+// 加 ignoreCache 都换不掉子资源）。这条用例钉住响应头，别让它悄悄退回去。
+TEST_CASE("bus serves PWA assets with no-store", "[bus][http][web]") {
+  BusFixture f;
+  for (const auto* target : {"/", "/app.js", "/sw.js", "/manifest.webmanifest"}) {
+    const auto response = httpGet(f.server->port(), QByteArray(target));
+    CHECK(response.status == 200);
+    CHECK(response.head.toLower().contains("cache-control: no-store"));
+  }
 }
