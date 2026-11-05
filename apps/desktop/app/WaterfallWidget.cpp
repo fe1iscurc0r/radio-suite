@@ -101,6 +101,7 @@ void WaterfallWidget::pushRow(const uint8_t* row, int cols) {
 void WaterfallWidget::pushSpectrum(const float* col_db, int cols) {
   if (cols != kTexW) return;
   std::memcpy(line_db_.data(), col_db, sizeof(float) * static_cast<size_t>(cols));
+  line_dirty_ = true;  // 谱线顶点重算与重传推迟到 paintGL（GPU 调度：脏才动）
 }
 
 bool WaterfallWidget::buildPrograms() {
@@ -148,21 +149,31 @@ void WaterfallWidget::initializeGL() {
   // 摊成斜坡；纵向跨环尾的那一次插值取的是时间上相邻的两行，不会串画面
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-  // 瀑布满幅四边形（两个三角形）
-  const float quad[] = {-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1};
+  // 瀑布满幅四边形（两个三角形，顶边 y=0.30 与 paintGL 绘制区带一致——
+  // 静态几何一次上传；GPU 调度：paintGL 不再每帧重传 STATIC_DRAW）
+  const float quad[] = {-1, -1, 1, -1, 1, 0.30f, -1, -1, 1, 0.30f, -1, 0.30f};
   glGenBuffers(1, &quad_vbo_);
   glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
   glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
 
+  // 频率网格：静态，一次上传
+  glGenBuffers(1, &grid_vbo_);
+  glBindBuffer(GL_ARRAY_BUFFER, grid_vbo_);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * grid_verts_.size(),
+               grid_verts_.data(), GL_STATIC_DRAW);
+
   glGenBuffers(1, &line_vbo_);
   glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
   glBufferData(GL_ARRAY_BUFFER,
-               sizeof(float) * 2 * static_cast<size_t>(kTexW), nullptr,
+               sizeof(float) * 4 * static_cast<size_t>(kTexW), nullptr,
                GL_DYNAMIC_DRAW);
 
   glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  // vsync：Qt6 的 QSurfaceFormat 默认 swapInterval=1 且 QOpenGLWidget 合成
+  // 已对齐 vsync；Android GLES 上若出现撕裂再按平台显式设置（这里不硬编码，
+  // 免得桌面驱动不支持 -1 自适应刷新时反而锁死帧率）
 }
 
 void WaterfallWidget::resizeGL(int, int) { /* viewport 由 QOpenGLWidget 维护 */ }
@@ -180,7 +191,8 @@ void WaterfallWidget::paintGL() {
   }
 
   // ---- 瀑布（下 2/3 区带，独立，不与谱线重叠）----
-  // 顶边 y=0.30：最新行在瀑布顶部，向下滚动
+  // 顶边 y=0.30：最新行在瀑布顶部，向下滚动。
+  // quad 静态 VBO（initializeGL 一次上传，顶点已含 0.30 边界）
   wf_prog_.bind();
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, tex_);
@@ -190,9 +202,7 @@ void WaterfallWidget::paintGL() {
   wf_prog_.setUniformValue(
       "uRowOff",
       static_cast<float>(next_row_ - 1) / static_cast<float>(kTexH) - 0.65f);
-  const float quad[] = {-1, -1, 1, -1, 1, 0.30f, -1, -1, 1, 0.30f, -1, 0.30f};
   glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
   const int a_pos_wf = wf_prog_.attributeLocation("aPos");
   wf_prog_.enableAttributeArray(a_pos_wf);
   wf_prog_.setAttributeBuffer(a_pos_wf, GL_FLOAT, 0, 2);
@@ -200,12 +210,10 @@ void WaterfallWidget::paintGL() {
   wf_prog_.disableAttributeArray(a_pos_wf);
   wf_prog_.release();
 
-  // ---- 频率网格（竖线跨全高，暗色）----
+  // ---- 频率网格（静态 VBO：bind+draw，零每帧上传）----
   line_prog_.bind();
   line_prog_.setUniformValue("uColor", QColor(255, 255, 255, 26));
-  glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * grid_verts_.size(),
-               grid_verts_.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, grid_vbo_);
   const int a_pos_grid = line_prog_.attributeLocation("aPos");
   line_prog_.enableAttributeArray(a_pos_grid);
   line_prog_.setAttributeBuffer(a_pos_grid, GL_FLOAT, 0, 2);
@@ -214,22 +222,27 @@ void WaterfallWidget::paintGL() {
   line_prog_.release();
 
   // ---- 谱线（上 1/3 区带：基线在 y=0.34，峰值向上到 y=0.96）----
+  // GPU 调度：顶点只在谱线数据变脏时重算+重传（line_dirty_）；
+  // 1024 次三角函数/帧的 CPU 开销与 24KB/帧的重传全部消掉
   const float span = db_ceil_ - db_floor_;
-  const float y0 = 0.34f, y1 = 0.96f;
-  for (int i = 0; i < kTexW; ++i) {
-    float norm = (line_db_[static_cast<size_t>(i)] - db_floor_) / span;
-    if (norm < 0.0f) norm = 0.0f;
-    if (norm > 1.0f) norm = 1.0f;
-    const float x =
-        -1.0f + 2.0f * static_cast<float>(i) / static_cast<float>(kTexW - 1);
-    const float y = y0 + (y1 - y0) * norm;
-    line_verts_[static_cast<size_t>(i) * 2] = x;
-    line_verts_[static_cast<size_t>(i) * 2 + 1] = y;
-    // 填充：每列两个顶点（底、顶），triangle strip 交错
-    fill_verts_[static_cast<size_t>(i) * 4] = x;
-    fill_verts_[static_cast<size_t>(i) * 4 + 1] = y0;
-    fill_verts_[static_cast<size_t>(i) * 4 + 2] = x;
-    fill_verts_[static_cast<size_t>(i) * 4 + 3] = y;
+  if (line_dirty_) {
+    const float y0 = 0.34f, y1 = 0.96f;
+    for (int i = 0; i < kTexW; ++i) {
+      float norm = (line_db_[static_cast<size_t>(i)] - db_floor_) / span;
+      if (norm < 0.0f) norm = 0.0f;
+      if (norm > 1.0f) norm = 1.0f;
+      const float x =
+          -1.0f + 2.0f * static_cast<float>(i) / static_cast<float>(kTexW - 1);
+      const float y = y0 + (y1 - y0) * norm;
+      line_verts_[static_cast<size_t>(i) * 2] = x;
+      line_verts_[static_cast<size_t>(i) * 2 + 1] = y;
+      // 填充：每列两个顶点（底、顶），triangle strip 交错
+      fill_verts_[static_cast<size_t>(i) * 4] = x;
+      fill_verts_[static_cast<size_t>(i) * 4 + 1] = y0;
+      fill_verts_[static_cast<size_t>(i) * 4 + 2] = x;
+      fill_verts_[static_cast<size_t>(i) * 4 + 3] = y;
+    }
+    line_dirty_ = false;
   }
 
   line_prog_.bind();

@@ -30,6 +30,8 @@ include(cmake/dependencies.cmake)
 
 add_subdirectory(third_party)  # vendored C 库（ft8_lib，MIT）
 add_subdirectory(apps/desktop/core)
+add_subdirectory(apps/desktop/session)  # QObject 会话层：RadioSession + SafetyGate 编排
+add_subdirectory(apps/desktop/bus)  # HTTP 总线 + rigctld（依赖 radio_session，需 Qt6HttpServer）
 add_subdirectory(apps/desktop/ft8)  # 本地 FT8 编解码（纯标准库）
 add_subdirectory(apps/desktop/aprs)  # APRS 协议核心（纯标准库）
 add_subdirectory(apps/desktop/wsjtx)  # WSJT-X UDP 协议核心（纯标准库）

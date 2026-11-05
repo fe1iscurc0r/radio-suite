@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>radio-suite 遥控</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0b0e14">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header>
+  <h1>radio-suite</h1>
+  <span id="conn">连接中…</span>
+</header>
+<section id="state">
+  <div id="freq">—.———.——— MHz</div>
+  <div id="mode">—</div>
+  <div id="smeter">S —</div>
+  <div id="pttstate">RX</div>
+</section>
+<canvas id="spectrum" width="512" height="160"></canvas>
+<section id="controls">
+  <div class="row">
+    <button data-step="-1000">▼1k</button>
+    <button data-step="1000">▲1k</button>
+    <button data-step="-10000">▼10k</button>
+    <button data-step="10000">▲10k</button>
+  </div>
+  <div class="row">
+    <input id="freqinput" inputmode="decimal" placeholder="Hz, 如 14100000">
+    <button id="tunego">调谐</button>
+  </div>
+  <div class="row">
+    <input id="callinput" placeholder="对方呼号">
+    <input id="rstinput" placeholder="59" size="4">
+    <button id="logqso">记 QSO</button>
+  </div>
+  <button id="ptt" class="ptt">PTT（按两次确认）</button>
+</section>
+<footer>
+  <a href="/api/qso.adif">ADIF 导出</a> ·
+  <span id="latency">—</span>
+</footer>
+<script>
+if ('serviceWorker' in navigator && window.isSecureContext)
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -12,7 +12,7 @@
 #include <functional>
 #include <memory>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "core/transport_mock.h"
 #include "core/transport_tcp.h"
 #include "core/transport_tcp_gateway.h"

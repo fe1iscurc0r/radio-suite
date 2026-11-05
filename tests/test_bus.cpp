@@ -123,3 +123,49 @@ TEST_CASE("bus refuses public bind without token", "[bus][security]") {
   CHECK_FALSE(public_server.start(cfg, &error));
   CHECK_FALSE(error.isEmpty());
 }
+
+// SSE 这条路由 2026-11-03 落地时只写了代码没有用例，且那份写法根本编不过
+// （把 QHttpServerResponder* 当 SseClient* 塞进 QSharedPointer）。这条用例把
+// 真正的风险点钉住：responder 被 move 进客户端表之后，后续广播还得写得出帧。
+TEST_CASE("bus streams spectrum frames over SSE to a kept-open client",
+          "[bus][sse]") {
+  BusFixture f;
+  QTcpSocket socket;
+  socket.connectToHost(QHostAddress::LocalHost, f.server->port());
+  QElapsedTimer timer;
+  timer.start();
+  while (socket.state() != QAbstractSocket::ConnectedState && timer.elapsed() < 2000)
+    pumpEvents();
+  REQUIRE(socket.state() == QAbstractSocket::ConnectedState);
+
+  const QByteArray request =
+      "GET /api/spectrum/stream HTTP/1.1\r\n"
+      "Host: 127.0.0.1\r\n"
+      "Accept: text/event-stream\r\n\r\n";
+  REQUIRE(socket.write(request) == request.size());
+
+  QByteArray raw;
+  timer.restart();
+  while (!raw.contains("event: hello") && timer.elapsed() < 2000) {
+    pumpEvents();
+    raw += socket.readAll();
+  }
+  REQUIRE(raw.contains("event: hello"));
+  CHECK(raw.contains("text/event-stream"));
+  // 这一条才是浏览器真正看得见的东西：SSE 必须是 chunked 流。写成
+  // responder.write(data, mime) 会带 content-length: 23，裸 socket 照样能读到后面的
+  // 帧（所以上面那条 power_db 断言抓不到），但 EventSource 按 content-length 读完
+  // 第一段就判定流结束、断开重连，频谱一帧都进不了 JS。
+  const QByteArray lowered = raw.toLower();  // QByteArray::contains 没有大小写参数
+  CHECK(lowered.contains("transfer-encoding: chunked"));
+  CHECK_FALSE(lowered.contains("content-length"));
+
+  // spec_timer_ 每 66 ms 广播一次；能收到 power_db 就说明长期持有的 responder 有效
+  timer.restart();
+  while (!raw.contains("power_db") && timer.elapsed() < 2000) {
+    pumpEvents();
+    raw += socket.readAll();
+  }
+  CHECK(raw.contains("power_db"));
+  socket.abort();
+}

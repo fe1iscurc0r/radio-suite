@@ -21,7 +21,7 @@ class QWidget;
 #include "app/WaterfallWidget.h"
 #include "app/device_report.h"
 #include "app/launch_config.h"
-#include "app/session.h"
+#include "session/session.h"
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
 #include "logbook/logbook.h"
 #endif

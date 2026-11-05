@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/network_audio.h"
 
-#include "app/session.h"
+#include "session/session.h"
 
 namespace radio::app {
 

@@ -12,7 +12,7 @@
 #include <QObject>
 #include <QMap>
 
-#include "app/session.h"
+#include "session/session.h"
 
 namespace radio::bus {
 

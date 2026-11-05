@@ -21,7 +21,7 @@
 | 原版 HamLog 源码 | `C:/Users/ASUS/Desktop/HamLog/programs/R1.0.0/`（功能对照基准） |
 | 父仓 | `D:/my git`（**是另一个 git 仓**，radio-suite 是它下面的独立仓，勿在其上提交本仓文件） |
 
-## 2. 目录结构（WO-273 单仓 monorepo 裁决，已落地）
+## 2. 目录结构（WO-273 单仓 monorepo 裁决，已落地；架构分层见 PR #36）
 
 ```
 radio-suite/

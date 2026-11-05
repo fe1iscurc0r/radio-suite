@@ -30,8 +30,9 @@ jobs:
           sudo apt-get update
           # qt6-base-dev: Core/Gui/Widgets/Network/Sql；libgl1-mesa-dev: OpenGL
           # libasound2-dev: RtAudio(ALSA)；qt6-websockets-dev: HttpServer 依赖
-          sudo apt-get install -y qt6-base-dev qt6-websockets-dev libgl1-mesa-dev \
-            libasound2-dev
+          # qt6-httpserver-dev: radio_bus（HTTP 总线 bus_server，Qt6::HttpServer）
+          sudo apt-get install -y qt6-base-dev qt6-websockets-dev qt6-httpserver-dev \
+            libgl1-mesa-dev libasound2-dev
 
       - name: Install Qt (Windows)
         if: matrix.os == 'windows-latest'

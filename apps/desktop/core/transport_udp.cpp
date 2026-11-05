@@ -53,6 +53,9 @@ Rsba1UdpTransport::~Rsba1UdpTransport() { close(); }
 void Rsba1UdpTransport::log(const std::string& line) {
   if (!log_.empty()) log_ += "\n";
   log_ += line;
+  // 长会话防御：诊断日志只留尾部（真机联调曾观测到数 MB 增长）
+  constexpr size_t kLogCap = 16 * 1024;
+  if (log_.size() > kLogCap) log_.erase(0, log_.size() - kLogCap);
 }
 
 bool Rsba1UdpTransport::handshake(QUdpSocket& sock, uint32_t& local_sid,

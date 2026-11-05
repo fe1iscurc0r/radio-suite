@@ -51,33 +51,36 @@ endif()
 
 add_executable(radio_session_tests
   test_session_tx.cpp
-  test_tcp_gateway.cpp
-  "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp")
+  test_tcp_gateway.cpp)
 target_include_directories(radio_session_tests PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_SOURCE_DIR}/apps/desktop")
 target_link_libraries(radio_session_tests PRIVATE
-  radio::core
+  radio::session
   Qt6::Core
   Catch2::Catch2WithMain)
 set_target_properties(radio_session_tests PROPERTIES AUTOMOC ON)
 catch_discover_tests(radio_session_tests)
 
-find_package(Qt6HttpServer QUIET)
-if(Qt6HttpServer_FOUND)
+# 「要不要编 bus 测试」的口径只能有一个：radio::bus 这个目标在不在。
+# bus/CMakeLists.txt 已经按 Qt6::HttpServer 的存在与版本（>=6.8）决定建不建这个库；
+# 这里原来自己 find_package(Qt6HttpServer QUIET) + if(_FOUND) 判一遍，两个口径会分叉——
+# Ubuntu 24.04 的 apt Qt 是 6.4.2，_FOUND 为真但 bus 已跳过，target_link_libraries(radio::bus)
+# 当场报错（CI run 111 就是这么红的）。
+if(TARGET radio::bus)
   find_package(Qt6 REQUIRED COMPONENTS Network)
+  # imported target 只在建它的那个目录作用域里可见，所以本目录仍需 find_package 一次；
+  # 版本号与 bus 里写死成同一个 6.8，两边一旦漂移就 configure 直接报错，
+  # 不再出现「Qt6::HttpServer target was not found」这种看不出根因的错。
+  find_package(Qt6HttpServer 6.8 REQUIRED)
   add_executable(radio_bus_tests
     test_bus.cpp
-    test_rigctld.cpp
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/bus/bus_server.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/bus/rigctld_server.cpp")
+    test_rigctld.cpp)
   target_include_directories(radio_bus_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   target_link_libraries(radio_bus_tests PRIVATE
-    radio::core
-    radio::dsp
+    radio::bus
     Qt6::Network
     Qt6::HttpServer
     Catch2::Catch2WithMain)
@@ -199,7 +202,6 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     test_device_report.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/desktop/app/session.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/set_mode_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/memory_channel.cpp"
@@ -214,6 +216,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     "${CMAKE_SOURCE_DIR}/apps/desktop")
   target_link_libraries(radio_ui_tests PRIVATE
     radio::core
+    radio::session
     Qt6::Widgets
     Qt6::Network
     Catch2::Catch2WithMain)

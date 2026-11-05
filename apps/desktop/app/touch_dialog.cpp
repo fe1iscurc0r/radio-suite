@@ -54,16 +54,6 @@ void restyleButtons(QWidget* root) { bumpHeight(root, 44); }
 
 }  // namespace
 
-// 滚动时 Qt 的「快移动」把内容子控件整体挪位置，视口只搬像素、只补画新露
-// 出来的一条窄边——留在画面里的行一次都不会重画（离屏用例里可量化：不关
-// 快移动，滚动一步后仍在画面中的行 paints=0）。真机甩动台账时这条快路径留
-// 下屏幕左端约 1/16 宽的一条，比右边慢一排，中间一道竖直缝（x≈148）。
-void installScrollRepaintWorkaround() {
-  // Qt 只在第一次用到时读这两个变量，所以必须在建任何控件之前调
-  qputenv("QT_NO_FAST_MOVE", "1");
-  qputenv("QT_NO_FAST_SCROLL", "1");
-}
-
 #ifdef Q_OS_ANDROID
 namespace {
 

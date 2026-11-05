@@ -1,11 +1,16 @@
 ﻿// SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bus/bus_server.h"
 
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTcpServer>
+#include <QUrlQuery>
 
 namespace radio::bus {
 
@@ -40,6 +45,7 @@ BusServer::BusServer(radio::app::RadioSession& session, QObject* parent)
   connect(&spec_timer_, &QTimer::timeout, this, [this] {
     synth_.fill(samples_.data());
     analyzer_.process(samples_.data(), samples_.size());
+    broadcastSse();
   });
 }
 
@@ -79,6 +85,19 @@ QByteArray BusServer::spectrumJson() const {
   return QJsonDocument(j).toJson(QJsonDocument::Compact);
 }
 
+void BusServer::broadcastSse() {
+  const QByteArray payload = spectrumJson();
+  const QByteArray frame = "data: " + payload + "\n\n";
+  for (auto it = sse_clients_.begin(); it != sse_clients_.end();) {
+    auto &c = **it;
+    if (c.dead) { it = sse_clients_.erase(it); continue; }
+    // chunked 续写：responder 的 d-pointer 里 stream 是 QPointer，连接断了就自动变空，
+    // 所以这里对已断开的客户端写是安全的空操作（不会野指针），只是没法据此清理
+    c.responder.writeChunk(frame);
+    ++it;
+  }
+}
+
 bool BusServer::start(const Config& cfg, QString* error) {
   cfg_ = cfg;
   // 工单安全要求：非环回绑定必须带 token
@@ -87,7 +106,43 @@ bool BusServer::start(const Config& cfg, QString* error) {
     return false;
   }
 
-  http_.route("/", [] {
+  // PWA 静态件（apps/web/）：exe 目录向上找仓库根；找不到回退旧演示页
+  web_root_ = [] {
+    QDir d(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 5; ++i) {
+      const QString cand = d.absoluteFilePath("apps/web");
+      if (QFile::exists(cand + "/index.html")) return cand;
+      if (!d.cdUp()) break;
+    }
+    return QString();
+  }();
+  auto serveWebFile = [&](const QString& rel) {
+    QFile f(web_root_ + "/" + rel);
+    if (!f.open(QIODevice::ReadOnly))
+      return QByteArray("PWA assets not found (apps/web/)");
+    return f.readAll();
+  };
+  http_.route("/", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("text/html"), serveWebFile("index.html"));
+  });
+  http_.route("/app.js", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("text/javascript"),
+                               serveWebFile("app.js"));
+  });
+  http_.route("/sw.js", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("text/javascript"),
+                               serveWebFile("sw.js"));
+  });
+  http_.route("/manifest.webmanifest", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("application/manifest+json"),
+                               serveWebFile("manifest.webmanifest"));
+  });
+  http_.route("/icon.svg", [&, serveWebFile] {
+    return QHttpServerResponse(QByteArrayLiteral("image/svg+xml"),
+                               serveWebFile("icon.svg"));
+  });
+  // 旧演示页保留在 /demo（无 PWA 资产时的对照）
+  http_.route("/demo", [] {
     return QHttpServerResponse(QByteArrayLiteral("text/html"),
                                QByteArray(kDemoPage));
   });
@@ -102,6 +157,108 @@ bool BusServer::start(const Config& cfg, QString* error) {
       return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
     return QHttpServerResponse(QByteArrayLiteral("application/json"),
                                spectrumJson());
+  });
+  // ---- PWA 控制出口（273 阶段二薄片：PTT/调谐，走 session 唯一出口）----
+  http_.route("/api/control", QHttpServerRequest::Method::Post,
+              [this](const QHttpServerRequest& req) {
+    if (!authorized(req))
+      return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
+    const auto doc = QJsonDocument::fromJson(req.body());
+    if (!doc.isObject())
+      return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                 QByteArrayLiteral("{\"error\":\"bad json\"}"));
+    const QString action = doc.object().value("action").toString();
+    QJsonObject result;
+    if (action == "ptt_on") {
+      session_.pttButtonPressed();  // 两击门禁由会话编排；PWA 第二击再调即确认
+      result = {{"ptt", session_.gate().phase() ==
+                                       radio::core::PttPhase::Tx
+                                   ? "tx"
+                                   : "confirm_pending"}};
+    } else if (action == "ptt_off") {
+      session_.pttButtonPressed();
+      session_.pttButtonPressed();
+      result = {{"ptt", "rx"}};
+    } else if (action == "tune") {
+      const auto hz = doc.object().value("freq").toVariant().toULongLong();
+      result = {{"tuned", session_.tuneTo(hz)}};
+      if (!session_.tuneTo(hz)) result = {{"error", "rejected"}};
+    } else if (action == "set_mode") {
+      const auto m = radio::core::civ::modeFromName(
+          doc.object().value("mode").toString());
+      if (!m) return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                         QByteArrayLiteral("{\"error\":\"bad mode\"}"));
+      session_.setMode(*m);
+      result = {{"mode", radio::core::civ::modeName(*m)}};
+    } else {
+      return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                 QByteArrayLiteral("{\"error\":\"unknown action\"}"));
+    }
+    return QHttpServerResponse(
+        QByteArrayLiteral("application/json"),
+        QJsonDocument(QJsonObject{{"ok", true}, {"result", result}})
+            .toJson(QJsonDocument::Compact));
+  });
+  // ---- QSO 薄片录入：内存队列 → ADIF 文本（273 验收：grep <CALL: ≥1）----
+  http_.route("/api/qso", QHttpServerRequest::Method::Post,
+              [this](const QHttpServerRequest& req) {
+    if (!authorized(req))
+      return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
+    const auto doc = QJsonDocument::fromJson(req.body());
+    const auto obj = doc.object();
+    QJsonObject q = obj.value("qso").toObject();
+    if (q.isEmpty()) q = obj;
+    if (q.value("callsign").toString().trimmed().isEmpty())
+      return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                                 QByteArrayLiteral("{\"error\":\"callsign required\"}"));
+    q["logged_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    qso_log_.append(q);
+    return QHttpServerResponse(QByteArrayLiteral("application/json"),
+                               QJsonDocument(QJsonObject{{"ok", true},
+                                                         {"count", static_cast<double>(qso_log_.size())}})
+                                   .toJson(QJsonDocument::Compact));
+  });
+  http_.route("/api/qso.adif", [this](const QHttpServerRequest& req) {
+    if (!authorized(req))
+      return QHttpServerResponse(QHttpServerResponder::StatusCode::Unauthorized);
+    QString out = QStringLiteral(
+        "ADIF 导出（PWA 薄片，273 阶段二验收）\n");
+    for (const QJsonValue& v : qso_log_) {
+      const QJsonObject q = v.toObject();
+      const auto f = [&q](const char* k) { return q.value(k).toString(); };
+      out += QString("<CALL:%1>%2 ").arg(f("callsign").length()).arg(f("callsign"));
+      if (!f("freq_mhz").isEmpty())
+        out += QString("<FREQ:%1>%2 ").arg(f("freq_mhz").length()).arg(f("freq_mhz"));
+      if (!f("mode").isEmpty())
+        out += QString("<MODE:%1>%2 ").arg(f("mode").length()).arg(f("mode"));
+      if (!f("rst_sent").isEmpty())
+        out += QString("<RST_SENT:%1>%2 ").arg(f("rst_sent").length()).arg(f("rst_sent"));
+      out += "<EOR>\n";
+    }
+    return QHttpServerResponse(QByteArrayLiteral("text/plain"), out.toUtf8());
+  });
+  // ---- SSE 频谱实时推送（273"M5 全量再上 SSE"提前落地）----
+  // 客户端 EventSource 收 data: {"power_db":[...],"frame_seq":N}
+
+
+  // Qt 6.8.3 的 ViewTraits 只认 QHttpServerResponder&（写成 && 会撞
+  // static_assert：can only be passed as a reference），要长期持有就自己 move 走
+  //
+  // 必须走 chunked：responder.write(data, mime) 发的是「一个完整响应」，头里带
+  // content-length: 23。裸 socket 能继续读到后面的帧，但浏览器 EventSource 按
+  // content-length 读完 23 字节就认为流结束、断开重连——于是每几秒攒一个死客户端，
+  // 而频谱一帧都进不去。writeBeginChunked/writeChunk 才是 SSE 要的形状。
+  http_.route("/api/spectrum/stream",
+              [this](const QHttpServerRequest &, QHttpServerResponder &responder) {
+    // SSE 契约：先下一行 event: hello，让 EventSource 立刻进入 open 态
+    responder.writeBeginChunked(QByteArrayLiteral("text/event-stream"));
+    responder.writeChunk(QByteArray("event: hello\ndata: {}\n\n"));
+    // 上限是硬上限：超了就挤掉最老的那个（给它一个正常的流结束，别让它悬着）
+    if (sse_clients_.size() >= kMaxSseClients) {
+      const auto oldest = sse_clients_.takeFirst();
+      if (!oldest->dead) oldest->responder.writeEndChunked(QByteArray());
+    }
+    sse_clients_.append(QSharedPointer<SseClient>::create(std::move(responder)));
   });
 
   // Qt 6.8：自建 QTcpServer 监听后交给 QAbstractHttpServer::bind

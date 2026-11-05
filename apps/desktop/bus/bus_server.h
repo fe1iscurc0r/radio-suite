@@ -8,11 +8,13 @@
 #pragma once
 
 #include <QHttpServer>
+#include <QHttpServerResponder>
 #include <QObject>
 #include <QTimer>
+#include <QJsonArray>
 #include <vector>
 
-#include "app/session.h"
+#include "session/session.h"
 #include "dsp/fft.h"
 #include "dsp/synth.h"
 
@@ -37,6 +39,7 @@ class BusServer : public QObject {
   bool authorized(const QHttpServerRequest& req) const;
   QString stateJson() const;
   QByteArray spectrumJson() const;
+  void broadcastSse();  // SSE 频谱广播（spec_timer_ 每帧向所有客户端写）
 
   radio::app::RadioSession& session_;
   QHttpServer http_;
@@ -49,6 +52,26 @@ class BusServer : public QObject {
   radio::dsp::SignalSynth synth_{kFftSize, 48000.0};
   radio::dsp::SpectrumAnalyzer analyzer_{kFftSize, 48000.0};
   std::vector<float> samples_;
+
+  // PWA 薄片：QSO 内存队列（POST /api/qso 入队，/api/qso.adif 导出）
+  QJsonArray qso_log_;
+  QString web_root_;
+
+  // SSE 频谱推送（273"M5 全量再上 SSE"提前落地）：
+  // 每客户端持 move 来的 Responder；spec_timer_ 用 writeChunk 广播。
+  // 断开检测做不到公开 API（QHttpServerStream 在 6.8 是私有类），但 responder 的
+  // d-pointer 里那个 stream 是 QPointer，断了就是空，所以对死客户端写是安全空操作；
+  // 代价是表只能靠上限挤掉最老的客户端来封顶，不做真正的回收。
+  static constexpr int kMaxSseClients = 8;
+  struct SseClient {
+    // QHttpServerResponder 只有移动构造和 QHttpServerStream* 那个构造函数，
+    // 没有默认构造，所以 SseClient 必须带着 responder 一起建
+    // （原来先 new 一个 responder 再当 SseClient* 塞进 QSharedPointer，类型不过）
+    explicit SseClient(QHttpServerResponder r) : responder(std::move(r)) {}
+    QHttpServerResponder responder;  // move 持有（非 QObject，需显式清理标志）
+    bool dead = false;
+  };
+  QList<QSharedPointer<SseClient>> sse_clients_;
 };
 
 }  // namespace radio::bus

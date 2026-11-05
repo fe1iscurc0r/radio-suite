@@ -18,7 +18,7 @@
 #include "app/cw_keyer.h"
 #include "app/memory_channel.h"
 #include "app/repeater_dialog.h"
-#include "app/session.h"
+#include "session/session.h"
 #include "app/set_mode_dialog.h"
 #include "core/transport_mock.h"
 

@@ -12,7 +12,7 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
-#include "app/session.h"
+#include "session/session.h"
 
 namespace radio::app {
 
