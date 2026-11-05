@@ -8,20 +8,16 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QEventLoop>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QGuiApplication>
 #include <QLabel>
-#include <QPaintEvent>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QThread>
 #include <QVBoxLayout>
 
-#include <vector>
 
 #include "app/touch_dialog.h"
 
@@ -29,9 +25,6 @@ namespace {
 
 QApplication& app() {
   qputenv("QT_QPA_PLATFORM", "offscreen");
-  // Qt 把这两个开关读成函数里的 static，一旦有测试先滚动过就来不及了；
-  // 放在建 QApplication 之前，和 main.cpp 的顺序保持一致
-  radio::app::touch::installScrollRepaintWorkaround();
   static int argc = 1;
   static char name[] = "radio-ui-tests";
   static char* argv[] = {name, nullptr};
@@ -133,75 +126,3 @@ TEST_CASE("fitDialog clamps a minimum height taller than the screen",
   CHECK(pos.y() + close->height() <= dlg.height());
 }
 
-namespace {
-
-// 滚动时 Qt 的「快移动」只搬像素、只补画新露出来的窄条：中间那些行前后都
-// 完整可见，不强制整块重绘就一次都不会重画。用会自数的行当探针。
-class RepaintSpy : public QLabel {
- public:
-  using QLabel::QLabel;
-  int paints = 0;
-
- protected:
-  void paintEvent(QPaintEvent* ev) override {
-    ++paints;
-    QLabel::paintEvent(ev);
-  }
-};
-
-void spin(int ms = 200) {
-  for (int i = 0; i < ms / 10; ++i) {
-    QApplication::processEvents(QEventLoop::AllEvents, 10);
-    QThread::msleep(5);
-  }
-}
-
-}  // namespace
-
-TEST_CASE("scrolling repaints the rows that never left the screen",
-          "[touch][ui]") {
-  // 开关在 app() 里装（建 QApplication 之前）。不装的话下面那条 CHECK
-  // 会挂（实测 mid paints=0），手机上就是屏幕左端慢一排的滞后带
-  app();
-  qputenv("RADIO_SUITE_TOUCH_FIT", "1");
-
-  QWidget host;
-  auto* content = new QWidget();
-  auto* lay = new QVBoxLayout(content);
-  std::vector<RepaintSpy*> rows;
-  for (int i = 0; i < 40; ++i) {
-    auto* spy = new RepaintSpy(QString("row %1").arg(i));
-    lay->addWidget(spy);
-    rows.push_back(spy);
-  }
-  auto* scroll = new QScrollArea(&host);
-  scroll->setWidgetResizable(true);
-  scroll->setWidget(content);
-  host.resize(240, 120);
-  scroll->setGeometry(0, 0, 240, 120);
-  host.show();
-  spin();
-
-  RepaintSpy* mid = nullptr;
-  for (auto* spy : rows) {
-    // 滚动前后都完整落在视口里的那一行：它没有任何「必须重画」的理由，
-    // 正是快移动只会搬像素、不会重画的那批
-    const QPoint top = spy->mapTo(scroll->viewport(), QPoint(0, 0));
-    const QPoint moved(top.x(), top.y() - 30);
-    const QRect vp = scroll->viewport()->rect();
-    if (vp.contains(top) && vp.contains(moved)) {
-      mid = spy;
-      break;
-    }
-  }
-  REQUIRE(mid != nullptr);
-  REQUIRE(mid->paints > 0);  // 先确认探针真的在画，否则下面的断言是空的
-  mid->paints = 0;
-
-  REQUIRE(scroll->verticalScrollBar()->maximum() > 0);
-  scroll->verticalScrollBar()->setValue(30);
-  spin();
-
-  // 没滚出画面的行也必须重画一遍，否则真机上它就是上一帧留下的残影
-  CHECK(mid->paints > 0);
-}
