@@ -124,6 +124,19 @@ void MainWindow::buildDesktopUi() {
   waterfall_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   main_col->addWidget(waterfall_, 1);
 
+  // 这条轴一直没有刻度：屏幕上是一片没有单位的彩色，谁都读不出信号在哪。
+  // 先把轴说清楚 + 给一个跟随光标的读数（GL 控件里放不住文字，挂它下面一行）。
+  // 注意这不是 RF 频谱——本仓没有任何 RF 跨度数据源，所以这里不做「点哪儿就调哪儿」。
+  wf_axis_label_ = new QLabel(central);
+  wf_axis_label_->setObjectName(QStringLiteral("wf_axis_label"));
+  wf_axis_label_->setStyleSheet("color: #8a9bb4; font-size: 11px;");
+  wf_axis_label_->setText(
+      QStringLiteral("轴：RX 音频带 0–%1 kHz（非 RF 频谱）· 光标 —")
+          .arg(static_cast<int>(kSampleRateHz / 2000.0)));
+  main_col->addWidget(wf_axis_label_);
+  waterfall_->installEventFilter(this);
+  waterfall_->setMouseTracking(true);  // 没有按下也要收到 MouseMove
+
 #ifdef RADIO_SUITE_HAVE_LOGBOOK
   if (hamlog_.available()) {
     // 最近 QSO 与工作台入口同排，避免再吃掉一条频谱高度
