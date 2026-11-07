@@ -133,6 +133,7 @@ bool BusServer::start(const Config& cfg, QString* error) {
     return resp;
   };
   http_.route("/", [webFile] { return webFile("text/html", "index.html"); });
+  http_.route("/app.css", [webFile] { return webFile("text/css", "app.css"); });
   http_.route("/app.js", [webFile] { return webFile("text/javascript", "app.js"); });
   http_.route("/sw.js", [webFile] { return webFile("text/javascript", "sw.js"); });
   http_.route("/manifest.webmanifest",

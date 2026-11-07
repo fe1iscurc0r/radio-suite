@@ -1,6 +1,6 @@
 /* radio-suite PWA Service Worker：静态资源离线缓存（API 不缓存——数据要新鲜） */
-const CACHE = 'radio-suite-v1';
-const ASSETS = ['/', '/app.js', '/manifest.webmanifest', '/icon.svg'];
+const CACHE = 'radio-suite-v2';
+const ASSETS = ['/', '/app.css', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

@@ -15,6 +15,7 @@ class QHBoxLayout;
 class QVBoxLayout;
 class QCloseEvent;
 class QEvent;
+class QKeyEvent;
 class QStackedWidget;
 class QWidget;
 
@@ -62,6 +63,9 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void closeEvent(QCloseEvent* event) override;
   // 面板被系统返回键隐藏时复位大按键（手机没有标题栏，容易点成"关不掉"）
   bool eventFilter(QObject* watched, QEvent* event) override;
+  // 键盘调谐：←/→ 按步进档调谐、PgUp/PgDn ×10 粗调、空格 PTT、Esc 回 RX。
+  // 输入框聚焦时 Qt 焦点链先让 QLineEdit 消费按键，不会与手输频率互抢
+  void keyPressEvent(QKeyEvent* event) override;
 
  private slots:
   void refreshState();    // RadioState → 标签 + 模式/功能按钮回读同步

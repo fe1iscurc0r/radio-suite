@@ -18,6 +18,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QEvent>
+#include <QKeyEvent>
 #include <QSignalBlocker>
 #include <QTimer>
 
@@ -147,6 +148,23 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
                             .arg(opcode, 2, 16, QLatin1Char('0')),
                         true);
           });
+  // 瀑布点击调频：本仓瀑布是解调音频单边谱（0..24 kHz），LSB/USB 下点击列
+  // 换算成 RF 偏移、把点的信号拉回 1 kHz 音调处；AM/FM 解调音频与 RF 频谱
+  // 没有单值映射，点击只闪提示。RF 域点击要等 sidecar IQ 频谱（见调研 §8）
+  connect(waterfall_, &WaterfallWidget::freqPicked, this, [this](double frac) {
+    const auto s = session_.store().snapshot();
+    const double audio_hz = frac * 24000.0;
+    const uint64_t off = static_cast<uint64_t>(
+        audio_hz > 1'000.0 ? audio_hz - 1'000.0 : audio_hz);
+    const QString mn = radio::core::civ::modeName(s.mode);  // QString：== 是内容比较（const char* == 字面量是指针比较，C4130）
+    if (mn == "USB") {
+      session_.tuneTo(s.freq_hz + off);
+    } else if (mn == "LSB") {
+      if (s.freq_hz > off) session_.tuneTo(s.freq_hz - off);
+    } else {
+      flashStatus("当前模式下瀑布是解调音频谱，点击调频仅 LSB/USB 有效", true);
+    }
+  });
   connect(&bench_timer_, &QTimer::timeout, this, &MainWindow::onBenchTick);
   // 33 ms ≈ 30 fps。不能更慢：FFT 窗只有 2048/48000 = 42.7 ms，原来 66 ms
   // 一拍等于每两拍之间有 23 ms 音频根本没被分析过（信号会整段漏掉），
@@ -209,6 +227,27 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
       ft8_big_btn_->setChecked(false);
   }
   return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent* event) {
+  // 键盘调谐（GQRX/SDR++ 同款交互）：事件从焦点控件沿父链上传，QLineEdit
+  // 聚焦时输入/光标键被它先消费、按钮聚焦时空格被按钮消费，主窗只兜底
+  switch (event->key()) {
+    case Qt::Key_Left:  onTuneStep(-1); return;
+    case Qt::Key_Right: onTuneStep(+1); return;
+    case Qt::Key_PageDown: onTuneStep(-10); return;
+    case Qt::Key_PageUp:   onTuneStep(+10); return;
+    case Qt::Key_Space:
+      // 与 PTT 按钮同一出口：两击门禁由会话编排（Rx→确认→Tx；Tx/确认态回 Rx）
+      session_.pttButtonPressed();
+      return;
+    case Qt::Key_Escape:
+      if (session_.gate().phase() != radio::core::PttPhase::Rx)
+        session_.pttButtonPressed();  // 确认态取消 / 发射态回 RX
+      return;
+    default:
+      QMainWindow::keyPressEvent(event);
+  }
 }
 
 void MainWindow::buildUi() {

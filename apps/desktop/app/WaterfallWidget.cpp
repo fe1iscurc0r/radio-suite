@@ -2,7 +2,11 @@
 #include "app/WaterfallWidget.h"
 
 #include <QColor>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QSurfaceFormat>
+#include <QWheelEvent>
+#include <algorithm>
 #include <cstring>
 
 // GLES2 头文件没有 R8/RED 常量（GLES3 与桌面 GL 才有）：按上下文能力选纹理格式
@@ -34,9 +38,12 @@ precision mediump float;
 #endif
 uniform sampler2D uTex;
 uniform float uRowOff;   // 环形纹理：屏幕底边对应的归一化行号
+uniform float uX0;       // 显示缩放：屏幕左缘对应的归一化列（0..1）
+uniform float uX1;       // 显示缩放：屏幕右缘对应的归一化列
 varying vec2 vUv;
 void main() {
-  float t = texture2D(uTex, vec2(vUv.x, fract(uRowOff + vUv.y))).r;
+  float u = mix(uX0, uX1, vUv.x);
+  float t = texture2D(uTex, vec2(u, fract(uRowOff + vUv.y))).r;
   t = pow(t, 0.75);      // 伽马提亮暗部
   vec3 c;
   c.r = clamp(1.5 - abs(4.0 * t - 3.0), 0.0, 1.0);
@@ -102,6 +109,65 @@ void WaterfallWidget::pushSpectrum(const float* col_db, int cols) {
   if (cols != kTexW) return;
   std::memcpy(line_db_.data(), col_db, sizeof(float) * static_cast<size_t>(cols));
   line_dirty_ = true;  // 谱线顶点重算与重传推迟到 paintGL（GPU 调度：脏才动）
+}
+
+void WaterfallWidget::mousePressEvent(QMouseEvent* e) {
+  // 按下只记录起点：是否框选由移动距离决定，否则释放=点击调频
+  if (e->button() != Qt::LeftButton) return;
+  pressed_ = true;
+  dragging_ = false;
+  drag_x0_ = drag_x1_ = static_cast<float>(e->position().x());
+}
+
+void WaterfallWidget::mouseMoveEvent(QMouseEvent* e) {
+  if (!pressed_) return;
+  drag_x1_ = static_cast<float>(e->position().x());
+  if (!dragging_ && std::abs(drag_x1_ - drag_x0_) > 6.0f) dragging_ = true;
+  if (dragging_) update();  // 橡皮筋重绘
+}
+
+void WaterfallWidget::mouseReleaseEvent(QMouseEvent* e) {
+  if (e->button() != Qt::LeftButton || !pressed_) return;
+  pressed_ = false;
+  if (dragging_) {
+    dragging_ = false;
+    const float w = static_cast<float>(width());
+    const float lo = std::min(drag_x0_, drag_x1_) / w;
+    const float hi = std::max(drag_x0_, drag_x1_) / w;
+    if (hi - lo > 0.005f) setZoom(lo, hi);  // 太小的框当误触，按点击处理
+    else update();
+  } else {
+    const double frac = std::clamp(e->position().x() / width(), 0.0, 1.0);
+    emit freqPicked(frac);
+  }
+}
+
+void WaterfallWidget::mouseDoubleClickEvent(QMouseEvent*) {
+  setZoom(0.0f, 1.0f);  // 双击复位
+}
+
+void WaterfallWidget::wheelEvent(QWheelEvent* e) {
+  // 滚轮以光标为中心缩放显示区间（纯显示层，分辨率不随缩放增加）
+  const float frac = static_cast<float>(e->position().x()) / width();
+  const float span = zoom_hi_ - zoom_lo_;
+  const float factor = e->angleDelta().y() > 0 ? 1.25f : 0.8f;
+  const float new_span = std::clamp(span / factor, 1.0f / 64.0f, 1.0f);
+  const float center = zoom_lo_ + frac * span;
+  setZoom(center - frac * new_span, center + (1.0f - frac) * new_span);
+}
+
+void WaterfallWidget::setZoom(float lo, float hi) {
+  lo = std::clamp(lo, 0.0f, 1.0f);
+  hi = std::clamp(hi, 0.0f, 1.0f);
+  if (hi - lo < 1.0f / 64.0f) {  // 最小 16 列跨度，再小没有信息量
+    const float c = (lo + hi) * 0.5f;
+    lo = c - 1.0f / 128.0f;
+    hi = c + 1.0f / 128.0f;
+  }
+  zoom_lo_ = lo;
+  zoom_hi_ = hi;
+  line_dirty_ = true;  // 谱线顶点按新区间重映射
+  update();
 }
 
 bool WaterfallWidget::buildPrograms() {
@@ -202,6 +268,8 @@ void WaterfallWidget::paintGL() {
   wf_prog_.setUniformValue(
       "uRowOff",
       static_cast<float>(next_row_ - 1) / static_cast<float>(kTexH) - 0.65f);
+  wf_prog_.setUniformValue("uX0", zoom_lo_);
+  wf_prog_.setUniformValue("uX1", zoom_hi_);
   glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
   const int a_pos_wf = wf_prog_.attributeLocation("aPos");
   wf_prog_.enableAttributeArray(a_pos_wf);
@@ -210,7 +278,7 @@ void WaterfallWidget::paintGL() {
   wf_prog_.disableAttributeArray(a_pos_wf);
   wf_prog_.release();
 
-  // ---- 频率网格（静态 VBO：bind+draw，零每帧上传）----
+  // ---- 频率网格（静态 VBO：bind+draw，零每帧上传；屏幕等分，与缩放无关）----
   line_prog_.bind();
   line_prog_.setUniformValue("uColor", QColor(255, 255, 255, 26));
   glBindBuffer(GL_ARRAY_BUFFER, grid_vbo_);
@@ -227,20 +295,25 @@ void WaterfallWidget::paintGL() {
   const float span = db_ceil_ - db_floor_;
   if (line_dirty_) {
     const float y0 = 0.34f, y1 = 0.96f;
-    for (int i = 0; i < kTexW; ++i) {
+    // 缩放显示：只重映射 [zoom_lo_, zoom_hi_] 区间内的列到全屏宽
+    const int c0 = static_cast<int>(zoom_lo_ * (kTexW - 1));
+    const int c1 = static_cast<int>(zoom_hi_ * (kTexW - 1));
+    line_count_ = c1 - c0 + 1;
+    for (int i = c0; i <= c1; ++i) {
       float norm = (line_db_[static_cast<size_t>(i)] - db_floor_) / span;
       if (norm < 0.0f) norm = 0.0f;
       if (norm > 1.0f) norm = 1.0f;
-      const float x =
-          -1.0f + 2.0f * static_cast<float>(i) / static_cast<float>(kTexW - 1);
+      const float x = -1.0f + 2.0f *
+          ((static_cast<float>(i) / (kTexW - 1)) - zoom_lo_) /
+          (zoom_hi_ - zoom_lo_);
       const float y = y0 + (y1 - y0) * norm;
-      line_verts_[static_cast<size_t>(i) * 2] = x;
-      line_verts_[static_cast<size_t>(i) * 2 + 1] = y;
-      // 填充：每列两个顶点（底、顶），triangle strip 交错
-      fill_verts_[static_cast<size_t>(i) * 4] = x;
-      fill_verts_[static_cast<size_t>(i) * 4 + 1] = y0;
-      fill_verts_[static_cast<size_t>(i) * 4 + 2] = x;
-      fill_verts_[static_cast<size_t>(i) * 4 + 3] = y;
+      const size_t j = static_cast<size_t>(i - c0);
+      line_verts_[j * 2] = x;
+      line_verts_[j * 2 + 1] = y;
+      fill_verts_[j * 4] = x;
+      fill_verts_[j * 4 + 1] = y0;
+      fill_verts_[j * 4 + 2] = x;
+      fill_verts_[j * 4 + 3] = y;
     }
     line_dirty_ = false;
   }
@@ -255,7 +328,7 @@ void WaterfallWidget::paintGL() {
   const int a_pos_fill = line_prog_.attributeLocation("aPos");
   line_prog_.enableAttributeArray(a_pos_fill);
   line_prog_.setAttributeBuffer(a_pos_fill, GL_FLOAT, 0, 2);
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, kTexW * 2);
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, line_count_ * 2);
   line_prog_.disableAttributeArray(a_pos_fill);
 
   // 描边（亮绿，2px 在多数驱动上生效）
@@ -266,7 +339,36 @@ void WaterfallWidget::paintGL() {
   line_prog_.enableAttributeArray(a_pos_line);
   line_prog_.setAttributeBuffer(a_pos_line, GL_FLOAT, 0, 2);
   glLineWidth(2.0f);
-  glDrawArrays(GL_LINE_STRIP, 0, kTexW);
+  glDrawArrays(GL_LINE_STRIP, 0, line_count_);
   line_prog_.disableAttributeArray(a_pos_line);
   line_prog_.release();
+
+  // ---- 文字层（QPainter 叠加在 GL 之上）：音频偏移刻度 ----
+  // 本仓瀑布是解调音频的单边谱（2048@48k → 0..24 kHz），不是 RF 频谱：
+  // 横轴如实标音频偏移；SSB 模式点击谱区（freqPicked）按模式换算 RF 跳频
+  QPainter p(this);
+  QFont f = p.font();
+  f.setPointSize(8);
+  p.setFont(f);
+  p.setPen(QColor(174, 182, 192, 190));
+  const int w = width();
+  const float zspan = zoom_hi_ - zoom_lo_;
+  for (int k = 0; k <= 4; ++k) {
+    const int x = static_cast<int>(k / 4.0 * (w - 1));
+    const float khz = (zoom_lo_ + zspan * k / 4.0f) * 24.0f;
+    const QString label = khz < 9.95f ? QString::number(khz, 'f', 1) + "k"
+                                      : QString::number(static_cast<int>(khz + 0.5f)) + "k";
+    p.drawText(std::max(0, x - 14), height() - 6, 44, 14,
+               Qt::AlignLeft | Qt::AlignVCenter, label);
+  }
+  p.drawText(w - 96, 6, 90, 14, Qt::AlignRight | Qt::AlignVCenter, "音频偏移 kHz");
+  // 框选橡皮筋：两根竖线 + 中间淡琥珀填充
+  if (pressed_ && dragging_) {
+    const int x0 = static_cast<int>(drag_x0_), x1 = static_cast<int>(drag_x1_);
+    p.setPen(QColor(255, 179, 0, 220));
+    p.drawLine(x0, 0, x0, height());
+    p.drawLine(x1, 0, x1, height());
+    p.fillRect(std::min(x0, x1), 0, std::abs(x1 - x0), height(),
+               QColor(255, 179, 0, 30));
+  }
 }
