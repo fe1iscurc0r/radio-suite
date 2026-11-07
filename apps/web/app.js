@@ -116,6 +116,27 @@ document.querySelectorAll('#controls [data-step]').forEach(b =>
     await control('tune', { freq: (cur.freq_hz ?? 0) + Number(b.dataset.step) });
   }));
 
+/* 模式切换（走 session 唯一出口；桌面按钮随电台回读自动纠偏） */
+document.querySelectorAll('#modes [data-mode]').forEach(b =>
+  b.addEventListener('click', async () => {
+    const j = await control('set_mode', { mode: b.dataset.mode });
+    if (j.error) connEl.textContent = '切模式被拒：' + j.error;
+  }));
+
+/* 接收波段预置（与桌面 buildBandsRow 同款三预置，全部「可听不可发」） */
+const BAND_PRESETS = {
+  air:  { mode: 'AM',  hz: 127500000 },
+  bcfm: { mode: 'WFM', hz: 97750000 },
+  bcsw: { mode: 'AM',  hz: 9500000 },
+};
+document.querySelectorAll('#bands [data-band]').forEach(b =>
+  b.addEventListener('click', async () => {
+    const p = BAND_PRESETS[b.dataset.band];
+    if (!p) return;
+    await control('set_mode', { mode: p.mode });
+    await control('tune', { freq: p.hz });
+  }));
+
 /* QSO 录入（PWA 内存队列 → /api/qso.adif 导出） */
 $('logqso').addEventListener('click', async () => {
   const callsign = $('callinput').value.trim().toUpperCase();

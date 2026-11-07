@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <vector>
 
+class QMouseEvent;
+
 class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   Q_OBJECT
  public:
@@ -33,10 +35,16 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   void pushRow(const uint8_t* row, int cols);
   void pushSpectrum(const float* col_db, int cols);
 
+ signals:
+  // 用户点击谱区 → 该列的归一化音频偏移（0..1 = 0..24 kHz）。
+  // SSB 模式下 MainWindow 换算成 RF 跳频；AM/FM 解调音频与 RF 无简单映射，不跳
+  void freqPicked(double frac);
+
  protected:
   void initializeGL() override;
   void resizeGL(int w, int h) override;
   void paintGL() override;
+  void mousePressEvent(QMouseEvent*) override;
 
  private:
   bool buildPrograms();

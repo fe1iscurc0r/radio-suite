@@ -2,7 +2,10 @@
 #include "app/WaterfallWidget.h"
 
 #include <QColor>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QSurfaceFormat>
+#include <algorithm>
 #include <cstring>
 
 // GLES2 头文件没有 R8/RED 常量（GLES3 与桌面 GL 才有）：按上下文能力选纹理格式
@@ -102,6 +105,14 @@ void WaterfallWidget::pushSpectrum(const float* col_db, int cols) {
   if (cols != kTexW) return;
   std::memcpy(line_db_.data(), col_db, sizeof(float) * static_cast<size_t>(cols));
   line_dirty_ = true;  // 谱线顶点重算与重传推迟到 paintGL（GPU 调度：脏才动）
+}
+
+void WaterfallWidget::mousePressEvent(QMouseEvent* e) {
+  // 点击谱区 → 列位置换算成归一化音频偏移（0..1 = 0..24 kHz，2^11 @48k 的单边谱）。
+  // 是否跳频、怎么换算 RF 由 MainWindow 按当前模式决定（AM/FM 不跳）
+  if (e->button() != Qt::LeftButton) return;
+  const double frac = std::clamp(e->position().x() / width(), 0.0, 1.0);
+  emit freqPicked(frac);
 }
 
 bool WaterfallWidget::buildPrograms() {
@@ -269,4 +280,21 @@ void WaterfallWidget::paintGL() {
   glDrawArrays(GL_LINE_STRIP, 0, kTexW);
   line_prog_.disableAttributeArray(a_pos_line);
   line_prog_.release();
+
+  // ---- 文字层（QPainter 叠加在 GL 之上）：音频偏移刻度 ----
+  // 本仓瀑布是解调音频的单边谱（2048@48k → 0..24 kHz），不是 RF 频谱：
+  // 横轴如实标音频偏移；SSB 模式点击谱区（freqPicked）按模式换算 RF 跳频
+  QPainter p(this);
+  QFont f = p.font();
+  f.setPointSize(8);
+  p.setFont(f);
+  p.setPen(QColor(174, 182, 192, 190));
+  const int w = width();
+  for (int k = 0; k <= 4; ++k) {
+    const int x = static_cast<int>(k / 4.0 * (w - 1));
+    const QString label = k == 0 ? "0" : QString::number(k * 6) + "k";
+    p.drawText(x - 14, height() - 6, 40, 14,
+               Qt::AlignLeft | Qt::AlignVCenter, label);
+  }
+  p.drawText(w - 96, 6, 90, 14, Qt::AlignRight | Qt::AlignVCenter, "音频偏移 kHz");
 }
