@@ -12,6 +12,7 @@
 #include <vector>
 
 class QMouseEvent;
+class QWheelEvent;
 
 class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   Q_OBJECT
@@ -45,9 +46,25 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   void resizeGL(int w, int h) override;
   void paintGL() override;
   void mousePressEvent(QMouseEvent*) override;
+  // M2 交互兑现：滚轮以光标为中心缩放、左键框选放大、双击复位；
+  // 按下后没挪动过的释放按「点击调频」处理（freqPicked）
+  void wheelEvent(QWheelEvent*) override;
+  void mouseMoveEvent(QMouseEvent*) override;
+  void mouseReleaseEvent(QMouseEvent*) override;
+  void mouseDoubleClickEvent(QMouseEvent*) override;
 
  private:
   bool buildPrograms();
+  // 显示缩放（归一化列区间 ⊂ [0,1]）：纯显示层，从 1024 列全谱取子区间拉伸，
+  // 分辨率不增加；谱线/填充/网格/刻度全部跟随该区间
+  void setZoom(float lo, float hi);
+  float zoom_lo_ = 0.0f;
+  float zoom_hi_ = 1.0f;
+  bool dragging_ = false;   // 框选中（按下后挪过 6px 才算，否则释放=点击调频）
+  bool pressed_ = false;
+  float drag_x0_ = 0.0f;
+  float drag_x1_ = 0.0f;
+  int line_count_ = kTexW;  // 谱线/填充绘制的实际顶点数（缩放后 < kTexW）
 
   // R8 单通道纹理：桌面 GL / GLES3 用 GL_R8+GL_RED；GLES2 上下文没有这两个
   // 常量，退回 GL_LUMINANCE（ES2 下取样 .r 仍是亮度值）

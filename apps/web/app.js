@@ -43,6 +43,12 @@ function drawSpectrum(d) {
     i ? g.lineTo(x, y) : g.moveTo(x, y);
   }
   g.stroke();
+  // 底部音频偏移刻度（与桌面瀑布同语义：0..24 kHz 单边谱）
+  g.fillStyle = '#aeb6c0';
+  g.font = '10px monospace';
+  for (let k = 0; k <= 4; k++) {
+    g.fillText(k === 0 ? '0' : k * 6 + 'k', k / 4 * (cv.width - 16) + 2, cv.height - 3);
+  }
 }
 async function pollSpectrum() {
   if (sseMode) return;  // SSE 已接管
