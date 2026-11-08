@@ -138,6 +138,9 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
     结论：无可整仓合并项；唯一现实可 vendor 的是 `ft8_lib`（MIT，本地 FT8 解码），
     其次为 Dire Wolf 思路（DCD 监听 / 早迟门比特同步）与 liquid-dsp（MIT，真机
     灵敏度不足时再引）。优先级与工作量见该文档 §3。
+    **扩展版**（2026-11-07，六域全景）：`docs/research/open-source-sdr-survey-2026-11-07.md`
+    ——不限业余域的桌面/Web/框架/硬件/解码器/移动全生态调研，落地建议 §8（幅度域批处理、
+    FCS 纠错候选、回放+统计、SSTV pipeline、rigplane 3.0）。
 11. **安卓真机验收**（清单 `docs/android-真机验收清单.md`；**2026-10-31 已在真机跑过第一轮**，
     Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6，逐项证据在清单 §K4）：
     持久化与配置侧已拿到真机证据（A1–A7、D1 落盘+读回、G-0 的配置半条、K1/K3）；
