@@ -63,12 +63,32 @@ void SpectrumAnalyzer::process(const float* samples, size_t n) {
   }
   avg_seeded_ = true;
   ++seq_;
+
+  // 峰值保持：在（平均后的）谱上做衰减式 max-hold
+  if (peak_hold_) {
+    if (!peak_seeded_) {
+      peak_db_ = power_db_;
+      peak_seeded_ = true;
+    } else {
+      for (size_t k = 0; k < power_db_.size(); ++k)
+        peak_db_[k] = std::max(power_db_[k], peak_db_[k] - peak_decay_);
+    }
+  }
 }
 
 void SpectrumAnalyzer::setAveragingFrames(size_t frames) {
   avg_frames_ = frames == 0 ? 1 : frames;
   avg_seeded_ = false;
   std::fill(avg_power_.begin(), avg_power_.end(), 0.0f);
+}
+
+void SpectrumAnalyzer::setPeakHold(bool on, float decay_db_per_frame) {
+  peak_hold_ = on;
+  peak_decay_ = decay_db_per_frame > 0.0f ? decay_db_per_frame : 1.5f;
+  if (!on) {
+    peak_db_.clear();
+    peak_seeded_ = false;
+  }
 }
 
 }  // namespace radio::dsp
