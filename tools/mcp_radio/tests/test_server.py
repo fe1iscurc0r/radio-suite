@@ -147,7 +147,12 @@ class ReadToolTests(unittest.TestCase):
         self.assertEqual(bus.spectrum_calls, 2)
         self.assertTrue(payload["spectrum_advancing"])
         self.assertEqual(payload["frames_in_window"], 3)
-        self.assertEqual(payload["approx_frames_per_s"], 3000.0)  # 0ms 窗口：只报增量，不编速率
+        # 速率必须用实测间隔算：window_ms=0 时把分母写成 1 ms 就会把 3 帧报成 3000 fps
+        self.assertGreaterEqual(payload["measured_window_ms"], 1)
+        self.assertAlmostEqual(
+            payload["approx_frames_per_s"],
+            round(3 * 1000.0 / payload["measured_window_ms"], 1),
+        )
         self.assertEqual(payload["verdict"], "ok")
         self.assertIn("别把 ok 读成", payload["scope_note"])
 

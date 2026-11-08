@@ -35,7 +35,7 @@ MCP 宿主（Claude Desktop / Qoder / lumo）里配的是同一条命令：`comm
 |---|---|---|---|
 | `get_state` | `GET /api/state` | — | 总线字段原样 + `freq_mhz` + `state_age_ms` |
 | `get_spectrum` | `GET /api/spectrum` | `max_points` 1..512，默认 64 | 按桶取最大折叠后的谱 + `peak_bin`/`peak_hz`/`peak_db`/`noise_floor_db` + `axis` |
-| `link_health` | `GET /api/state` + 两次 `GET /api/spectrum` | `window_ms` 0..2000，默认 200 | `bus_reachable`/`spectrum_advancing`/`frames_in_window`/`state_age_ms`/`warnings` |
+| `link_health` | `GET /api/state` + 两次 `GET /api/spectrum` | `window_ms` 0..2000，默认 200 | `bus_reachable`/`spectrum_advancing`/`frames_in_window`/`measured_window_ms`/`state_age_ms`/`warnings`；帧率用**实测间隔**算，不拿 `window_ms` 当分母 |
 
 **横轴不是 RF。** `power_db[i]` 对应的频率是 `bin_hz × i`，即当前制式解调出来的
 **音频基带 0..fs/2**（`fs=48 kHz` ⇒ 0..24 kHz）。给 agent 的 `axis.kind` 就是

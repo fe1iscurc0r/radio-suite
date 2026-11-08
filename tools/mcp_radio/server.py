@@ -117,13 +117,16 @@ def _tool_link_health(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> 
         raise ValueError("window_ms 要在 0..2000 之间")
     state = bus.state()
     first = bus.spectrum()
+    # 速率要用实测的间隔算，不能拿 window_ms 当分母：window_ms=0 时那两次读其实
+    # 隔了几十毫秒，写死成 1 ms 就把 3 帧报成 3000 fps —— 一个凭空的谎。
+    mark = time.monotonic()
     if window_ms:
         time.sleep(window_ms / 1000.0)
     second = bus.spectrum()
+    measured_ms = max(round((time.monotonic() - mark) * 1000), 1)
     seq_a = int(first.get("frame_seq") or 0)
     seq_b = int(second.get("frame_seq") or 0)
     delta = seq_b - seq_a
-    span_ms = window_ms or 1
     last = state.get("last_update_ms")
     age = now_ms() - int(last) if isinstance(last, (int, float)) and last > 0 else None
     warnings = []
@@ -141,8 +144,9 @@ def _tool_link_health(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> 
         "spectrum_frame_seq_second": seq_b,
         "spectrum_advancing": delta > 0,
         "frames_in_window": delta,
-        "window_ms": window_ms,
-        "approx_frames_per_s": round(delta * 1000.0 / span_ms, 1) if delta > 0 else 0.0,
+        "requested_window_ms": window_ms,
+        "measured_window_ms": measured_ms,
+        "approx_frames_per_s": round(delta * 1000.0 / measured_ms, 1) if delta > 0 else 0.0,
         "state_age_ms": age,
         "ptt_on": bool(state.get("ptt_on")),
         "mode": state.get("mode"),
