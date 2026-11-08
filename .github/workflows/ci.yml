@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# 三平台 matrix：Linux headless（BUILD_GUI=OFF，零 Qt）/ Windows MSVC+Qt / macOS Qt
+# 三平台 matrix：Linux headless（BUILD_GUI=OFF，装 apt 的 Qt 6.4.2，bus 因版本门槛自动跳过）
+# / Windows MSVC+Qt 6.8 / macOS brew qt@6
 name: ci
 
 on:
@@ -14,7 +15,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # 钉在 ubuntu-24.04（noble，apt Qt = 6.4.2），别用 ubuntu-latest：
+          # 2026-11-05 08:28Z 那轮 ubuntu-latest 还是 noble（bus 按 <6.8 门槛跳过，151 用例全绿），
+          # 22 分钟后同一 runner 标签就换成 resolute（apt Qt 6.10.2）——bus 第一次在 Linux 上
+          # 编出来，然后 5 条 bus 用例在**断言全过之后**的析构阶段被 glibc 判死
+          # （double free or corruption (!prev)），另有 3 条 SQLite 用例 SegFault。
+          # 这不是本次改动引入的（同一 head 的 windows/macos 全绿），也不是三行能猜中的修复：
+          # 要修得先有一台能复现的 Linux（本机没有，靠 CI 猜-验一轮 6 分钟不划算）。
+          # 所以这里先把环境钉回已知-good，把「Linux + Qt 6.10 上的 bus/SQLite 崩溃」
+          # 单独开任务跟；标签一旦再漂，这条注释就是现场记录。
+          # ⚠️ 换 label 时别忘了下面 apt 那步的条件：它原来写死 if: matrix.os == 'ubuntu-latest'，
+          #    第一次钉成 ubuntu-24.04 时整步被跳过，configure 直接「Could not find Qt6Config.cmake」
+          #    ——现在改成 startsWith(matrix.os, 'ubuntu')，别再按具体标签匹配。
+          - os: ubuntu-24.04
             build_gui: OFF
           - os: windows-latest
             build_gui: ON
@@ -25,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install deps (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
           # qt6-base-dev: Core/Gui/Widgets/Network/Sql；libgl1-mesa-dev: OpenGL
