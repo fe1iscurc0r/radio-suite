@@ -48,6 +48,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | 域 | 状态 | 证据 |
 |---|---|---|
 | CI-V 协议 | ✅ 与 Python 参考**逐字节互锁** | tests `[civ]`+fixtures（22 个由参考实现生成） |
+| CI-V over 串口（CAT 线） | ✅ `SerialCivTransport`：8N1、按 FD 定界、攒过 4096 字节仍无尾就判流错位丢掉重同步；网关工具 `civ_tcp_gateway` 电台侧新增 `--serial/--baud`（不给就还是 mock），于是「手机 → TCP → 网关 → 串口 → 真电台」这条路打通 | tests `[serial]` 9 条：粘包/半包/脏前缀/超长无尾/开线与写失败/逐字节下发，外加**经网关驱动 mock 电台的端到端**一条。台架没有 CAT 线，所以真串口（`QSerialPort`）只验到「打不存在的口如实报错」；帧逻辑靠注入的虚拟线跑（`tests/fake_serial_pipe.h`），**真机 CAT 线未验** |
 | RS-BA1 V2 UDP | ✅ 控制协议+传输层（登录/鉴权/0xA8/ConnectTrans/重传重排）+ **50003 音频双通路已接 app**（RX 100 ms 重排→扬声器，麦克风→PTT 门禁上行）+ **本机三信道环回（假电台）** | tests `[rsba1]`/`[audio]`/`[rsba1][loopback]` 6 用例；假电台应答与 IC-705 fixtures 逐字节一致；真机未验（搁置），差异见 `docs/research/rsba1-audio-upstream-2026-10-30.md` |
 | rigctld 服务器 | ✅ 过 rigplane **全部轮询命令** | 真实 loopback TCP 测试 `[rigctld]` |
 | HTTP 总线 | ✅ `/api/state` `/api/spectrum` + 演示页；只有 HTTP，无 WS/控制 POST | 真实 HTTP 测试 `[bus]`（含 token/绑定门禁） |

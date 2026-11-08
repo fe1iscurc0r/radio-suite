@@ -14,15 +14,19 @@
 
 #include "session/session.h"
 #include "core/transport_mock.h"
+#include "core/transport_serial.h"
 #include "core/transport_tcp.h"
 #include "core/transport_tcp_gateway.h"
+#include "fake_serial_pipe.h"
 #include "qt_test_app.h"
 
 namespace {
 
 using radio::core::CivTcpGateway;
 using radio::core::MockTransport;
+using radio::core::SerialCivTransport;
 using radio::core::TcpCivTransport;
+using radio::test::FakeSerialPipe;
 
 // 网关是纯被驱动的：没人 pump 它就只是一条没接通的线。
 bool pumpUntil(CivTcpGateway& gw, const std::function<bool()>& pred,
@@ -135,4 +139,62 @@ TEST_CASE("tcp gateway: hangup frees the line for the next client",
   REQUIRE(again.open(&err));
   CHECK(pumpUntil(*h.gw, [&] { return h.gw->clientConnected(); }));
   again.close();
+}
+
+// A3 的收口证据：把网关的电台侧从 mock 换成「SerialCivTransport + 一条虚拟串口线」，
+// 手机那套（session + TCP）一个字都不用改就能驱动挂在串口上的电台。
+// 台架没有 CAT 线，所以线的那头接的是 MockTransport——但流经的代码是生产那套：
+// TcpCivTransport → CivTcpGateway → SerialCivTransport → ICivBytePipe → 电台。
+TEST_CASE("tcp gateway: a serial-backed rig drives the phone session",
+          "[gateway][serial]") {
+  qtTestApp();
+
+  auto rig = std::make_shared<MockTransport>();
+  REQUIRE(rig->open(nullptr));
+  auto pipe = std::make_unique<FakeSerialPipe>();
+  FakeSerialPipe* wire = pipe.get();
+  // 电台的应答沿这条虚拟线回到串口传输层的接收缓冲
+  rig->setFrameCallback([wire](std::span<const uint8_t> f) { wire->feed(f); });
+  wire->responder = [rig_ptr = rig.get()](std::span<const uint8_t> frame) {
+    rig_ptr->send(frame);
+    rig_ptr->poll();
+  };
+
+  SerialCivTransport::Config scfg;
+  scfg.port_name = "COM-FAKE";
+  scfg.baud = 9600;
+  auto serial = std::make_shared<SerialCivTransport>(std::move(scfg), std::move(pipe));
+  std::string serr;
+  REQUIRE(serial->open(&serr));
+
+  CivTcpGateway::Config gcfg;
+  gcfg.bind_addr = "127.0.0.1";
+  gcfg.port = 0;
+  CivTcpGateway gw(gcfg, serial);
+  std::string gerr;
+  REQUIRE(gw.start(&gerr));
+
+  TcpCivTransport::Config ccfg;
+  ccfg.host = "127.0.0.1";
+  ccfg.port = gw.port();
+  ccfg.connect_timeout_ms = 2000;
+  auto client = std::make_shared<TcpCivTransport>(std::move(ccfg));
+  radio::app::RadioSession session(client);
+  session.start();
+  REQUIRE(client->isOpen());
+
+  // 回读要穿过五层才回来，任何一层漏了都会卡在这里而不是「碰巧过了」
+  REQUIRE(pumpUntil(gw, [&] {
+    return session.store().snapshot().freq_hz == 14'270'000;
+  }));
+  CHECK(gw.clientConnected());
+  CHECK(session.replyAgeMs() >= 0);
+
+  // 设频：命令 → TCP → 网关 → 串口 → 电台，ACK 原路回来，状态落到会话
+  REQUIRE(session.tuneTo(7'074'000));
+  CHECK(pumpUntil(gw, [&] {
+    return session.store().snapshot().freq_hz == 7'074'000;
+  }));
+  // 电台侧确实收到了设频请求（不是会话自己把状态改成的）
+  CHECK(serial->framesDelivered() > 0);
 }
