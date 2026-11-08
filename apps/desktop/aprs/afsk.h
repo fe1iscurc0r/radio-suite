@@ -25,6 +25,15 @@ std::vector<float> afskModulate(std::span<const uint8_t> frame,
                                 int preamble_flags = 32,
                                 int tail_flags = 2);
 
+// X.25 FCS（CRC-16 反射 0x8408，初值 0xFFFF，输出取反）——测试与 igate 可复用
+uint16_t ax25Fcs(std::span<const uint8_t> frame);
+
+// FCS 位纠错（readsb 范式）：FCS 失败的帧不直接丢弃，先试恢复——
+// 单 bit 全扫（8n 次 CRC）+ 同字节内双 bit（28n 次）；VHF FSK 的错帧
+// 绝大多数是 1-2 个孤立 bit 错，跨字节双 bit 组合空间太大不扫。
+// 恢复成功返回 true 且 *bytes 已修正为 CRC 匹配的内容
+bool tryFixFcs(std::vector<uint8_t>* bytes, uint16_t fcs);
+
 class AfskDemodulator {
  public:
   explicit AfskDemodulator(AfskConfig cfg = {});
@@ -33,6 +42,8 @@ class AfskDemodulator {
   void reset();
   size_t frames() const { return frames_; }
   size_t crc_errors() const { return crc_errors_; }
+  // FCS 失败后被位纠错救回的帧数（tryFixFcs 成功）
+  size_t corrected() const { return corrected_; }
   size_t overflows() const { return overflows_; }
   size_t tones() const { return tones_; }
   size_t bits() const { return bits_in_; }
@@ -70,6 +81,7 @@ class AfskDemodulator {
   std::vector<std::vector<uint8_t>> ready_;
   size_t frames_ = 0;
   size_t crc_errors_ = 0;
+  size_t corrected_ = 0;
   size_t overflows_ = 0;
   size_t tones_ = 0;
   size_t bits_in_ = 0;

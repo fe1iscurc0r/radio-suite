@@ -206,5 +206,6 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   radio::dsp::WaterfallProcessor wf_proc_{static_cast<size_t>(WaterfallWidget::kTexW)};
   std::vector<float> samples_;
   std::vector<float> col_db_;
+  std::vector<float> col_peak_;  // 峰值保持列（与 col_db_ 同步降采样）
   std::vector<uint8_t> row_bytes_;
 };

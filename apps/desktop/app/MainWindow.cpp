@@ -75,9 +75,11 @@ MainWindow::MainWindow(std::shared_ptr<radio::core::ICivTransport> transport,
   samples_.assign(kFftSize, 0.0f);
   rx_ring_.assign(kFftSize, 0);
   col_db_.assign(static_cast<size_t>(WaterfallWidget::kTexW), -120.0f);
+  col_peak_.assign(static_cast<size_t>(WaterfallWidget::kTexW), -120.0f);
   row_bytes_.assign(static_cast<size_t>(WaterfallWidget::kTexW), 0);
-  // 4 帧 Welch 功率平均：噪底抖动约减半，单音幅度不变（时间常数 ~0.26s）
+  // 4 帧 Welch 平均 + 峰值保持（琥珀线，衰减 1.5 dB/帧 @30fps ≈ 45 dB/s）
   analyzer_.setAveragingFrames(4);
+  analyzer_.setPeakHold(true, 1.5f);
 
   // 50003 音频链：RX 播放 + PTT 门禁上行 + 真实频谱 tap
   network_audio_ = std::make_unique<radio::app::NetworkAudio>(&session_);
@@ -417,15 +419,25 @@ void MainWindow::onBenchTick() {
   // 导致瀑布/谱线右半屏显示为常量色块。
   const auto& db = analyzer_.powerDb();
   const size_t bins = db.size();
+  // 峰值保持谱同样按列区间取 max 降采样（未开启时 peakDb() 为空，跳过）
+  const auto& pk = analyzer_.peakDb();
+  const bool have_peak = pk.size() == bins;
   for (size_t i = 0; i < col_db_.size(); ++i) {
     const size_t b0 = i * bins / col_db_.size();
     const size_t b1 = std::min(bins, (i + 1) * bins / col_db_.size());
     float v = db[b0];
-    for (size_t b = b0 + 1; b < b1; ++b) v = std::max(v, db[b]);
+    float p = have_peak ? pk[b0] : 0.0f;
+    for (size_t b = b0 + 1; b < b1; ++b) {
+      v = std::max(v, db[b]);
+      if (have_peak) p = std::max(p, pk[b]);
+    }
     col_db_[i] = v;
+    if (have_peak) col_peak_[i] = p;
   }
 
   wf_proc_.process(col_db_.data(), col_db_.size(), row_bytes_.data());
   waterfall_->pushRow(row_bytes_.data(), static_cast<int>(row_bytes_.size()));
   waterfall_->pushSpectrum(col_db_.data(), static_cast<int>(col_db_.size()));
+  if (have_peak)
+    waterfall_->pushPeak(col_peak_.data(), static_cast<int>(col_peak_.size()));
 }

@@ -71,8 +71,10 @@ void main() { gl_FragColor = uColor; }
 WaterfallWidget::WaterfallWidget(QWidget* parent) : QOpenGLWidget(parent) {
   row_.assign(kTexW, 0);
   line_db_.assign(kTexW, db_floor_);
+  peak_db_.assign(kTexW, db_floor_);
   line_verts_.assign(static_cast<size_t>(kTexW) * 2, 0.0f);
   fill_verts_.assign(static_cast<size_t>(kTexW) * 4, -1.0f);
+  peak_verts_.assign(static_cast<size_t>(kTexW) * 2, 0.0f);
   grid_verts_.reserve(24);
   for (int k = 0; k <= 4; ++k) {
     const float x = -1.0f + 0.5f * k;
@@ -109,6 +111,11 @@ void WaterfallWidget::pushSpectrum(const float* col_db, int cols) {
   if (cols != kTexW) return;
   std::memcpy(line_db_.data(), col_db, sizeof(float) * static_cast<size_t>(cols));
   line_dirty_ = true;  // 谱线顶点重算与重传推迟到 paintGL（GPU 调度：脏才动）
+}
+
+void WaterfallWidget::pushPeak(const float* col_db, int cols) {
+  if (cols != kTexW) return;
+  std::memcpy(peak_db_.data(), col_db, sizeof(float) * static_cast<size_t>(cols));
 }
 
 void WaterfallWidget::mousePressEvent(QMouseEvent* e) {
@@ -314,6 +321,13 @@ void WaterfallWidget::paintGL() {
       fill_verts_[j * 4 + 1] = y0;
       fill_verts_[j * 4 + 2] = x;
       fill_verts_[j * 4 + 3] = y;
+      // 峰值保持线顶点同步重映射（琥珀 max-hold，画在谱线上方）
+      float pnorm = (peak_db_[static_cast<size_t>(i)] - db_floor_) / span;
+      if (pnorm < 0.0f) pnorm = 0.0f;
+      if (pnorm > 1.0f) pnorm = 1.0f;
+      const float py = y0 + (y1 - y0) * pnorm;
+      peak_verts_[j * 2] = x;
+      peak_verts_[j * 2 + 1] = py;
     }
     line_dirty_ = false;
   }
@@ -339,6 +353,12 @@ void WaterfallWidget::paintGL() {
   line_prog_.enableAttributeArray(a_pos_line);
   line_prog_.setAttributeBuffer(a_pos_line, GL_FLOAT, 0, 2);
   glLineWidth(2.0f);
+  glDrawArrays(GL_LINE_STRIP, 0, line_count_);
+
+  // 峰值保持线（琥珀 max-hold）：复用谱线的 attribute 配置，只换 buffer 内容
+  line_prog_.setUniformValue("uColor", QColor(255, 179, 0, 200));
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * peak_verts_.size(),
+               peak_verts_.data(), GL_DYNAMIC_DRAW);
   glDrawArrays(GL_LINE_STRIP, 0, line_count_);
   line_prog_.disableAttributeArray(a_pos_line);
   line_prog_.release();

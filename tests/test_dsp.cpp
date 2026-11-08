@@ -145,6 +145,30 @@ TEST_CASE("dsp: power averaging converges without shifting tone level",
   CHECK(an.powerDb()[kBin] == Approx(loud_db - 3.0103).margin(0.02));
 }
 
+TEST_CASE("dsp: SpectrumAnalyzer decayed peak-hold", "[dsp]") {
+  // 峰值保持（琥珀线数据源）：peak = max(cur, peak − decay)，尖峰缓降不驻留
+  constexpr size_t N = 256;
+  constexpr size_t kBin = 32;
+  std::vector<float> loud(N), quiet(N);
+  fillBinTone(loud, kBin, 1.0);
+  fillBinTone(quiet, kBin, 0.2);
+  SpectrumAnalyzer an(N, 1'000.0);
+  an.setPeakHold(true, 2.0f);
+  an.process(loud.data(), N);
+  const float p0 = an.peakDb()[kBin];
+  CHECK(p0 == Approx(an.powerDb()[kBin]).margin(1e-3));  // 首帧种子=当前谱
+  for (int i = 0; i < 3; ++i) an.process(quiet.data(), N);
+  // 每帧最多降 2 dB：3 帧后峰值只降 6 dB，仍高于当前谱（尖峰缓降不驻留）
+  CHECK(an.peakDb()[kBin] == Approx(p0 - 6.0f).margin(0.15f));
+  CHECK(an.peakDb()[kBin] > an.powerDb()[kBin]);
+  // 信号回升立即跟上
+  an.process(loud.data(), N);
+  CHECK(an.peakDb()[kBin] == Approx(an.powerDb()[kBin]).margin(1e-3));
+  // 关闭即清空（调用方判空，不会拿旧数据当峰）
+  an.setPeakHold(false);
+  CHECK(an.peakDb().empty());
+}
+
 TEST_CASE("dsp: smeter mapping matches IARU scale", "[dsp]") {
   using namespace radio::app;
   CHECK(smeterDbmToNorm(kSmeterS9Dbm) == Approx(kSmeterS9Norm).margin(1e-6));

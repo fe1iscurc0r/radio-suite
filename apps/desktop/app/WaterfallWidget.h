@@ -35,6 +35,8 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   // 传入一列已按显示列数降采样的数据；内部只存副本，GL 上传在 paintGL 统一做
   void pushRow(const uint8_t* row, int cols);
   void pushSpectrum(const float* col_db, int cols);
+  // 峰值保持线（琥珀）：与谱线同列数；未开启峰值保持时 MainWindow 不推
+  void pushPeak(const float* col_db, int cols);
 
  signals:
   // 用户点击谱区 → 该列的归一化音频偏移（0..1 = 0..24 kHz）。
@@ -76,8 +78,10 @@ class WaterfallWidget : public QOpenGLWidget, protected QOpenGLFunctions {
   bool line_dirty_ = true;  // 谱线顶点脏标志（GPU 调度：脏才重算+重传）
   std::vector<uint8_t> row_;
   std::vector<float> line_db_;
+  std::vector<float> peak_db_;
   std::vector<float> line_verts_;    // 谱线描边（2N）
   std::vector<float> fill_verts_;    // 谱线下方填充（triangle strip：每列 2 顶点 = 4N float）
+  std::vector<float> peak_verts_;    // 峰值保持线顶点（2N）
   std::vector<float> grid_verts_;    // 频率网格竖线（GL_LINES）
   bool gl_ok_ = true;
 
