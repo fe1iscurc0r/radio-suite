@@ -68,3 +68,9 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: MCP adapter tests (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        # tools/mcp_radio 只用标准库（没 fastmcp 那层依赖），所以这里不需要 pip install；
+        # 冒烟脚本 smoke_stdio.py 要真总线，留在本机跑，不进 CI。
+        run: python3 -m unittest discover -s tools/mcp_radio/tests -t tools/mcp_radio/tests -v
