@@ -129,12 +129,25 @@ TEST_CASE("tcp transport: open connects and a peer hangup is reported honestly",
 TEST_CASE("tcp transport: open against a dead port fails with a reason",
           "[transport][tcp]") {
   qtTestApp();
+  // 只 listen 再放手不算「死端口」：macOS runner 上别的进程可能在我们放开的
+  // 那一瞬把这个临时端口占走，于是 open() 真连上了、用例红得莫名其妙
+  //（CI run 42365446469 的 macos 腿就是这么挂的）。改成每次放手后自己探一次，
+  // 连得上就换一个，探不到死端口才承认是环境不给力。
   quint16 dead = 0;
-  {
-    QTcpServer probe;
-    REQUIRE(probe.listen(QHostAddress::LocalHost, 0));
-    dead = probe.serverPort();
-  }  // 出了作用域就没人监听了
+  for (int attempt = 0; attempt < 8 && dead == 0; ++attempt) {
+    quint16 port = 0;
+    {
+      QTcpServer probe;
+      REQUIRE(probe.listen(QHostAddress::LocalHost, 0));
+      port = probe.serverPort();
+    }  // 出了作用域就没人监听了
+    QTcpSocket peek;
+    peek.connectToHost("127.0.0.1", port);
+    if (!peek.waitForConnected(250)) dead = port;
+    peek.abort();
+  }
+  if (dead == 0)
+    SKIP("8 个临时端口放手后都被别的进程占着，这台机器给不出可确认的死端口");
   radio::core::TcpCivTransport::Config cfg;
   cfg.host = "127.0.0.1";
   cfg.port = dead;
