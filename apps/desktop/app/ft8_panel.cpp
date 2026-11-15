@@ -142,6 +142,10 @@ void Ft8Panel::buildUi() {
 
 bool Ft8Panel::decoding() const { return decoder_.running(); }
 
+QString Ft8Panel::statusText() const {
+  return status_label_ ? status_label_->text() : QString();
+}
+
 void Ft8Panel::startDecoding(int64_t utc_ms) {
   // 麦克风音源要先拿到设备：开不起来就别说「已开始」然后一直等
   if (source_ == Source::Microphone && !openCapture()) return;
@@ -164,6 +168,7 @@ void Ft8Panel::stopDecoding() {
   closeCapture();
   start_btn_->setText("开始解码");
   progress_->setValue(0);
+  status_label_->setStyleSheet("");
   status_label_->setText("已停止");
   emit statusMessage("FT8 本机解码已停止", false);
 }
@@ -189,12 +194,13 @@ void Ft8Panel::onSourceChanged(int index) {
   emit sourceChanged(source_);
   if (source_ == Source::Network) closeCapture();
   if (!decoder_.running()) {
+    status_label_->setStyleSheet("");
     status_label_->setText(QString("音源：%1（未解码）").arg(sourceName(source_)));
     return;
   }
-  if (source_ == Source::Microphone && !openCapture()) {
-    stopDecoding();  // 设备开不起来就别让解码空等下一槽
-    return;
+  if (source_ == Source::Microphone) {
+    stopDecoding();  // 设备开不起来就别让解码空等下一槽；先停，免得「已停止」盖掉失败原因
+    if (!openCapture()) return;
   }
   // 换源前那半槽是另一路音频，混进当前槽不作数：重新对齐到下一个槽起点
   startDecoding();
@@ -202,15 +208,20 @@ void Ft8Panel::onSourceChanged(int index) {
 
 bool Ft8Panel::openCapture() {
   if (capturing_) return true;
-  if (!cap_start_) {
-    emit statusMessage("FT8 麦克风音源不可用：主窗未接入采集", true);
+  // statusMessage 落在主窗顶栏，而本面板是盖住主窗的独立顶层窗：手机上根本看不见，
+  // 3 秒后还会自动清空。失败原因必须写进面板自己这一行，且要留到下次动作。
+  const auto fail = [this](const QString& text) {
+    status_label_->setText(text);
+    status_label_->setStyleSheet("color: #ff5252; font-weight: bold;");
+    emit statusMessage(text, true);
     return false;
-  }
-  if (!cap_start_()) {
-    emit statusMessage("FT8 麦克风采集启动失败（设备不可用或被占用）", true);
-    return false;
-  }
+  };
+  if (!cap_start_)
+    return fail("FT8 麦克风音源不可用：主窗未接入采集");
+  if (!cap_start_())
+    return fail("FT8 麦克风采集启动失败（未授权或设备被占用）：去系统设置给本应用麦克风权限");
   capturing_ = true;
+  status_label_->setStyleSheet("");
   return true;
 }
 

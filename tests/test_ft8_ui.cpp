@@ -332,6 +332,40 @@ TEST_CASE("ft8 panel: a capture that will not open refuses to start decoding",
   }
 }
 
+TEST_CASE("ft8 panel: capture failure stays visible on the panel itself",
+          "[ft8][ui]") {
+  uiApp();
+  // 面板是盖住主窗的独立顶层窗：statusMessage 落在主窗顶栏，手机上看不见，
+  // 3 秒后还会自动清空。真机 N3 撤销 RECORD_AUDIO 后点「开始解码」全无反馈。
+  radio::app::Ft8Panel panel;
+  panel.setCaptureController([&] { return false; }, [] {});
+  panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+  panel.startDecoding(0);
+  REQUIRE_FALSE(panel.decoding());
+  REQUIRE(panel.statusText().contains("失败"));
+  REQUIRE(panel.statusText().contains("系统设置"));  // 要给出可操作的下一步
+
+  // 250 ms 的刷新拍不许把失败文案冲掉（未解码时 refreshTick 早退）
+  QElapsedTimer timer;
+  timer.start();
+  while (timer.elapsed() < 700)
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  REQUIRE(panel.statusText().contains("失败"));
+}
+
+TEST_CASE("ft8 panel: switching to a dead microphone mid-decode keeps the reason",
+          "[ft8][ui]") {
+  uiApp();
+  radio::app::Ft8Panel panel;
+  panel.setCaptureController([&] { return false; }, [] {});
+  panel.startDecoding(0);  // 默认 50003 音源，先解起来
+  REQUIRE(panel.decoding());
+  panel.setSource(radio::app::Ft8Panel::Source::Microphone);
+  REQUIRE_FALSE(panel.decoding());
+  // stopDecoding 的「已停止」不许盖掉失败原因
+  REQUIRE(panel.statusText().contains("失败"));
+}
+
 TEST_CASE("ft8 panel: a slot fed through the capture path decodes end to end",
           "[ft8][ui]") {
   uiApp();
