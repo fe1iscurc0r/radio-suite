@@ -61,7 +61,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | APRS | ✅ 核心库（纯 std）：TNC2、三种坐标（未压缩/压缩含 csT 海拔·航向·速度/Mic-E）、对象·气象·遥测、消息 + ACK/REJ + 重发、第三方解包、12 类过滤器、通行码；**工作台 UI**（OSM 地图 + 台站表 + 消息窗）；APRS-IS 连接（china/rotate 轮换、指数退避）；**KISS TCP/串口**（Dire Wolf / LoRa APRS 网关）+ Bell 202 AFSK 1200 Bd 走 50003；**iGate 双向**（RF→IS 打 qAR、IS→RF 仅消息/对象/Item 并去重）；独立 SQLite 持久化（`%APPDATA%/radio-suite/aprs.db`） | tests `[aprs]` 19 + `[aprs_persist]` + offscreen `[aprs_ui]` 3；APRS-IS 实测 china.aprs2.net（308 台/7805 包）；**RF / LoRa / AFSK 真机未验** |
 | HamLog 融合 | ✅ **同库直读写** + 工作台 v2（四字段模糊搜索/完整编辑/模板/设置/QRZ/ADIF/**LoTW 上传**/字体/代理） | 临时 SQLite CRUD/搜索测试 + UTF-8 ADIF 长度测试；真实库仅人工验收 |
 | WSJT-X 接入 | ✅ UDP 协议 schema 3 全量编解码（纯 std：心跳/状态/解码/清空/QSO/关闭/重放/HaltTx/自由文本/WSPR/位置/ADIF/配置；**`delta_frequency` 按上游为有符号 qint32**）；组播监听（`224.0.0.1:2237`）+ **工作台 UI**（解码表/QSO/WSPR/ADIF 四页，CQ·QRZ 高亮、低置信度着色）；控制出口：呼叫、停止发射、重放、自由文本、设置网格；**QSO Logged 自动写 HamLog 库**（device=WSJT-X、备注网格）；**双击解码回填主窗口呼号**并按 `dial + ΔF` 显示绝对频率 | tests `[wsjtx]` 11 + offscreen `[wsjtx_ui]` 4（UDP 回环 + 面板渲染 + 激活解析含负频差 + HamLog 映射 + **QDataStream 字节长度前缀互通**：用本机 Qt 6.8 序列化出的 93 字节 Decode 包做金样本）；**消息体已按 QDataStream 字节长度前缀修正**，本机 127.0.0.1:2237 注入真线格式字节可完整进面板（客户端/14.074000 MHz/解码行全中）；**未与真实 WSJT-X / JTDX 进程联调**；自动写库未在真实 HamLog 库上复验 |
-| 音频 | ✅ 本机输出（AudioOut，**后台线程异步播放**，SSTV 36–115 s / Voice Memory 60 s 不冻 GUI；默认输出设备按 WASAPI ID 取）+ 输入（AudioIn，溢出计数不丢缓冲）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行** | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 丢样见 §7 |
+| 音频 | ✅ 本机输出（AudioOut，**后台线程异步播放**，SSTV 36–115 s / Voice Memory 60 s 不冻 GUI；默认输出设备按 WASAPI ID 取）+ 输入（AudioIn，溢出计数不丢缓冲）+ **50003 流式播放（AudioSink）与 PTT 门禁麦克风上行** | 门禁单测 `[audio]`；本机冒烟；真机通话未验，WASAPI 首帧延迟见 §7 第 5 条 |
 | FT8 | ✅ **本机解码 + 定时发射全链路**（不依赖 WSJT-X 进程）：vendored `ft8_lib`（MIT + kiss-fft BSD）+ `radio::ft8::decode/encodeTones/synthesize`（纯 std、不依赖 Qt，可被 app/Android 复用）+ `radio::ft8::SlotDecoder`（48k s16 → 12k 抽取、按 15 s UTC 边界切槽、后台线程解码、解码跟不上宁可丢槽不积压）+ **FT8 面板**（主窗「FT8 本机」按钮开独立窗口：时隙进度条 / 时间·SNR·DT·DF·文本五列表 / 双击行回填呼号·网格并按 `dial + DF` 定频，与 WSJT-X 面板共用 `app/decode_target.h` 解析）；RX 源 = 50003 下行 tap（与 APRS AFSK 同一路）；发射侧 `radio::ft8::renderTxPcm/nextTxSlotStart`（整槽 48k GFSK + 槽序号奇偶排期，无 Qt）+ 面板「文本 / 音频频偏 / 时隙奇偶 / 定时发射」一行：排期到下一个槽起点，到点把整槽交给主窗出口（`beginScriptedTx` → `AudioOut::playAsync` → 播完 `endScriptedTx`，与 SSTV 一键发射同一路声卡直出，**不注 50003 上行**：桥队列 200 ms 满则丢最旧，整槽丢不得） | tests `[ft8]` 3 + `[ft8][slot]` 4 + `[ft8][tx]` 5（828 断言）+ offscreen `[ft8][ui]` 10
 （86 断言）：合成 → 加噪 → 解回原件、空槽不出消息、超长文本编码即抛；UTC 对齐边界算术、48k→12k 端到端（合成一槽 PCM 喂进去能解出 `CQ BG5GXO PM01` 且槽号/丢弃计数正确）、stop 丢半槽、对齐等待期仍计采样；发射侧排期算术（提前量/边界/奇偶全覆盖，含「已开始的那槽不许排」）、渲染 PCM 恰为一整槽 48k 且幅度不溢出、**渲染→本机解码器闭环**（自己发的自己能解，DF 命中 1500 Hz）、**DF 跟着音调偏走**（500/1000/1500/2000 Hz 四档离线渲染后 df 全部逐档命中，双击定频用的就是这个数）；面板注入行 → 表格 + 激活目标、PCM→解码器→面板全链路、解码表 500 行封顶（淘汰最老且行元数据同步前移，常开不涨）、排期不起播→到点一发只播一遍、空文本/无法打包/重复排期/出口拒绝四条拒绝路径、晚于槽起点 250 ms 以上如实报「这一发对不齐」、**按钮标签与 `tx_pending_` 同源**（发射完/被拒/取消后标签必须落回「定时发射」，留着「取消发射」会让下一刀点成排期，见 §7）、换源正在解码时先关旧流再开新流且各发一次 `sourceChanged`、麦克风与 50003 抢同一采集设备时主窗如实拒绝。**实窗已验**：按钮/面板/状态栏/进度条渲染，发射行五控件与提示行布局正常，空文本点「定时发射」显示「文本为空」，无音频时状态如实显示「等待 50003 下行音频」；**真实空中信号仍未验**（无 IC-705），但**声卡环回已验**：面板音源下拉可选
 `50003 下行` / `本机麦克风`（`QSettings` 键 `ft8/source`，1=麦克风；换源时若正在解码
@@ -86,8 +86,14 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
    refused）。正文与复核证据：`docs/upstream-rigplane-issue.md`。
    上游修好后 → WO-274 的 C（engine_client 正式化）/ D（音频路径裁决）可开工。
 2. **WO-274 阶段二 PWA**（apps/web，消费本仓总线；主路 E1′，退路 E3 Kotlin）——**待师傅点头**。
-3. **WASAPI 采集丢样**（44–57% 样本预算）——诊断与三条处置见
-   `docs/notes/audio-capture-wasp-diagnosis.md`；最省事：录音上限改按样本计数。
+3. ~~**WASAPI 采集丢样**（44–57% 样本预算）~~ → **2026-10-30 定案：不是丢样**。
+   带时间戳探针实测：首帧回调在 0.44–0.51 s 才到（WASAPI 共享模式初始化），
+   此后帧间隔恒定 20.0 ms（50.0 fps），稳态样本预算 **100.1%**；6 s / 15 s 窗口
+   的 91.3% / 97.0% 与"固定丢 ~0.48 s"吻合，旧测量把启动墙钟当成了丢样。
+   `audio-in-smoke` 已改为「等首帧 → 丢 1 s 预热 → 测 2 s 稳态」，并单独报告首帧
+   延迟；录音上限按样本计数（`voice_memory.cpp`）保留不动。诊断全文见
+   `docs/notes/audio-capture-wasp-diagnosis.md`。剩余可选优化：会话层开门禁前预热
+   0.5 s，让 PTT 首秒不静音（非必需）。
 4. ~~原厂件剩余：CW Keyer / Set Mode 深设置树 / 双 VFO(SUB 带) / Memory Channel 完整版。~~
    → **已于 2026-10-27 补齐**（mock 帧级 + UI offscreen 测试；真机未验）：
    - CW Keyer：`0x17` 文本（≤30B/帧、ASCII 归一）、`0xFF` 停止、`0x14 0x09/0x0C`
@@ -584,7 +590,10 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
    `find_package(Qt6 COMPONENTS HttpServer)` 不置 _FOUND，用
    `find_package(Qt6HttpServer)`；API 与 6.4 差异大（`bind(QTcpServer*)`、
    `QHttpHeaders.value()`、双参构造 (mimeType,data)）。
-5. **WASAPI**：见 §6/文档。
+5. **WASAPI 采集「丢样」是首帧延迟**：`start()` 后首回调要 0.44–0.51 s 才到
+   （共享模式初始化），此后帧间隔恒定 20.0 ms。任何按墙钟算样本预算的测量都会
+   被这 0.5 s 压出"缺样"假象（2 s 窗口 57%、6 s 91%、15 s 97%）。测采集必须
+   丢预热再测稳态，见 `docs/notes/audio-capture-wasp-diagnosis.md`。
 6. **截图 DPI**：本机 150% 缩放，截图脚本必须 `SetProcessDPIAware`，否则只截到
    窗口左上 2/3（曾因此误判 UI 缺控件）。UIA 枚举比视觉模型可靠。
 7. **亚音两套载荷别混**：`0x1B 0x00/0x01` 是频率
