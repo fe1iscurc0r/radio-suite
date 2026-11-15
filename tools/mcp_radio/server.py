@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - 取决于调用方式
     from bus_client import BusClient, BusConfigError, BusError  # type: ignore
 
 SERVER_NAME = "radio-suite"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 LATEST_PROTOCOL = "2026-07-28"
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-11-25", LATEST_PROTOCOL)
 
@@ -49,6 +49,28 @@ TOOL_DOCS = {
         "自证这条链能看多远：总线可达？token 有效？频谱帧号在推进？状态多久没更新？PTT 在哪个方向？"
         "注意 `spectrum_advancing` 只证明总线自己的 DSP 定时器活着，"
         "**不证明电台链路活着**（真链路的活性判定在会话层，还没进总线，见 README）。"
+    ),
+    "tune": (
+        "设频率（Hz，整数）。走总线 /api/control 的 tune，门禁在总线侧："
+        "接收范围外直接拒绝；发射中把频率挪出业余段也拒绝。被拒时返回 isError，电台频率不变。"
+    ),
+    "set_mode": (
+        "设制式：LSB/USB/AM/CW/RTTY/FM/WFM。名字不认识时总线回 bad mode，这里转成 isError。"
+    ),
+    "ptt": (
+        "发射开关，**两击门禁**。action='on' 且不带 confirm：只武装（confirm_pending），不发射；"
+        "action='on' 且 confirm=true：仅当门禁已处于待确认时才按下第二击进入 TX。"
+        "一次调用永远只发一次总线动作，所以单次调用不可能从 RX 直接发射。"
+        "action='off'：直接回 RX（不借道 TX，也不需要 confirm）。"
+        "非业余段即使两击齐了也会被总线拦下，结果里会写明。"
+    ),
+    "log_qso": (
+        "记一条 QSO 到总线的内存队列。callsign 必填；freq_mhz/mode/rst_sent 可选，"
+        "也只有这三项会进 ADIF 导出。⚠️ 队列不落盘，进程重启即失。"
+    ),
+    "export_adif": (
+        "取总线内存队列的 ADIF 文本（只读）。这不是磁盘上的 HamLog 库，"
+        "要长期留存请自己把文本写进文件。"
     ),
 }
 
@@ -157,10 +179,166 @@ def _tool_link_health(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> 
     }
 
 
+def _tool_tune(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> dict:
+    hz = args.get("freq_hz")
+    if isinstance(hz, bool) or not isinstance(hz, int):
+        raise ValueError("freq_hz 必须是整数（Hz）")
+    if hz <= 0:
+        raise ValueError("freq_hz 必须为正")
+    result = bus.control("tune", freq=hz)
+    if not result.get("tuned"):
+        # 拒绝不是「工具坏了」，但也不是成功：让模型读到 isError 才会停下来换频率，
+        # 而不是把 tuned:false 当成「设好了」继续往下走。
+        raise BusError(
+            f"总线门禁拒绝设频 {hz} Hz（{result.get('error', 'rejected')}）；电台频率未改变"
+        )
+    return {
+        "tuned": True,
+        "freq_hz": hz,
+        "freq_mhz": round(hz / 1e6, 6),
+        "ptt_phase": bus.state().get("ptt_phase"),
+    }
+
+
+def _tool_set_mode(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> dict:
+    mode = args.get("mode")
+    if not isinstance(mode, str) or not mode.strip():
+        raise ValueError("mode 必填，取 LSB/USB/AM/CW/RTTY/FM/WFM")
+    result = bus.control("set_mode", mode=mode.strip())
+    return {"mode": result.get("mode"), "requested": mode.strip()}
+
+
+def _tool_ptt(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> dict:
+    """一次调用 = 一次总线动作，绝不在封装里连发两击。
+
+    「武装」和「确认」必须是两次独立的工具调用，且确认那次要显式带 confirm=true。
+    判断依据是总线 /api/state 的 ptt_phase（门禁相位），不是 ptt_on（电台方向）——
+    后者在 confirm_pending 时仍是 false，拿它判会把「已武装」读成「空闲」。
+    """
+    action = args.get("action")
+    if action not in ("on", "off"):
+        raise ValueError("action 只能是 'on' 或 'off'")
+    confirm = args.get("confirm", False)
+    if not isinstance(confirm, bool):
+        raise ValueError("confirm 必须是布尔值")
+
+    if action == "off":
+        if confirm:
+            raise ValueError("关发射不需要 confirm：它随时允许，且不会借道 TX")
+        result = bus.control("ptt_off")
+        phase = result.get("ptt")
+        return {
+            "action": "off",
+            "ptt_phase": phase,
+            "transmitting": phase == "tx",
+            "note": "走总线的直接回 RX，不经过待确认，也不会把 RX 按成发射",
+        }
+
+    state = bus.state()
+    if "ptt_phase" not in state:
+        raise BusError(
+            "总线 /api/state 没有 ptt_phase 字段：这个总线版本太旧，"
+            "无法判断门禁是否已武装，拒绝执行 PTT（先更新 radio-suite）"
+        )
+    before = state["ptt_phase"]
+    if confirm:
+        if before != "confirm_pending":
+            raise BusError(
+                f"门禁当前是 {before}，不是待确认：confirm=true 只用于第二击。"
+                "先不带 confirm 调一次武装，再带 confirm=true 确认。"
+            )
+    else:
+        if before == "confirm_pending":
+            raise BusError(
+                "门禁已武装（待确认）。要发射请显式带 confirm=true；要取消请用 action='off'。"
+            )
+        if before == "tx":
+            raise BusError("已经在发射。要关闭请用 action='off'（不带 confirm）。")
+
+    result = bus.control("ptt_on")  # 恰好一次按键
+    phase = result.get("ptt")
+    warnings = []
+    if confirm and phase == "confirm_pending":
+        warnings.append("确认窗已过期：这一下只是重新武装，没有发射")
+    elif confirm and phase == "rx":
+        warnings.append("发射被门禁拦下：当前频率可收听但不在业余段")
+    if phase == "confirm_pending":
+        next_step = "已武装但未发射。要发射：在确认窗内带 confirm=true 再调一次；要取消：action='off'"
+    elif phase == "tx":
+        next_step = "正在发射。关闭用 action='off'"
+    else:
+        next_step = "未发射。要发射需先不带 confirm 武装，再带 confirm=true 确认"
+    return {
+        "action": "on",
+        "confirm": confirm,
+        "phase_before": before,
+        "ptt_phase": phase,
+        "transmitting": phase == "tx",
+        "bus_presses_sent": 1,
+        "next_step": next_step,
+        "warnings": warnings,
+    }
+
+
+QSO_TEXT_FIELDS = ("freq_mhz", "mode", "rst_sent")
+
+
+def _tool_log_qso(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> dict:
+    callsign = args.get("callsign")
+    if not isinstance(callsign, str) or not callsign.strip():
+        raise ValueError("callsign 必填且不能是空白")
+    qso = {"callsign": callsign.strip()}
+    for key in QSO_TEXT_FIELDS:
+        if key not in args:
+            continue
+        value = args[key]
+        if key == "freq_mhz":
+            if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                raise ValueError("freq_mhz 必须是字符串或数字")
+            qso[key] = value if isinstance(value, str) else str(value)
+        else:
+            if not isinstance(value, str):
+                raise ValueError(f"{key} 必须是字符串")
+            qso[key] = value.strip().upper() if key == "mode" else value.strip()
+    reply = bus.log_qso(qso)
+    return {
+        "logged": True,
+        "count": reply.get("count"),
+        "qso": qso,
+        "note": "总线只在内存里排队，进程重启即失；要留存请调 export_adif 取文本",
+    }
+
+
+def _tool_export_adif(bus: BusClient, args: dict, now_ms: Callable[[], int]) -> dict:
+    text = bus.qso_adif()
+    return {
+        "adif": text,
+        "records": text.count("<EOR>"),
+        "note": "这是总线内存队列的导出，不是磁盘上的 HamLog 库",
+    }
+
+
 TOOLS = {
     "get_state": _tool_get_state,
     "get_spectrum": _tool_get_spectrum,
     "link_health": _tool_link_health,
+    "tune": _tool_tune,
+    "set_mode": _tool_set_mode,
+    "ptt": _tool_ptt,
+    "log_qso": _tool_log_qso,
+    "export_adif": _tool_export_adif,
+}
+
+# 写工具不能带 readOnlyHint。ptt 另标 destructiveHint：它能把发射机推上空。
+TOOL_ANNOTATIONS = {
+    "get_state": {"readOnlyHint": True},
+    "get_spectrum": {"readOnlyHint": True},
+    "link_health": {"readOnlyHint": True},
+    "tune": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
+    "set_mode": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
+    "ptt": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    "log_qso": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    "export_adif": {"readOnlyHint": True},
 }
 
 
@@ -180,15 +358,63 @@ def tool_definitions() -> dict:
             "window_ms": {"type": "integer", "minimum": 0, "maximum": 2000, "default": 200},
         },
     }
-    schemas = {"get_state": empty, "get_spectrum": spectrum_schema, "link_health": health_schema}
+    tune_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["freq_hz"],
+        "properties": {
+            "freq_hz": {"type": "integer", "minimum": 1, "description": "目标频率，单位 Hz"},
+        },
+    }
+    mode_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["mode"],
+        "properties": {
+            "mode": {"type": "string", "enum": ["LSB", "USB", "AM", "CW", "RTTY", "FM", "WFM"]},
+        },
+    }
+    ptt_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["action"],
+        "properties": {
+            "action": {"type": "string", "enum": ["on", "off"]},
+            "confirm": {
+                "type": "boolean",
+                "default": False,
+                "description": "仅 action='on' 有效：显式确认第二击。门禁未武装时带它会报错，不会替你武装",
+            },
+        },
+    }
+    qso_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["callsign"],
+        "properties": {
+            "callsign": {"type": "string", "minLength": 1},
+            "freq_mhz": {"type": ["string", "number"]},
+            "mode": {"type": "string"},
+            "rst_sent": {"type": "string"},
+        },
+    }
+    schemas = {
+        "get_state": empty,
+        "get_spectrum": spectrum_schema,
+        "link_health": health_schema,
+        "tune": tune_schema,
+        "set_mode": mode_schema,
+        "ptt": ptt_schema,
+        "log_qso": qso_schema,
+        "export_adif": empty,
+    }
     return {
         "tools": [
             {
                 "name": name,
                 "description": TOOL_DOCS[name],
                 "inputSchema": schemas[name],
-                # M1 三件全是只读；标注给宿主看，真正的门禁在总线侧（M2 的写工具不能带这个）
-                "annotations": {"title": name, "readOnlyHint": True},
+                "annotations": {"title": name, **TOOL_ANNOTATIONS[name]},
             }
             for name in TOOLS
         ]
@@ -222,8 +448,10 @@ def dispatch(msg: dict, bus: BusClient, now_ms: Callable[[], int] = lambda: int(
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-            "instructions": "radio-suite 总线门面（M1 只读三工具）。发射类工具尚未接入；"
-                            "总线侧的 PTT 两击门禁与非业余段拒绝不会因为这里是只读而放松。",
+            "instructions": "radio-suite 总线门面（M2：只读三工具 + 写工具 tune/set_mode/ptt/log_qso/export_adif）。"
+                            "发射必须两击：ptt(action='on') 只武装，ptt(action='on', confirm=true) 才进 TX，"
+                            "一次调用不可能从 RX 直接发射；非业余段由总线门禁拒绝。"
+                            "QSO 队列只在内存里，要留存请用 export_adif 取文本。",
         })
     if is_notification:  # notifications/initialized、/cancelled 及以后新增的都吞掉
         return None
@@ -234,7 +462,7 @@ def dispatch(msg: dict, bus: BusClient, now_ms: Callable[[], int] = lambda: int(
     if method == "tools/call":
         name = params.get("name")
         if name not in TOOLS:
-            return _error(req_id, INVALID_PARAMS, f"未知工具：{name!r}（M1 只有 {sorted(TOOLS)}）")
+            return _error(req_id, INVALID_PARAMS, f"未知工具：{name!r}（可用：{sorted(TOOLS)}）")
         args = params.get("arguments") or {}
         if not isinstance(args, dict):
             return _error(req_id, INVALID_PARAMS, "arguments 必须是对象")
@@ -301,7 +529,7 @@ def force_utf8_stdio() -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="mcp_radio",
-        description="radio-suite 总线的 MCP 门面（stdio，只读 M1）。token 只认环境变量。",
+        description="radio-suite 总线的 MCP 门面（stdio，M2 读写）。token 只认环境变量。",
     )
     ap.add_argument("--url", dest="base_url", default=None,
                     help="总线地址，默认取 RADIO_BUS_URL / RADIO_BUS_PORT / http://127.0.0.1:8765")

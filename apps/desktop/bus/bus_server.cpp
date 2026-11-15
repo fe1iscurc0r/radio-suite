@@ -36,6 +36,18 @@ async function sp(){const r=await fetch('/api/spectrum');const j=await r.json();
 setInterval(st,250);setInterval(sp,66);st();sp();
 </script></body></html>)HTML";
 
+static QString pttPhaseName(radio::core::PttPhase phase) {
+  switch (phase) {
+    case radio::core::PttPhase::Tx:
+      return QStringLiteral("tx");
+    case radio::core::PttPhase::ConfirmPending:
+      return QStringLiteral("confirm_pending");
+    case radio::core::PttPhase::Rx:
+      break;
+  }
+  return QStringLiteral("rx");
+}
+
 BusServer::BusServer(radio::app::RadioSession& session, QObject* parent)
     : QObject(parent), session_(session) {
   samples_.assign(kFftSize, 0.0f);
@@ -65,6 +77,9 @@ QString BusServer::stateJson() const {
   j["mode"] = radio::core::civ::modeName(s.mode);
   j["filter"] = s.filter;
   j["ptt_on"] = s.ptt_on;
+  // ptt_on 是电台回读的方向，ptt_phase 是门禁自己的相位：两者会不一致
+  // （confirm_pending = 已武装但还没发射）。写工具要判「能不能确认」只能看后者。
+  j["ptt_phase"] = pttPhaseName(session_.gate().phase());
   j["smeter_raw"] = s.smeter_raw;
   j["smeter_dbm"] = static_cast<double>(s.smeter_dbm);
   j["att_20db"] = s.att_20db;
@@ -166,20 +181,26 @@ bool BusServer::start(const Config& cfg, QString* error) {
                                  QByteArrayLiteral("{\"error\":\"bad json\"}"));
     const QString action = doc.object().value("action").toString();
     QJsonObject result;
+    // 相位要说真话：以前 ptt_on 只区分「tx / 其它」，于是从 Tx 按一下（实际关掉了）
+    // 也回 confirm_pending，客户端读到的是「还等着确认」，而电台已经回了 RX。
+    const auto phaseName = [this] { return pttPhaseName(session_.gate().phase()); };
     if (action == "ptt_on") {
       session_.pttButtonPressed();  // 两击门禁由会话编排；PWA 第二击再调即确认
-      result = {{"ptt", session_.gate().phase() ==
-                                       radio::core::PttPhase::Tx
-                                   ? "tx"
-                                   : "confirm_pending"}};
+      result = {{"ptt", phaseName()}};
     } else if (action == "ptt_off") {
-      session_.pttButtonPressed();
-      session_.pttButtonPressed();
-      result = {{"ptt", "rx"}};
+      // 以前这里连按两下：从 RX 出发是 Rx→待确认→Tx —— 「关发射」把自己按成了发射，
+      // 从 Tx 出发则停在待确认（还 armed）。取消/关闭必须不借道 Tx，所以走会话层的
+      // 直接回 RX。这条动作在 PWA 里没人调，MCP 是第一个真用户，所以以前没爆。
+      session_.requestRxNow();
+      result = {{"ptt", phaseName()}};
     } else if (action == "tune") {
       const auto hz = doc.object().value("freq").toVariant().toULongLong();
-      result = {{"tuned", session_.tuneTo(hz)}};
-      if (!session_.tuneTo(hz)) result = {{"error", "rejected"}};
+      // tuneTo 有副作用（发一帧 0x00 设频 + poll，被拒时还要 emit tuneRejected），
+      // 以前写成两次调用：发两帧设频、被拒时闪两次提示，而且第二次失败会把
+      // result 整个换成 {"error":"rejected"}，连 tuned 字段都没了。
+      const bool tuned = session_.tuneTo(hz);
+      result = {{"tuned", tuned}, {"target_hz", static_cast<double>(hz)}};
+      if (!tuned) result["error"] = QStringLiteral("rejected");
     } else if (action == "set_mode") {
       const auto m = radio::core::civ::modeFromName(
           doc.object().value("mode").toString());

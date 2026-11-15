@@ -117,6 +117,55 @@ TEST_CASE("session manual ptt keeps two-step confirmation", "[session][ptt]") {
           std::vector<std::vector<uint8_t>>{ptt(true), ptt(false)});
 }
 
+// 设频帧已发、回读还没到的那段窗口：store 里还是旧频率。拿它判发射白名单
+// 就会漏放 —— 真总线上实测「调到 100 MHz 后立刻两击」12 轮漏放 10 轮。
+// 这里不跑事件循环，250 ms 轮询定时器不会插进来，窗口是确定性的。
+TEST_CASE("session: two taps before the tune readback must not key on the old frequency",
+          "[session][ptt][gate]") {
+  MockSessionFixture f;
+  // 先把 store 坐实在业余段：旧频率合法、新 target 不合法，才构成漏放
+  REQUIRE(f.session->tuneTo(7'100'000));
+  f.transport->send(radio::core::civ::readFreqFrame());
+  f.transport->poll();
+  REQUIRE(f.session->store().snapshot().freq_hz == 7'100'000);
+
+  // 100 MHz 可收听（在 RX 范围内）但不在业余白名单。故意不交付回读。
+  REQUIRE(f.session->tuneTo(100'000'000));
+  REQUIRE(f.session->store().snapshot().freq_hz == 7'100'000);
+
+  f.session->pttButtonPressed();
+  REQUIRE(f.session->gate().phase() == radio::core::PttPhase::ConfirmPending);
+  f.session->pttButtonPressed();
+  REQUIRE(f.session->gate().phase() == radio::core::PttPhase::Rx);
+  f.transport->send(radio::core::civ::readPttFrame());
+  f.transport->poll();
+  REQUIRE_FALSE(f.session->store().snapshot().ptt_on);
+
+  // 不是一刀切禁发：回读追上业余频率后，两击照常进 TX
+  REQUIRE(f.session->tuneTo(7'100'000));
+  f.transport->send(radio::core::civ::readFreqFrame());
+  f.transport->poll();
+  f.session->pttButtonPressed();
+  f.session->pttButtonPressed();
+  REQUIRE(f.session->gate().phase() == radio::core::PttPhase::Tx);
+}
+
+TEST_CASE("session: scripted tx must not key on the old frequency either",
+          "[session][ptt][gate]") {
+  MockSessionFixture f;
+  REQUIRE(f.session->tuneTo(7'100'000));
+  f.transport->send(radio::core::civ::readFreqFrame());
+  f.transport->poll();
+  REQUIRE(f.session->tuneTo(100'000'000));
+  REQUIRE(f.session->store().snapshot().freq_hz == 7'100'000);
+
+  REQUIRE_FALSE(f.session->beginScriptedTx());
+  REQUIRE(f.session->gate().phase() == radio::core::PttPhase::Rx);
+  f.transport->send(radio::core::civ::readPttFrame());
+  f.transport->poll();
+  REQUIRE_FALSE(f.session->store().snapshot().ptt_on);
+}
+
 TEST_CASE("session scripted tx does not rekey an active transmission", "[session][ptt]") {
   SessionFixture f;
   f.setFrequency(14'270'000);

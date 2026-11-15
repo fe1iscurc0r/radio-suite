@@ -69,6 +69,9 @@ uint64_t RadioSession::nowMs() const {
 void RadioSession::pollRadio() {
   transport_->send(core::civ::readFreqFrame(radio_addr_));
   transport_->send(core::civ::readModeFrame(radio_addr_));
+  // PTT 方向必须回读：写 0x1C 只回 ACK，不回状态。以前这里不发读帧，
+  // 于是 store 的 ptt_on 永远是 false —— /api/state 对着正在发射的电台报「RX」。
+  transport_->send(core::civ::readPttFrame(radio_addr_));
   transport_->send(core::civ::readSmeterFrame(radio_addr_));
   transport_->send(core::civ::readMeterFrame(radio_addr_));
   // 功能开关回读（0x11 + 0x16 族 + 0x0F），mock/真机均支持裸查询
@@ -250,13 +253,29 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
         f->payload.empty() ? core::civ::kNak : f->payload.front();
     qWarning() << "radio NAK — 命令被拒（频段限制或参数），opcode=0x"
                << QString::number(rejected, 16);
+    // 设频被拒 = 电台没挪，store 里的频率就是真相，别让 pending 一直卡着发射
+    if (rejected == core::civ::kCmdSetFreq) pending_freq_hz_.reset();
     emit commandRejected(rejected);
   }
+  // 回读追上 target 了，pending 的使命结束（0x03 与 0x25 两条回读路都汇到这里）
+  if (pending_freq_hz_ && s.freq_hz == *pending_freq_hz_) pending_freq_hz_.reset();
   if (changed) {
     s.last_update_ms = nowMs();
     store_.update(s);
     emit stateChanged();
   }
+}
+
+bool RadioSession::txFrequencyAllowed(uint64_t& hz) const {
+  hz = store_.snapshot().freq_hz;
+  if (!core::SafetyGate::authorizeTx(hz)) return false;
+  // 设频帧已发、回读还没到：电台可能已经挪过去了，两个频率都得在业余段才放行。
+  // 只看 store 会漏放（实测 12 轮漏 10 轮）；只看 target 又会在电台 NAK 没挪时误放。
+  if (pending_freq_hz_ && !core::SafetyGate::authorizeTx(*pending_freq_hz_)) {
+    hz = *pending_freq_hz_;
+    return false;
+  }
+  return true;
 }
 
 void RadioSession::pttButtonPressed() {
@@ -268,8 +287,8 @@ void RadioSession::pttButtonPressed() {
     case core::PttPhase::ConfirmPending:
       if (gate_.confirmTx(now)) {
         // 发射门禁最后一道：非业余段（广播/航空等）可听不可发
-        const uint64_t hz = store_.snapshot().freq_hz;
-        if (!core::SafetyGate::authorizeTx(hz)) {
+        uint64_t hz = 0;
+        if (!txFrequencyAllowed(hz)) {
           gate_.requestRx(now);
           emit txBlocked(static_cast<quint64>(hz));
         } else {
@@ -286,12 +305,25 @@ void RadioSession::pttButtonPressed() {
   emit pttPhaseChanged(static_cast<int>(last_phase_));
 }
 
+void RadioSession::requestRxNow() {
+  // 「关发射」不等于「再按一次」。两下 pttButtonPressed() 从 Rx 出发是
+  // Rx→ConfirmPending→Tx，也就是说这个动作会把电台推向发射；从 Tx 出发则停在
+  // ConfirmPending（还 armed）。所以取消/关闭一律直接落 RX：
+  // ConfirmPending 只清门禁，不发 PTT ON；真在发才补一次 PTT OFF。
+  const uint64_t now = nowMs();
+  const bool was_tx = gate_.phase() == core::PttPhase::Tx;
+  gate_.requestRx(now);
+  if (was_tx) sendPtt(false);
+  last_phase_ = gate_.phase();
+  emit pttPhaseChanged(static_cast<int>(last_phase_));
+}
+
 bool RadioSession::beginScriptedTx() {
   const uint64_t now = nowMs();
   if (gate_.phase() != core::PttPhase::Tx) {
     if (!gate_.requestTx(now) || !gate_.confirmTx(now)) return false;
-    const uint64_t hz = store_.snapshot().freq_hz;
-    if (!core::SafetyGate::authorizeTx(hz)) {
+    uint64_t hz = 0;
+    if (!txFrequencyAllowed(hz)) {
       gate_.requestRx(now);
       last_phase_ = gate_.phase();
       emit pttPhaseChanged(static_cast<int>(last_phase_));
@@ -328,6 +360,7 @@ bool RadioSession::tuneTo(uint64_t hz) {
     return false;
   }
   transport_->send(core::civ::setFreqFrame(hz, radio_addr_));
+  pending_freq_hz_ = hz;  // 回读到之前，发射门禁按这个 target 一起校验
   transport_->poll();
   return true;
 }

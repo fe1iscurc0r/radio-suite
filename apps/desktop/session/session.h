@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -40,6 +41,7 @@ class RadioSession : public QObject {
 
   // ---- UI/总线命令（唯一出口，禁止绕过）----
   void pttButtonPressed();          // PTT 键按下：Rx→待确认→确认进入 Tx→再按回 Rx
+  void requestRxNow();              // 直接回 RX：待确认是「取消」，绝不能借道 Tx 关掉
   bool beginScriptedTx();           // 一键发射：一次确认即进入 TX，并实际发送 PTT ON
   void endScriptedTx();             // 播放结束/失败均回 RX；重复调用不重复发帧
   bool tuneTo(uint64_t hz);         // 设频（接收按宽 RX 范围门禁）
@@ -111,6 +113,9 @@ class RadioSession : public QObject {
   void pollRadio();
   void onTick();
   void sendPtt(bool on);
+  // 发射白名单校验：回读频率与「已发出设频但还没回读到」的 target 都得在业余段。
+  // hz 出参用于 txBlocked 信号（被拦时报的是那个不许发的频率）。
+  bool txFrequencyAllowed(uint64_t& hz) const;
   uint64_t nowMs() const;
   void refreshLinkLiveness(uint64_t now);
 
@@ -122,6 +127,9 @@ class RadioSession : public QObject {
   QTimer tick_timer_;
   QTimer cw_timer_;  // CW 文本预计发完 → endScriptedTx
   bool last_ptt_sent_ = false;
+  // 设频帧已发、回读还没到。store 要等下一次轮询才更新，这段窗口里拿 store 判
+  // 发射白名单就是拿旧频率放行：实测「调到 100 MHz 后立刻两击」12 轮漏放 10 轮。
+  std::optional<uint64_t> pending_freq_hz_;
   core::PttPhase last_phase_ = core::PttPhase::Rx;
   bool started_ = false;
   bool link_alive_ = false;
