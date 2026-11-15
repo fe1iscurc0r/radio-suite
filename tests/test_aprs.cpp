@@ -329,6 +329,44 @@ TEST_CASE("aprs: AFSK loopback", "[aprs]") {
   CHECK(out == frame);
 }
 
+TEST_CASE("aprs: AFSK FCS bit-fix", "[aprs]") {
+  // readsb 式 FCS 位纠错（调研 §8 建议 2）：1-2 bit 错的弱信号帧不该白丢
+  Ax25Frame f;
+  f.dest.call = "APRS";
+  f.source.call = "N0CALL";
+  f.info = "!4903.50N/07201.75W-Fix probe";
+  const auto frame = encodeAx25(f);
+  const uint16_t fcs = ax25Fcs(frame);
+
+  // 单 bit 翻转 → 恢复到原帧（CRC-16 单 bit syndrome 唯一，解唯一）
+  {
+    auto bytes = frame;
+    bytes[12] ^= 0x10;
+    CHECK(tryFixFcs(&bytes, fcs));
+    CHECK(bytes == frame);
+  }
+  // 双 bit 同字节 → 恢复
+  {
+    auto bytes = frame;
+    bytes[20] ^= 0x81;
+    CHECK(tryFixFcs(&bytes, fcs));
+    CHECK(bytes == frame);
+  }
+  // 三 bit（跨字节）→ 超出能力，不恢复（调用方丢帧）
+  {
+    auto bytes = frame;
+    bytes[5] ^= 0x01;
+    bytes[15] ^= 0x02;
+    bytes[30] ^= 0x04;
+    CHECK_FALSE(tryFixFcs(&bytes, fcs));
+  }
+  // 没坏的帧直接返回 true（emitFrame 的防御路径）
+  {
+    auto bytes = frame;
+    CHECK(tryFixFcs(&bytes, fcs));
+  }
+}
+
 TEST_CASE("aprs: station store", "[aprs]") {
   StationStore store(3, 8);
   Packet p;

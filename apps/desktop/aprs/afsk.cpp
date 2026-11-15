@@ -26,9 +26,9 @@ uint16_t x25Crc(std::span<const uint8_t> data) {
 
 std::vector<uint8_t> withFcs(std::span<const uint8_t> frame) {
   std::vector<uint8_t> out(frame.begin(), frame.end());
-  const uint16_t crc = x25Crc(frame);
-  out.push_back(static_cast<uint8_t>(crc & 0xFF));
-  out.push_back(static_cast<uint8_t>(crc >> 8));
+  const uint16_t fcs = x25Crc(frame);
+  out.push_back(static_cast<uint8_t>(fcs & 0xFF));
+  out.push_back(static_cast<uint8_t>(fcs >> 8));
   return out;
 }
 
@@ -56,6 +56,39 @@ std::vector<uint8_t> stuffedBits(std::span<const uint8_t> data) {
 }
 
 }  // namespace
+
+uint16_t ax25Fcs(std::span<const uint8_t> frame) { return x25Crc(frame); }
+
+bool tryFixFcs(std::vector<uint8_t>* bytes, uint16_t fcs) {
+  // 线性 CRC 的性质：错误图样 e 的校验子 = CRC(帧) ⊕ fcs。可预计算 syndrome
+  // 表做到 O(n) 纠错，但错帧是罕见事件（只进 tryFixFcs），暴力扫描同样
+  // 亚毫秒——KISS，不引入查表状态
+  auto matches = [&]() { return x25Crc(*bytes) == fcs; };
+  if (matches()) return true;
+  // 单 bit 全扫：每字节每 bit
+  for (size_t i = 0; i < bytes->size(); ++i) {
+    auto& b = (*bytes)[i];
+    for (int k = 0; k < 8; ++k) {
+      b ^= static_cast<uint8_t>(1u << k);
+      if (matches()) return true;
+      b ^= static_cast<uint8_t>(1u << k);
+    }
+  }
+  // 双 bit 限同字节内：28 对/字节
+  for (size_t i = 0; i < bytes->size(); ++i) {
+    auto& b = (*bytes)[i];
+    for (int k1 = 0; k1 < 8; ++k1) {
+      b ^= static_cast<uint8_t>(1u << k1);
+      for (int k2 = k1 + 1; k2 < 8; ++k2) {
+        b ^= static_cast<uint8_t>(1u << k2);
+        if (matches()) return true;
+        b ^= static_cast<uint8_t>(1u << k2);
+      }
+      b ^= static_cast<uint8_t>(1u << k1);
+    }
+  }
+  return false;
+}
 
 std::vector<float> afskModulate(std::span<const uint8_t> frame,
                                 const AfskConfig& cfg, int preamble_flags,
@@ -234,8 +267,13 @@ void AfskDemodulator::emitFrame() {
       bytes[bytes.size() - 2] | (bytes[bytes.size() - 1] << 8));
   bytes.resize(bytes.size() - 2);  // 去 FCS
   if (x25Crc(bytes) != fcs) {
-    ++crc_errors_;
-    return;
+    // FCS 失败不直接丢弃：先试位纠错（readsb 范式），救回的帧照常入队，
+    // 但计入 corrected_——弱信号 1-2 bit 错的帧不该白丢
+    if (!tryFixFcs(&bytes, fcs)) {
+      ++crc_errors_;
+      return;
+    }
+    ++corrected_;
   }
   ready_.push_back(std::move(bytes));
   ++frames_;

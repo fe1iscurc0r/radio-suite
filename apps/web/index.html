@@ -22,6 +22,18 @@
 </section>
 <canvas id="spectrum" width="512" height="160"></canvas>
 <section id="controls">
+  <div class="row" id="modes">
+    <button data-mode="LSB">LSB</button>
+    <button data-mode="USB">USB</button>
+    <button data-mode="AM">AM</button>
+    <button data-mode="FM">FM</button>
+    <button data-mode="WFM">WFM</button>
+  </div>
+  <div class="row" id="bands">
+    <button data-band="air" title="民航话音 118-137 MHz（AM）">AIR</button>
+    <button data-band="bcfm" title="调频广播 87.5-108 MHz（WFM）">BC-FM</button>
+    <button data-band="bcsw" title="短波广播 31m（AM）">BC-SW</button>
+  </div>
   <div class="row">
     <button data-step="-1000">▼1k</button>
     <button data-step="1000">▲1k</button>
