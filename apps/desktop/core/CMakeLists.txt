@@ -12,19 +12,35 @@ set(RADIO_CORE_SRC
   sstv.cpp
   dtmf.cpp
   audio_stream.cpp
-  transport_mock.cpp)
+  transport_mock.cpp
+  # 串口 CI-V 的帧定界/重同步部分：不碰 QSerialPort，所以缺 SerialPort 的套件
+  # 也照样编译、照样用注入的内存管道跑用例（真后端见下面的 _qt TU）。
+  transport_serial.cpp)
 
 if(RADIO_SUITE_UDP)
   find_package(Qt6 QUIET COMPONENTS Network)
   if(Qt6_FOUND)
     list(APPEND RADIO_CORE_SRC transport_udp.cpp transport_pybridge.cpp
          transport_tcp.cpp transport_tcp_gateway.cpp)
-    set(RADIO_CORE_EXTRA_LIBS Qt6::Network)
-    set(RADIO_CORE_DEFINES RADIO_SUITE_HAVE_UDP=1)
+    list(APPEND RADIO_CORE_EXTRA_LIBS Qt6::Network)
+    list(APPEND RADIO_CORE_DEFINES RADIO_SUITE_HAVE_UDP=1)
     message(STATUS "radio_core: UDP 真机链路 + rsba1-core Python 桥启用 (Qt6::Network)")
   else()
     message(STATUS "radio_core: 未找到 Qt6::Network，UDP/桥禁用（仅 mock）")
   endif()
+endif()
+
+# 串口对端（A3）：CI-V over CAT 线。桌面/树莓派有 QtSerialPort 就出厂，
+# Android 的 Qt 套件没有 SerialPort —— 那正是「手机经 TCP 连 PC 网关」这条路
+# 存在的原因，网关工具靠这个后端驱动真电台。
+find_package(Qt6SerialPort QUIET)
+if(TARGET Qt6::SerialPort)
+  list(APPEND RADIO_CORE_SRC transport_serial_qt.cpp)
+  list(APPEND RADIO_CORE_EXTRA_LIBS Qt6::SerialPort)
+  list(APPEND RADIO_CORE_DEFINES RADIO_SUITE_HAVE_SERIAL_QT=1)
+  message(STATUS "radio_core: CI-V 串口后端启用 (Qt6::SerialPort)")
+else()
+  message(STATUS "radio_core: 没有 Qt6::SerialPort，串口 CI-V 只留帧逻辑（注入管道可测），真串口不可用")
 endif()
 
 add_library(radio_core STATIC ${RADIO_CORE_SRC})
