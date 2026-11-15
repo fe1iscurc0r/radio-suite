@@ -71,16 +71,37 @@
 |---|---|---|
 | `get_state` | `GET /api/state` | 频率/制式/滤波/PTT/S 表/衰减…一锅端，字段就是总线的字段 |
 | `get_spectrum` | `GET /api/spectrum` | 快照；**流式先不做**（SSE 是长连接，与无状态 MCP 的映射要单独设计） |
-| `tune` | `POST /api/control {action:"freq"}` | 走会话唯一出口，非业余段照样被拦 |
-| `set_mode` | `POST /api/control` | 制式互斥逻辑在会话层，不在适配器重复一遍 |
-| `set_toggle` | `POST /api/control` | ATT/NB/NR/VOX/RIT/ΔTX/SPLIT… |
-| `ptt` | `POST /api/control {action:"ptt_on"}` | **两步语义原样透出**，见 1.5 |
+| `tune` | `POST /api/control {action:"tune", freq:<hz>}` | 走会话唯一出口，非业余段照样被拦 |
+| `set_mode` | `POST /api/control {action:"set_mode", mode:"USB"}` | 制式互斥逻辑在会话层，不在适配器重复一遍 |
+| ~~`set_toggle`~~ | **总线没有这个 action** | ATT/NB/NR/VOX/RIT/ΔTX/SPLIT…要就先加总线，见下方更正 |
+| `ptt` | `POST /api/control {action:"ptt_on"}` / `{action:"ptt_off"}` | **两步语义原样透出**，见 1.5 |
 | `log_qso` | `POST /api/qso` | 落总线内存队列，再由 HamLog 侧导出 |
 | `export_adif` | `GET /api/qso.adif` | 只读 |
-| `link_health` | `GET /api/state` + `framesDelivered`/活性 | 让 agent 自己看得见「这条链到底通不通」 |
+| `link_health` | `GET /api/state` + `GET /api/spectrum` ×2 | 让 agent 自己看得见「这条链到底通不通」 |
 
 总线现在**没有**的能力（频谱历史、记忆信道读写、CW 文本发射、iGate 配置）先不进工具面——
 要就先加总线和用例，再加 MCP 工具，别在适配器里开第二条实现。
+
+**2026-11-15 更正（按代码实际契约回填：三处契约错误 + 一条被证伪的工时判断）：**
+
+1. 设频动作名是 `tune`，**不是** `freq`；频率字段是 `freq`（Hz 整数）。原文 `{action:"freq"}`
+   会被总线回 `{"error":"unknown action"}`。
+2. `set_toggle` **从来没实现过**。`/api/control` 只认四个动作：`ptt_on`、`ptt_off`、
+   `tune`、`set_mode`（`bus_server.cpp` 的 action 分支，其余一律 `unknown action`）。
+   ATT/NB/NR/RIT/SPLIT 这些会话层 setters 都在，但没接到总线上——要用先加总线动作和
+   `[bus]` 用例，别在适配器里拼第二条实现。
+3. `link_health` 目前只能证明**总线自己的 DSP 定时器**在跑（靠两次 `/api/spectrum` 的
+   帧间隔实测）。会话层的电台链路活性判定还没进 `/api/state`，所以这个工具**不许被读成
+   「电台通了」**。补字段是单独一条待办。
+4. §1.1 那句「一个 C++ 接口都不用新写」被 M2 证伪了：把写工具接上真总线后暴露出五个
+   总线/会话侧缺陷（`ptt_off` 把自己按成发射、`tune` 发两帧、`ptt_on` 相位说假话、
+   `/api/state.ptt_on` 永远 false、设频回读没到就两击拿旧频率放行），修它们新增了会话层的
+   `requestRxNow()` 与发射白名单的 pending-target 校验。**「端点已存在」不等于「端点是对的」**，
+   下次估工时要给写出口留验证预算。这五处修复都在 **PR #51（`feat/mcp-write-tools`，尚未合并）**，
+   所以 main 上的总线现在五个缺陷都还在——包括第 5 个那个发射白名单漏放。
+
+M2 的工具面是 **8 个**（上表去掉 `set_toggle`），同样在 PR #51 里；权威契约与已验/未验清单见
+该分支的 `tools/mcp_radio/README.md`。本文保留为决策记录，不再当实现说明书用。
 
 ### 1.5 安全边界（写死，不许适配器打折）
 
