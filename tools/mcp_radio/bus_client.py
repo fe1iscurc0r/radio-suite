@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""bus_client — radio-suite 总线（`apps/desktop/bus`）的只读薄封装.
+"""bus_client — radio-suite 总线（`apps/desktop/bus`）的薄封装.
 
 存在的理由只有一条：MCP 侧不许长出自己的电台状态。所有真话都在 C++ 的
 `RadioSession` 里，这里只把 `/api/*` 念出来。所以本模块：
 
 - 纯标准库（urllib），没有 requests/httpx —— 宿主把适配器当子进程拉起时不该再装一堆包；
-- 只读（GET）。写操作要等 M2，且必须继续走总线的 `/api/control` 两击门禁；
+- 写操作只经 `/api/control`、`/api/qso`，两击门禁与非业余段拒绝都在总线侧，
+  这里绝不为了「让工具好用」而连发两次；
 - token 只从环境变量读，只放请求头，绝不进 URL（URL 会落进 shell 历史、代理日志和
   `ps`），也绝不出现在异常文本里。
 """
@@ -82,29 +83,42 @@ class BusClient:
     def url_for(self, path: str) -> str:
         return self.base_url + path
 
-    def get_json(self, path: str) -> Any:
-        req = Request(self.url_for(path), method="GET")
+    def _request(self, method: str, path: str, payload: Any = None) -> bytes:
+        data = None
+        if payload is not None:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        req = Request(self.url_for(path), data=data, method=method)
         if self.token:
             req.add_header(TOKEN_HEADER, self.token)
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
         try:
             with urlopen(req, timeout=self.timeout_s) as resp:
-                body = resp.read()
+                return resp.read()
         except HTTPError as exc:
             if exc.code == 401:
                 raise BusUnauthorized(
                     "总线返回 401：token 缺失或不匹配（用环境变量 RADIO_BUS_TOKEN 给）"
                 ) from None
-            raise BusError(f"总线 {path} 返回 HTTP {exc.code}") from None
+            raise BusError(f"总线 {method} {path} 返回 HTTP {exc.code}") from None
         except URLError as exc:
             raise BusUnavailable(
                 f"连不上总线 {self.base_url}：{exc.reason}. 先起 radio-suite --headless --bus"
             ) from None
         except OSError as exc:  # socket.timeout 在 Windows 上是 TimeoutError→OSError 家族
             raise BusUnavailable(f"读总线 {self.base_url} 超时/中断：{exc}") from None
+
+    def _decode(self, body: bytes, path: str) -> Any:
         try:
             return json.loads(body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
             raise BusError(f"总线 {path} 返回的不是合法 JSON：{type(exc).__name__}") from None
+
+    def get_json(self, path: str) -> Any:
+        return self._decode(self._request("GET", path), path)
+
+    def post_json(self, path: str, payload: Any) -> Any:
+        return self._decode(self._request("POST", path, payload), path)
 
     # ---- 只读三面（M1）----
 
@@ -119,3 +133,32 @@ class BusClient:
         if not isinstance(data, dict) or not isinstance(data.get("power_db"), list):
             raise BusError("/api/spectrum 缺少 power_db 数组")
         return data
+
+    # ---- 写出口（M2）----
+    # 这里只做「一次 HTTP 调用」，绝不替上层重试或补第二击：两击门禁的意义就在于
+    # 两次独立的决定，封装里偷偷连发等于把门禁拆了。
+
+    def control(self, action: str, **fields: Any) -> dict:
+        data = self.post_json("/api/control", {"action": action, **fields})
+        if not isinstance(data, dict):
+            raise BusError("/api/control 返回的不是对象")
+        if not data.get("ok"):
+            raise BusError(f"总线拒绝 {action}：{data.get('error', '未给原因')}")
+        result = data.get("result")
+        if not isinstance(result, dict):
+            raise BusError("/api/control 的应答缺少 result 对象")
+        return result
+
+    def log_qso(self, qso: dict) -> dict:
+        data = self.post_json("/api/qso", {"qso": qso})
+        if not isinstance(data, dict):
+            raise BusError("/api/qso 返回的不是对象")
+        if not data.get("ok"):
+            raise BusError(f"总线拒绝记账：{data.get('error', '未给原因')}")
+        return data
+
+    def qso_adif(self) -> str:
+        try:
+            return self._request("GET", "/api/qso.adif").decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise BusError(f"/api/qso.adif 不是 UTF-8 文本：{exc}") from None
