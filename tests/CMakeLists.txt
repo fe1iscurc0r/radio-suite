@@ -18,6 +18,7 @@ add_executable(radio_tests
   test_ft8.cpp
   test_ft8_slot.cpp
   test_ft8_tx.cpp
+  test_transport_serial.cpp
   test_engine_spike.cpp
   # 纯数学，不碰控件：放这里而不是 radio_ui_tests，gui=OFF 的 CI 腿才跑得到
   test_waterfall_axis.cpp

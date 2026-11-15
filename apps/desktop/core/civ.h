@@ -130,6 +130,13 @@ std::optional<CivFrame> parseFrame(std::span<const uint8_t> data);
 // 而且 ICivTransport::send() 的契约是「一次一条完整帧」——TCP 会把多条粘成一包，
 // 两边各写一遍迟早漂。
 inline constexpr size_t kMinFrameBytes = 6;  // FE FE to from cmd FD
+
+// 攒到这个数还没见到 FD 就判定流错位（对端不是 CI-V、波特率不对、或中间被截断），
+// 丢掉重同步比继续攒着诚实。一帧 CI-V 最长也就几十字节，4096 已经很宽。
+// 放在这里而不是各传输自己 constexpr 一份：TCP 与串口是同一条字节流的两种入口，
+// 各写一遍迟早漂成两个阈值，届时「TCP 认为错位、串口还在攒」这种分歧没法查。
+inline constexpr size_t kMaxPendingStreamBytes = 4096;
+
 size_t extractFrames(std::span<const uint8_t> buffer,
                      const std::function<void(std::span<const uint8_t>)>& on_frame,
                      size_t* discarded = nullptr);
