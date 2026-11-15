@@ -2,7 +2,7 @@
   "item": "N1 · 组播收包实证（§2b 判据②）",
   "checklist": "docs/android-真机验收清单.md §2b.2",
   "verdict": "partial",
-  "verdict_scope": "判据②本身通了（真机确实收到组播包并出了解码行，锁全程持有）。但同一轮暴露出一个未定因的新缺陷：收包在约 70 秒后彻底停止，连单播也收不到。这条新缺陷没修、没定因，N1 不许当成「组播通路已验收」。",
+  "verdict_scope": "判据②本身通了（真机确实收到组播包并出了解码行，锁全程持有）。但同一轮暴露出一个新缺陷：收包在约 70 秒后彻底停止，连单播也收不到。当晚补测已定因为它不是组播通路的问题——屏幕休眠时该机在 IP 层就不收包（详见 n1-rootcause.json）。N1 仍不许当成「组播通路已验收」，因为锁屏挂机这条真实场景还没有保活。",
   "date_local": "2026-11-15",
   "device": {
     "model": "M2012K11AC",
@@ -48,12 +48,11 @@
       "解码表不回顶（本轮一度误判成这个）：Qt 6.8.3 离屏探针实测 insertRow(0) 不改 verticalScrollBar().value()，且 8 张真机截图每一张都是最新行在顶。该误判已撤回，相关改动全部回退。"
     ],
     "not_yet_checked": [
-      "手机侧 Wi-Fi 省电 / ICS 侧 ARP 或 IGMP 表老化",
-      "Qt Android 事件循环在面板挂起后是否停止派发 readyRead",
       "换一个 AP（非 Windows ICS）复现，区分是链路还是应用"
     ],
-    "status": "未定因、未修"
+    "status": "已定因（2026-11-15 当晚补测），详见 n1-rootcause.json：屏幕休眠时该机在 IP 层就不收包，与组播通路无关；应用侧另有「退后台不读 socket」一层。原始那轮没记屏幕状态，属机制吻合而非逐字复现。真正的产品缺口是监听期没有 WifiLock/唤醒锁，已单列。"
   },
+  "root_cause_ref": "n1-rootcause.json",
   "recapture_attempt": {
     "at_local": "17:19",
     "sent": 6,
