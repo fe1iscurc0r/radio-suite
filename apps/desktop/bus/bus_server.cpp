@@ -71,6 +71,16 @@ QString BusServer::stateJson() const {
   j["nb"] = s.nb;
   j["nr"] = s.nr;
   j["last_update_ms"] = static_cast<double>(s.last_update_ms);
+  // 上面这些数是「最后一次收到回帧时的快照」：链路断了它们不会变，也不会归零。
+  // 所以必须另给一个「这些数还可不可信」的判据，否则客户端会把十分钟前的频率
+  // 当成此刻的电台状态（G-6 要打的假）。
+  // link_reply_age_ms = -1 表示这条链路至今一个能解析的回帧都没给过，与「刚断」
+  // （age 是个正数）是两件事，客户端不能把 -1 当 0 渲染成「刚刚才通」。
+  // link_alive 由会话每 100 ms 的 tick 刷新，reply_age_ms 是即时算的：超时后的
+  // 头 100 ms 内两者可能短暂不一致，要自己判就按 age 与 timeout 比。
+  j["link_alive"] = session_.linkAlive();
+  j["link_reply_age_ms"] = static_cast<double>(session_.replyAgeMs());
+  j["link_timeout_ms"] = static_cast<double>(session_.linkTimeoutMs());
   return QString::fromUtf8(QJsonDocument(j).toJson(QJsonDocument::Compact));
 }
 

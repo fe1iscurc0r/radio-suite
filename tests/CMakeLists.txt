@@ -75,7 +75,8 @@ if(TARGET radio::bus)
   find_package(Qt6HttpServer 6.8 REQUIRED)
   add_executable(radio_bus_tests
     test_bus.cpp
-    test_rigctld.cpp)
+    test_rigctld.cpp
+    test_bus_link_health.cpp)
   target_include_directories(radio_bus_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/apps/desktop")
