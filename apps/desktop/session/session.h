@@ -106,6 +106,7 @@ class RadioSession : public QObject {
   // 链路活性（-1 = 这条链路至今一个回帧都没给过，别把它当「刚断」）
   bool linkAlive() const { return link_alive_; }
   qint64 replyAgeMs() const;
+  uint64_t linkTimeoutMs() const { return link_timeout_ms_; }
   void setLinkTimeoutMs(uint64_t ms) { link_timeout_ms_ = ms; }
 
  private:
