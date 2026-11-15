@@ -5,6 +5,7 @@
 // 音频设备设置、HamLog 记 QSO/ADIF 导出/QSO 列表刷新。
 
 #include "app/audio_dialog.h"
+#include "app/frequency_keypad.h"
 #include "app/network_audio.h"
 #include "app/wsjtx_client.h"
 #include "app/wsjtx_panel.h"
@@ -47,6 +48,16 @@ void MainWindow::onManualFreq() {
     flashStatus(QString("%1 MHz 超出接收范围").arg(mhz, 0, 'f', 3), true);
   else
     freq_edit_->clear();
+}
+
+void MainWindow::onFrequencyKeypad() {
+  radio::app::FrequencyKeypad pad(this);
+  pad.setFrequencyHz(session_.store().snapshot().freq_hz);
+  if (pad.exec() != QDialog::Accepted) return;
+  const quint64 hz = pad.frequencyHz();
+  if (hz == 0) return;
+  if (!session_.tuneTo(hz))
+    flashStatus(QString("%1 MHz 超出接收范围").arg(hz / 1e6, 0, 'f', 6), true);
 }
 
 void MainWindow::onBandClicked() {

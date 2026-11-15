@@ -75,6 +75,7 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void onTuneRejected(quint64 hz);  // RX 范围外拒绝 → 状态栏红字提示
   void onTxBlocked(quint64 hz);     // 非业余段拒绝发射
   void onManualFreq();              // 手动输频 GO
+  void onFrequencyKeypad();         // 数字键盘输频（手机软键盘会盖住频率区）
   void onBenchTick();     // 合成谱推进（M0 主线程；M2 移 dsp 线程）
   void onMemSave();       // 本地记忆：当前频/模存入所选槽
   void onMemRecall();     // 本地记忆：取出槽内频/模
