@@ -49,6 +49,15 @@ if(RADIO_SUITE_UDP AND Qt6Network_FOUND)
   target_link_libraries(radio_tests PRIVATE Qt6::Network)
 endif()
 
+# CI-V 串口对端：编没编进来的口径只有 core 那个全局属性，不在这里再 find_package 判一遍。
+# 用例里带一条网关集成，所以还要 transport_tcp_gateway.cpp 也在（上面那个 UDP 条件）。
+get_property(RADIO_SUITE_CORE_SERIAL GLOBAL PROPERTY RADIO_SUITE_CORE_SERIAL)
+if(RADIO_SUITE_CORE_SERIAL AND RADIO_SUITE_UDP AND Qt6Network_FOUND)
+  find_package(Qt6 REQUIRED COMPONENTS SerialPort)
+  target_sources(radio_tests PRIVATE test_transport_serial.cpp)
+  target_link_libraries(radio_tests PRIVATE Qt6::SerialPort)
+endif()
+
 add_executable(radio_session_tests
   test_session_tx.cpp
   test_tcp_gateway.cpp)

@@ -7,7 +7,8 @@ if(NOT ANDROID AND TARGET radio::ft8_codec AND TARGET radio::audio)
 endif()
 
 # CI-V over TCP 网关（PC 侧）：手机没有 QtSerialPort，靠它把电台那一侧变成一条
-# TCP 连接。电台侧目前只有内置 mock，所以它同时是 N2 那条真机测试的对端。
+# TCP 连接。电台侧 = 内置 mock（默认，也是 N2 那条真机测试的对端）或 --serial 真串口；
+# 串口对端由 radio::core 按 Qt6::SerialPort 决定编不编，这里不重复判。
 find_package(Qt6 QUIET COMPONENTS Network)
 if(NOT ANDROID AND TARGET Qt6::Network)
   add_executable(civ_tcp_gateway civ_tcp_gateway.cpp)

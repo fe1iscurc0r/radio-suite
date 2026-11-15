@@ -134,6 +134,10 @@ size_t extractFrames(std::span<const uint8_t> buffer,
                      const std::function<void(std::span<const uint8_t>)>& on_frame,
                      size_t* discarded = nullptr);
 
+// 攒到这个数还没见到 FD 就丢掉重同步：一帧 CI-V 最长也就几十字节，攒这么多说明
+// 流已经错位（对端不是 CI-V，或者中间被截断）。TCP 与串口共用同一个阈值。
+inline constexpr size_t kMaxPendingStreamBytes = 4096;
+
 // ---- 频率 BCD（5 字节、LSB-first）----
 // 例：14270000 Hz -> {00 00 70 42 01}（hex 字面）。
 std::optional<std::array<uint8_t, 5>> freqToBcd5(uint64_t hz);       // 超出 10 位 BCD 范围失败
