@@ -29,6 +29,13 @@ class SpectrumAnalyzer {
   void setAveragingFrames(size_t frames);
   size_t averagingFrames() const { return avg_frames_; }
 
+  // 峰值保持谱（SDR++/GQRX 式 max-hold）：peak = max(cur, peak − decay)。
+  // 衰减式避免历史尖峰永久驻留；基于平均谱之上再取包络。
+  void setPeakHold(bool on, float decay_db_per_frame = 1.5f);
+  bool peakHold() const { return peak_hold_; }
+  // 未开启时返回空（调用方判空，别把旧数据当峰）
+  const std::vector<float>& peakDb() const { return peak_db_; }
+
   const std::vector<float>& powerDb() const { return power_db_; }
   uint64_t frameSeq() const { return seq_; }
 
@@ -45,6 +52,11 @@ class SpectrumAnalyzer {
   double window_sum_ = 0.0;
   size_t avg_frames_ = 1;
   bool avg_seeded_ = false;
+  // 峰值保持状态（process 里衰减更新）
+  bool peak_hold_ = false;
+  float peak_decay_ = 1.5f;
+  std::vector<float> peak_db_;
+  bool peak_seeded_ = false;
   uint64_t seq_ = 0;
 };
 

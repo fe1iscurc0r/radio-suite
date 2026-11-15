@@ -43,6 +43,12 @@ function drawSpectrum(d) {
     i ? g.lineTo(x, y) : g.moveTo(x, y);
   }
   g.stroke();
+  // 底部音频偏移刻度（与桌面瀑布同语义：0..24 kHz 单边谱）
+  g.fillStyle = '#aeb6c0';
+  g.font = '10px monospace';
+  for (let k = 0; k <= 4; k++) {
+    g.fillText(k === 0 ? '0' : k * 6 + 'k', k / 4 * (cv.width - 16) + 2, cv.height - 3);
+  }
 }
 async function pollSpectrum() {
   if (sseMode) return;  // SSE 已接管
@@ -114,6 +120,27 @@ document.querySelectorAll('#controls [data-step]').forEach(b =>
   b.addEventListener('click', async () => {
     const cur = await (await fetch('/api/state')).json();
     await control('tune', { freq: (cur.freq_hz ?? 0) + Number(b.dataset.step) });
+  }));
+
+/* 模式切换（走 session 唯一出口；桌面按钮随电台回读自动纠偏） */
+document.querySelectorAll('#modes [data-mode]').forEach(b =>
+  b.addEventListener('click', async () => {
+    const j = await control('set_mode', { mode: b.dataset.mode });
+    if (j.error) connEl.textContent = '切模式被拒：' + j.error;
+  }));
+
+/* 接收波段预置（与桌面 buildBandsRow 同款三预置，全部「可听不可发」） */
+const BAND_PRESETS = {
+  air:  { mode: 'AM',  hz: 127500000 },
+  bcfm: { mode: 'WFM', hz: 97750000 },
+  bcsw: { mode: 'AM',  hz: 9500000 },
+};
+document.querySelectorAll('#bands [data-band]').forEach(b =>
+  b.addEventListener('click', async () => {
+    const p = BAND_PRESETS[b.dataset.band];
+    if (!p) return;
+    await control('set_mode', { mode: p.mode });
+    await control('tune', { freq: p.hz });
   }));
 
 /* QSO 录入（PWA 内存队列 → /api/qso.adif 导出） */
