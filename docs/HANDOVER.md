@@ -335,13 +335,17 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
       `exec()`**」和「**只有 2/5 页可滚**」；目标形态「单屏 + 抽屉」。
       **这部分卡在没插手机**：UI 改动必须真机看一帧，所以本轮只做审计与方案，没动布局。
     - 三个要拍的问题（工具面够不够 / 形态接受吗 / 谁先做）写在该文档第三部分。
+    - **MCP 那半已落地**（2026-11-15）：#50 M0/M1 骨架 + 只读三工具、#51 M2 总线写出口
+      修复 + 两击 PTT 门禁回归 + Python 写工具、#55 总线 `/api/state` 补链路活性字段。
+      **手机 UI 那半仍未动布局**（要真机看一帧）；但「瀑布图即调谐 + 单屏操作台」
+      的桌面侧前置已随 #58 落地，不再卡 PR 栈。
 
 ## 6. 构建与验证（本机环境）
 
 ```bash
 # 环境：MSVC 14.44（VS2022 BuildTools）+ Qt 6.8.3（D:/Qt）+ CMake/Ninja（VS 自带）
 cmd //c "build\msvc_build.bat radio-suite radio_tests radio_ft8_ui_tests"   # 仓内脚本，自己 call vcvars64
-QT_QPA_PLATFORM=offscreen cmd //c "build\run_ctest.bat"                     # 181/181（本栈分支；main 上少一截，栈里几条 PR 都没合）
+QT_QPA_PLATFORM=offscreen cmd //c "build\run_ctest.bat"                     # main 上 246/246（2026-11-15 实测；PR 栈已清空）
 cmd //c "build\msvc_build.bat"                       # 至少要带一个 target，无参不给全量
 # 单测 exe 直跑要 Qt bin 在 PATH：PATH="/d/Qt/6.8.3/msvc2022_64/bin:$PATH" \
 #   QT_QPA_PLATFORM=offscreen ./build/tests/radio_ft8_ui_tests.exe "[ft8][ui]" -s
@@ -503,25 +507,34 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
-### GitHub 与 CI 现状（2026-10-29 更新，2026-10-31 补安卓栈，2026-11-05 按 refs 重核）
+### GitHub 与 CI 现状（2026-11-15 更新：PR 栈已清空，open = 0）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
-  **AGPL-3.0**），默认分支 `main`（现 `79f4b51` = PR #36 的 merge commit）。
+  **AGPL-3.0**），默认分支 `main`（现 **`a8d175712`** = PR #58 的 merge commit，
+  455 个 blob）。**open PR 数 = 0**：46 条已合并，14 条关闭未合（其中 11 条是
+  2026-11-15 这轮清的空壳/被取代件，见下面「11-15 清栈」）。
 - **判「这条 PR 到底进没进 main」只用 `git merge-base --is-ancestor <sha> origin/main`。**
   不要看 PR 的 open/closed，也不要看 `merged_at`——两者都会骗人：
   - 11-02 23:13 有四笔消息带 `(local equiv)` 的**本地 merge commit** 落上 main
     （`2c4ea48`←#32 head `9bcb07a`、`1911970`←#33、`3b63e6f`←#34、`dcebfd7`←#35）。
     `9bcb07a` 本身叠在 #16→…→#23→#24…#31 那条链顶端，所以 `2c4ea48` **一笔把
-    #16–#32 的全部内容带进了 main**；GitHub 上 #17–#23 至今还 open，只是因为它们的
-    base 是已被消化的中间分支——refs 差还在，内容差没有。
+    #16–#32 的全部内容带进了 main**；GitHub 上 #17–#23 当时还 open，只是因为它们的
+    base 是已被消化的中间分支——refs 差还在，内容差没有。（这 7 条已于 11-15 关闭。）
   - #33/#34/#35 都有 `merged_at`，但当时合的是各自的 base 侧分支，离 main 还隔一层。
-  - **确实没进 main 的只有 #15**（`35570c7`，采集冒烟改测稳态口径），它仍 open。
-- **`main` 现在包含什么**（`79f4b51`）：安卓那条链的全部内容（#16–#35）+ 架构清理
+  - 当时**确实没进 main 的只有 #15**（`35570c7`，采集冒烟改测稳态口径）；
+    它的增量已在 11-15 经 #59 重挂落地，原 PR 随之关闭。
+- **`main` 现在包含什么**（`a8d175712`）：安卓那条链的全部内容（#16–#35）+ 架构清理
   （#36：`radio_session` / `radio_bus` / `radio_dsp` 独立成库、`MainWindow` 按域拆成
   `MainWindow.cpp` + `_actions` + `_panels` + `_android` 四个文件、PWA `apps/web/`、
-  频谱 SSE、CI-V over TCP 网关、会话层回帧判活性、瀑布图 30 fps + 双线性放大）。
+  频谱 SSE、CI-V over TCP 网关、会话层回帧判活性、瀑布图 30 fps + 双线性放大）
+  + MCP 工具链（#50 只读三工具、#51 写出口与两击 PTT 门禁、#55 总线链路活性字段）
+  + A3 串口对端 `SerialCivTransport`（#56）+ 频谱轴映射（#53）
+  + 开源 SDR 调研（#57）+ WASAPI 首帧延迟定案（#59）
+  + 快捷交互全家桶（#58：键盘调谐、瀑布点击/框选/滚轮缩放、峰值保持线、AX.25 FCS 位纠错）。
   拆分完整性核过：main 上 `MainWindow::` 定义 61 处，拆成四份后合计仍是 61。
-  本地口径 Qt 6.8.3 msvc2022_64：全量构建 + `ctest` **212/212**。
+  本地口径 Qt 6.8.3 msvc2022_64：全量构建 + `ctest` **246/246**
+  （2026-11-15 在 `a8d175712` 的独立 detached 工作树上实测，27.99 s；
+  11-05 时的口径是 212/212）。
 - ⚠️ **`QT_NO_FAST_MOVE` / `QT_NO_FAST_SCROLL` 那套（#34）已从 main 撤掉**（经 #40）。
   它在真机上被证伪：设备上 `RSDBG fastmove=[1] fastscroll=[1]` 证明开关确实生效，
   屏幕左端那条滞后带一条没少；另外三条路（父控件/`window()->update()` 逐拍强绘、
@@ -548,15 +561,66 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   现在用 `writeBeginChunked` + `writeChunk`，用例也改成断言
   `transfer-encoding: chunked` 且无 `content-length`（做过变异对照：换回旧写法就 FAIL）。
   另：`apps/web/app.js` 里的 `openSse()` 之前定义了却没被调用，现已接上启动。
-- **待合进 main 的**：#41（PWA 静态件补 `Cache-Control: no-store`；总线不带缓存头时
-  浏览器按启发式缓存旧 `app.js`，改完前端同端口刷新还在跑旧脚本，`ignoreCache`
-  的顶层导航都换不掉子资源——验前端改动时记得这一手）。
+- **没有待合的 PR 了**（open = 0）。最后一条待合件 #41 已于 11-05 合入
+  （PWA 静态件补 `Cache-Control: no-store`；总线不带缓存头时浏览器按启发式缓存旧
+  `app.js`，改完前端同端口刷新还在跑旧脚本，`ignoreCache` 的顶层导航都换不掉子资源
+  ——验前端改动时记得这一手）。
 - **PR #1–#14 均已合并进 main**：一键发射编排（`272bc5d`）、旋钮/频差/亚音（`854bf42`）、
   50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、WSJT-X UDP 接入（`9b3e9ac`）、
   QSO 直写 HamLog（`bef3eec`）、审查修复 + 算法优化（`f531346`）、50003 设备可选与诊断
   （`6d7040d`）、win deploy（`7073502`）、ft8_lib vendor（`4ff82d9`）、安卓工具链
   （`fff069f`）、AAudio 后端（`f4091f6`）、APK 打包（`5a08fa4`）；每次合并后 main
   推送 CI 三平台 success。
+
+#### 2026-11-15 清栈：9 条合入 + 11 条关闭，open 归零
+
+授权口径是「全部合并」，但**字面意义的全合做不到**，先分诊再动手。判据三条：
+`ahead_by=0` ⇒ 空壳；PR 的 `files`/`additions` 是**对它自己的 base** 算的，堆叠 PR
+会严重虚高；`dirty` 要先解冲突并证明与本体意图等价。
+
+- **第一轮**（合前 main = `5f0b823aa`，445 blob）：
+  #52 `c18787f0e` → #53 `f6aa34294` → #51 `2487f145d` → #55 `847358b73` → #56 `08042ee63`。
+  合完 main 三平台 CI 全绿（ubuntu 13:43:11 / windows 13:47:14 / macos 14:14:37）。
+- **第二轮**（合前 main = `08042ee63`，453 blob）：
+  #60 `338dd8ec0` → #57 `49f565c5b` → #59 `1d43c1a65` → #58 `a8d175712`（455 blob）。
+  合完 main 三平台 CI 全绿（ubuntu 15:14:24 / windows 15:19:27 / macos 15:45:48）。
+- **回滚点**：第一轮前 `5f0b823aaea175978b52491f36cb878ed21f4dbf`，
+  第二轮前 `08042ee63eb3f6f70959933e32cf7e09040145d0`。
+  每笔合并都机器核过：`parents == [前一笔 main, PR head]`、合并前后 blob 集合
+  **lost = 0**（两轮各 4 笔 + 5 笔，无一例外）。
+- **关闭的 11 条**（关闭 ≠ 删除，11 个分支 ref 全部原地保留，逐个回读确认过）：
+
+  | PR | 分支 | 关闭理由 | 增量去处 |
+  |---|---|---|---|
+  | #17–#22 | ft8-mic-source / android-link-prefs / android-settings-persistence / mode-button-exclusivity / android-landscape-lock / android-paged-ui | `ahead=0 files=0`，纯空壳 | 内容早在 main |
+  | #43 | feat/serial-civ-transport | 被 #56 取代（A3 重复交付） | #56 |
+  | #15 | fix/wasapi-capture-measurement | behind=128 且冲突 | #59 |
+  | #23 | fix/android-touch-dialogs | 堆叠，15 文件里**代码增量 0** | #60（只搬 31 行文档） |
+  | #46 | docs/open-sdr-survey | 基线过期 | #57 |
+  | #47 | ui/quick-interactions | 基线过期 | #58 |
+
+- **「与 main 不同」≠「有 main 没有的东西」**——这轮最值钱的一条教训。
+  #23 的 compare 列出 15 个文件、`added apps/desktop/core/transport_tcp_gateway.cpp`，
+  看着像 main 缺文件；逐 blob 比完才发现 main 那份**逐字节相同**，`added` 是相对
+  旧 merge-base 说的。`WaterfallWidget` 与 main 完全一致，`MainWindow` 那条 include
+  是死代码。硬合会把刚合进去的 A1/A3 形态顶回旧版。**先比 blob，再看差异行是否真被用到。**
+- **CI 红先判基线过期，别急着改代码**：#46/#47 的红是继承的债。判据很硬——
+  把失败用例的 `file:line` 和该 PR 自己的 `files` 列表求交集，**不在列表里就不是它引入的**。
+  两条重挂到当前 main 后**零冲突**、立刻转绿，反证了判断。
+- **重挂交付的机器证明三件套**：① `git merge-file -p --diff3 head base main` 做可机检的
+  三方合并；② 逐行核「main 侧新增行」与「head 侧新增行」在合并结果里一条不少
+  （`difflib` opcodes）；③ 每个 blob 上传前算 `sha1("blob <len>\0"+bytes)` 与远端返回值对齐，
+  推完再 `GET /git/trees/<sha>?recursive=1` 证明文件集合没丢。
+  **干净的三方合并结果也必须落盘**，否则后续步骤会静默回退成 head 字节、把 main 的改动吃掉；
+  写盘一律 `open(..., "wb")`——Windows 文本模式会把 LF 变 CRLF。
+- #15 那处 HANDOVER 冲突是逐行解的，并证明与本体意图等价：intent −4/+13、
+  actual −4/+13、`extra_add=0 extra_rem=0`。两条重挂的代码件都做了**真实本地构建 + CTest**
+  （#58 → 246/246，#59 → 244/244），不是只靠 REST 自证。
+- **git 通道走代理是通的**：`git -c http.proxy=http://127.0.0.1:7890 -c http.sslBackend=openssl
+  fetch origin main` 成功。别再默认「只有 api.github.com 能用」而放弃本地验证——
+  能 fetch 就能开独立工作树真构建。本轮所有验证都在 detached 工作树里做，
+  用户工作区（`ui/quick-interactions` 上的未提交看板改动）全程未碰。
+- **副作用**：#97（瀑布图即调谐 + 单屏操作台）原来卡在 #47，现因 #58 落地而**解锁**。
 - **CI 三平台全绿**只对 `main` 成立；`feat/arch-cleanup` 在 bus 独立成库后曾连续 5 次
   全红（run 102–106），成因见上面那条，修在 #38。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
