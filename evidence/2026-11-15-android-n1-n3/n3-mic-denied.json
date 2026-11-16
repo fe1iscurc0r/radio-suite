@@ -22,7 +22,8 @@
     "apk_sha256": "cef817002aba22620e905b942febe1052fe563e4202f438bc39d72255cad3237",
     "apk_sha256_provenance": "2026-11-16 21:21 从机上现装包直接取证：adb shell pm path org.radiosuite.app → adb pull <base.apk> → sha256sum。该包 lastUpdateTime=2026-11-15 17:05:21，此后无人重装，即本轮 N3 取证所测的那一个。",
     "apk_sha256_original_wrong_value": "fb5b773acd68ceb7512617fd65d2b25124ddb19a0b606f37be2a9cf073d59873",
-    "apk_sha256_correction_note": "本字段原记为上面那个 fb5b773a…，2026-11-16 复核发现**对不上**：机上现装包（同一 lastUpdateTime、同一 12689808 字节）实际是 cef81700…，且当时构建目录里留存的两个 APK 都是 b6a3d46a…（12670889 字节的未签名包），没有任何文件能算出 fb5b773a…。所以那个哈希当时是从哪来的已不可考，**不能当身份标识用**，故改存可复现的来源链。字节数 12689808 自始至终是对的。",
+    "apk_sha256_original_wrong_value_identity": "2026-11-16 22:00 破案：这个值不是 APK 的文件哈希，而是 **debug 签名的证书摘要**。`apksigner verify --print-certs aligned.apk` 回显 `Signer #1 certificate SHA-256 digest: fb5b773acd68ceb7512617fd65d2b25124ddb19a0b606f37be2a9cf073d59873`，与上面逐字节相同。当时把 --print-certs 输出里的那一行抄成了「APK sha256」，所以任何 APK 都算不出它——它本来就不是文件属性，而是密钥属性（同一 keystore 每次签名都回显同一个值，因此它连「哪一次构建」都指认不了）。",
+    "apk_sha256_correction_note": "本字段原记为上面那个 fb5b773a…，2026-11-16 复核发现**对不上**：机上现装包（同一 lastUpdateTime、同一 12689808 字节）实际是 cef81700…，且当时构建目录里留存的两个 APK 都是 b6a3d46a…（12670889 字节的未签名包），没有任何文件能算出 fb5b773a…。当时判为「来源已不可考」，同日 22:00 按 apk_sha256_original_wrong_value_identity 查清是抄错了行（证书摘要当成文件哈希）。故改存可复现的来源链。字节数 12689808 自始至终是对的。",
     "correction_impact": "只影响「这包能不能被唯一指认」，不影响 N3 的结论本身——拒绝链 logcat（n3-audio-denial.log）、面板红字、台账「缺失→可用」三张截图与 appop/permission 状态都是独立读数，不依赖这个哈希。"
   },
   "procedure": [
