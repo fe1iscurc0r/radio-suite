@@ -515,8 +515,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   **但归零只是那一刻的口径**；到 2026-11-16 又累积 **三条 open**，全部 base main、
   三平台 CI 全绿、`mergeable_state=clean`、`removed=0`，**逐条等按次合并授权**：
   - **#61** `docs/handover-stack-cleared` —— 就是本节这段补记，只改 `docs/HANDOVER.md`。
-    它自己的文件数/增删行数**故意不写在这里**：这条分支被自己推进一次，那个数就过期一次，
-    要准数看 `GET /pulls/61`。
+    它的 head 和增删行数**故意不写在这里**：评审过程中的自证与纠错会反复推进这条分支，
+    写一次就过期一次。要准数看 `GET /pulls/61`。
   - **#62** `fix/ft8-panel-capture-failure` @ `a609b54` —— FT8 麦克风采集失败写进
     **面板自己那一行**（N3 的静默失败：`flashStatus` 落在被面板盖住的主窗顶栏，3 秒还自动
     清空，手机上根本看不见），13 文件 +595/−16，含 `evidence/2026-11-15-android-n1-n3/`
