@@ -290,8 +290,18 @@ QWidget* MainWindow::buildDeckWidget(QWidget* parent) {
   freq_edit_->setPlaceholderText("直接输入 MHz，如 145.500");
   freq_edit_->setMinimumHeight(30);
   freq_edit_->setAlignment(Qt::AlignRight);
+#ifdef Q_OS_ANDROID
+  // 点输入框弹的是系统软键盘，横屏下它会盖住频率区，而调频是最高频的动作。
+  // 所以手机端只读，手输一律走旁边「键盘」那颗自建 12 键。
+  freq_edit_->setReadOnly(true);
+  freq_edit_->setPlaceholderText("点「键盘」输频，如 145.500");
+#endif
   connect(freq_edit_, &QLineEdit::returnPressed, this, &MainWindow::onManualFreq);
   entry_row->addWidget(freq_edit_, 1);
+  auto* pad = new QPushButton("键盘", deck);
+  pad->setMinimumSize(56, 30);
+  connect(pad, &QPushButton::clicked, this, &MainWindow::onFrequencyKeypad);
+  entry_row->addWidget(pad);
   auto* go = new QPushButton("GO", deck);
   go->setMinimumSize(48, 30);
   connect(go, &QPushButton::clicked, this, &MainWindow::onManualFreq);

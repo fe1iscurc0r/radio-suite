@@ -200,6 +200,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
   find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
   add_executable(radio_ui_tests
     test_dialogs.cpp
+    test_frequency_keypad.cpp
     test_audio_ui.cpp
     test_touch_dialog.cpp
     test_launch_config.cpp
@@ -214,6 +215,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/device_report.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/self_check_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/frequency_keypad.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/audio_stats.cpp")
   target_include_directories(radio_ui_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
