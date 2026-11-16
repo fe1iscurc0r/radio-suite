@@ -264,14 +264,22 @@ UDP 链路下会长成 `transport: udp · <电台 IP>`。
 桌面侧这条链路的旧结论已经翻了：早先记的「WASAPI 共享模式只拿到 57%/73% 样本」是
 **测量口径错**（把 `start()` 到首个回调之间的墙钟算成了丢样）。带时间戳探针重测：
 首个采集回调 **0.44–0.51 s** 才到（共享模式 `InitializeSharedAudioStream` 的启动开销），
-首帧之后 20 ms 恒定、预热 1 s 再测 2 s 的稳态样本预算 **100.1%**。定案见 PR #15
-（`fix/wasapi-capture-measurement`，**尚未合并**——本分支的
-`docs/notes/audio-capture-wasp-diagnosis.md` 还是旧版）。Android 的 AAudio 是另一套实现，
+首帧之后 20 ms 恒定、预热 1 s 再测 2 s 的稳态样本预算 **100.1%**。定案经
+**PR #59**（`fix/wasapi-capture-rebased`，**已于 2026-11-15 07:10Z 合入 main**）落地；
+原 **PR #15**（`fix/wasapi-capture-measurement`）是它的旧基线，**closed 且 merged=false**，
+增量被 #59 重挂带走。
+🔴 本节原文写的是「#15 尚未合并——本分支的
+`docs/notes/audio-capture-wasp-diagnosis.md` 还是旧版」，**两句现在都不成立**：
+诊断文档在 main 上已经是新版（含 0.44~0.51 s 首帧、稳态 100.1%、以及带首帧/预热/
+稳态量法的工具与 88% 达标线）。Android 的 AAudio 是另一套实现，
 这一节按同一个口径重测：先预热，再看稳态，别拿桌面数字当预期。
 
 - [ ] **B1 RECORD_AUDIO 运行时弹窗**
   代码事实：只在主窗构造时、权限状态为 `Undetermined` 才申请一次
-  （[apps/desktop/app/MainWindow.cpp:96-105](../apps/desktop/app/MainWindow.cpp#L96-L105) 的 `Q_OS_ANDROID` 块）。
+  （构造函数 `MainWindow::MainWindow` 里 `buildUi()` 之后那段 `#ifdef Q_OS_ANDROID`；
+  2026-11-16 实测位于 [apps/desktop/app/MainWindow.cpp:63-73](../apps/desktop/app/MainWindow.cpp#L63-L73)。
+  ⚠️ 原文写死的是 `:96-105`，已经飘了——**这条判据要看的是符号不是行号**：
+  `grep -n "QMicrophonePermission" apps/desktop/app/MainWindow.cpp`）。
   判定：全新安装首次启动**弹出**系统授权框；点「不允许」后应用照常起，且 FT8 面板选
   「本机麦克风」时如实失败/不产出解码行，**不崩、不静默假装在采集**。
   复测命令（先撤销再看行为）：
