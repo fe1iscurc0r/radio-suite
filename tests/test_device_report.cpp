@@ -235,7 +235,11 @@ TEST_CASE("device report: android keep-alive needs BOTH locks and says which is 
   const auto* ok = rowOf(good, QStringLiteral("锁屏保活"));
   REQUIRE(ok != nullptr);
   CHECK(ok->state == radio::app::ProbeState::Ok);
-  CHECK(ok->note.contains(QStringLiteral("灭屏仍收")));
+  CHECK(ok->note.contains(QStringLiteral("两把都在")));
+  // 绿灯只许报「锁在手」，不许替用户断言「灭屏收到了包」——那一半要靠实测，
+  // 拿持有锁当收货证据就是这行文案最初的说法，改回来就靠这条拦住。
+  CHECK_FALSE(ok->note.contains(QStringLiteral("仍收")));
+  CHECK_FALSE(ok->note.contains(QStringLiteral("这台机")));
 
   // 只有 WifiLock：包到得了内核，但 CPU 一suspend 就没人读 —— 症状是「收得到却不显示」
   auto wifi_only = androidInput();

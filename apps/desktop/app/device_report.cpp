@@ -179,10 +179,11 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
       rows << makeRow("WSJT-X", "锁屏保活",
                       both ? ProbeState::Ok : ProbeState::Missing,
                       both ? QStringLiteral(
-                                 "WifiLock(HIGH_PERF) + PARTIAL_WAKE_LOCK 都在，灭屏仍收")
+                                 "两把都在：射频不进省电轮询、CPU 不 suspend。"
+                                 "这只说明保活开着，不等于已经验到灭屏真收到包")
                            : QStringLiteral(
-                                 "缺一把（Wi-Fi %1 / CPU %2）：这台机实测一灭屏就在 IP 层"
-                                 "不收货，锁屏挂机等于没在听。%3")
+                                 "缺一把（Wi-Fi %1 / CPU %2）：灭屏后 CPU 会 suspend、"
+                                 "射频进省电，此时「监听中」不等于在收货。%3")
                                .arg(in.wifi_lock_held ? QStringLiteral("有")
                                                       : QStringLiteral("无"),
                                     in.wake_lock_held ? QStringLiteral("有")

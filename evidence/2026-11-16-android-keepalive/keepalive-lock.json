@@ -16,12 +16,13 @@
     "adb_serial": "6b65dc1a"
   },
   "build_under_test": {
-    "apk_sha256": "ab88a233dd817899b58325094498715c749659d294e933fabd991b035ef8a406",
-    "apk_sha256_provenance": "构建产物 aligned.apk 与 adb install -r 后从机上 pm path 拉回的 base.apk 两次 sha256sum 相同（BYTE_MATCH=YES）。本轮共三次装包，三次都做了这个比对。",
+    "apk_sha256": "9588b659bfc0e2dfdec26dbf0a343a2b12d5a31d6f820de5dc06f2a2d1f1965c",
+    "apk_sha256_provenance": "构建产物 aligned.apk 与 adb install -r 后从机上 pm path 拉回的 base.apk 两次 sha256sum 相同（BYTE_MATCH=YES）。本轮共四次装包，四次都做了这个比对。",
     "earlier_installs_this_session": [
       "26797284883c32ad91710a6e78b36d50160b0099674da20fce1d3fe89aeb63fb（JNI 签名错的初版，装机后由 logcat 抓到 NoSuchMethodError）",
       "f3265c3ae8368b92cc7724b314dd7b224376da0c25cac42728998e20408634d0（签名修对，但异常被 Qt 吞掉，台账原因失真）",
-      "ab88a233dd817899b58325094498715c749659d294e933fabd991b035ef8a406（本版：自己接异常，台账给出 Java 原话）"
+      "ab88a233dd817899b58325094498715c749659d294e933fabd991b035ef8a406（自己接异常，台账给出 Java 原话；但文案仍把设备专属结论硬编进通用字符串）",
+      "9588b659bfc0e2dfdec26dbf0a343a2b12d5a31d6f820de5dc06f2a2d1f1965c（本版：文案不绑设备 + 反向护栏；本目录读数出自这一版）"
     ],
     "signing": "debug keystore；注意 apksigner verify --print-certs 回显的证书 SHA-256 是 fb5b773a…，那是密钥属性、每次签名都一样，不是 APK 身份（见 2026-11-15-android-n1-n3/README.md 勘误）",
     "qt": "6.7.3 android_arm64_v8a",
@@ -36,7 +37,18 @@
       "group": "WSJT-X",
       "item": "锁屏保活",
       "status": "缺失",
-      "detail": "缺一把（Wi-Fi 有 / CPU 无）：这台机实测一灭屏就在 IP 层不收货，锁屏挂机等于没在听。newWakeLock 失败：java.lang.IllegalArgumentException: Must specify a valid wake lock level."
+      "detail": "缺一把（Wi-Fi 有 / CPU 无）：灭屏后 CPU 会 suspend、射频进省电，此时「监听中」不等于在收货。newWakeLock 失败：java.lang.IllegalArgumentException: Must specify a valid wake lock level."
+    },
+    "ledger_row_wording_rework": {
+      "first_printing_build": "ab88a233…",
+      "first_printing_detail": "缺一把（Wi-Fi 有 / CPU 无）：这台机实测一灭屏就在 IP 层不收货，锁屏挂机等于没在听。newWakeLock 失败：java.lang.IllegalArgumentException: Must specify a valid wake lock level.",
+      "why_changed": [
+        "「这台机实测…」是 M2012K11AC 上的测量结论，却硬编在所有安卓设备都会跑的运行时字符串里——在拿得到 wake lock 的机器上这句就是谎。",
+        "OK 分支原文「WifiLock(HIGH_PERF) + PARTIAL_WAKE_LOCK 都在，灭屏仍收」更严重：拿「锁在手」当「实测到货」的绿灯，而灭屏收包恰恰是本条还没量的那一半。"
+      ],
+      "guard_added": "test_device_report.cpp 里两条反向断言：CHECK_FALSE(note 含「仍收」)、CHECK_FALSE(note 含「这台机」)。",
+      "mutation_proof": "把 OK 分支文案改回含「灭屏仍收」⇒ #260 FAIL（test_device_report.cpp:241）；改回后 263/263。",
+      "final_verified_on_device": "22:24，包 9588b659…，真机台账即 ledger_row.detail 那段"
     },
     "listening_row": {
       "group": "WSJT-X",
