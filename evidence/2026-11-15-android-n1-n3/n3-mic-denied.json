@@ -1,0 +1,100 @@
+{
+  "item": "N3 · B1 撤销分支（撤销麦克风权限后冷启动）",
+  "checklist": "docs/android-真机验收清单.md §2b.2",
+  "verdict": "pass",
+  "verdict_scope": "修好之后通。修之前同一走法是静默失败（面板无任何反馈）。",
+  "date_local": "2026-11-15",
+  "device": {
+    "model": "M2012K11AC",
+    "android_api": 33,
+    "abi": "arm64-v8a",
+    "rom": "MIUI",
+    "package": "org.radiosuite.app",
+    "uid": 10332,
+    "pid": 2074,
+    "adb_serial": "6b65dc1a"
+  },
+  "build_under_test": {
+    "apk_sha256": "fb5b773acd68ceb7512617fd65d2b25124ddb19a0b606f37be2a9cf073d59873",
+    "apk_bytes": 12689808,
+    "signing": "debug keystore（取证用，非发布签名）",
+    "qt": "6.7.3 android_arm64_v8a",
+    "contains_fix": true
+  },
+  "procedure": [
+    "adb shell appops set org.radiosuite.app RECORD_AUDIO default",
+    "adb shell am force-stop org.radiosuite.app",
+    "adb shell pm revoke org.radiosuite.app android.permission.RECORD_AUDIO",
+    "adb logcat -c",
+    "adb shell am start -n org.radiosuite.app/org.qtproject.qt.android.bindings.QtActivity",
+    "adb shell uiautomator dump /sdcard/rs119-ui.xml  # 取 MIUI 三选弹窗的真实 bounds",
+    "adb shell input tap 1644 508                    # 「拒绝」，bounds=[1319,441][1970,576]",
+    "进面板页 → FT8 本机 → 音源=本机麦克风 → 开始解码"
+  ],
+  "permission_state": {
+    "after_deny": {
+      "pm": "android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED ]",
+      "appops": "RECORD_AUDIO: ignore"
+    },
+    "after_restore": {
+      "pm": "android.permission.RECORD_AUDIO: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED ]",
+      "appops": "RECORD_AUDIO: default（Uid mode: foreground）"
+    }
+  },
+  "observations": {
+    "audio_denial_chain_local_time": "17:12:40.658",
+    "audio_denial_chain": [
+      "W ServiceUtilities: Request denied by app op: android.permission.RECORD_AUDIO when start 0",
+      "E AudioPolicyIntefaceImpl: getInputForAttr permission denied: recording not allowed for AttributionSourceState{pid: 2074, uid: 10332, ...}",
+      "E AudioFlinger: createRecord() getInputForAttr return error -1",
+      "E AudioRecord: createRecord_l(-14934236): AudioFlinger could not create record track, status: -1",
+      "E AudioStreamRecord: open(), initCheck() returned -1",
+      "I AAudio: AAudioStreamBuilder_openStream() returns -896 = AAUDIO_ERROR_INTERNAL"
+    ],
+    "panel_status_text": "FT8 麦克风采集启动失败（未授权或设备被占用）：去系统设置给本应用麦克风权限",
+    "panel_status_style": "color: #ff5252; font-weight: bold;",
+    "panel_button_text": "开始解码",
+    "decoding": false,
+    "crashed": false,
+    "ledger_row_before_restore": {
+      "group": "权限",
+      "item": "RECORD_AUDIO",
+      "status": "缺失",
+      "detail": "未授予：被永久拒绝时要去系统设置 → 应用 → 权限里改，应用内无法再弹"
+    },
+    "ledger_row_after_restore": {
+      "group": "权限",
+      "item": "RECORD_AUDIO",
+      "status": "可用",
+      "detail": "已授予：FT8 本机麦克风与 50003 上行可用"
+    }
+  },
+  "artifacts": [
+    "n3-panel-failure.png",
+    "n3-ledger-missing.png",
+    "n3-ledger-restored.png",
+    "n3-audio-denial.log"
+  ],
+  "false_starts": [
+    {
+      "attempt": "appops set org.radiosuite.app RECORD_AUDIO deny（不杀进程）",
+      "result": "无效。面板仍报「本机麦克风 · 已解 1 槽」，logcat 无任何拒绝链。",
+      "reading": "MIUI 上单独设 package 级 app-op deny 不阻断这条 AAudio 采集流；必须走 pm revoke + 系统弹窗「拒绝」，让 MIUI 自己把 app-op 置成 ignore。"
+    },
+    {
+      "attempt": "运行中 pm revoke",
+      "result": "系统直接杀进程（掉回桌面）。",
+      "reading": "Android 撤销运行时权限的既定行为，不是本应用崩溃。判据必须冷启动走。"
+    },
+    {
+      "attempt": "凭截图估算坐标点「拒绝」",
+      "result": "弹窗已自动消解，点空。",
+      "reading": "改用 uiautomator dump 取真实 bounds 再点，一次成功。"
+    }
+  ],
+  "restore_confirmed": true,
+  "notes": [
+    "pm revoke/grant 必须写全限定名 android.permission.RECORD_AUDIO；简写 RECORD_AUDIO 报 Unknown permission。",
+    "本轮只验「如实失败 + 给出可操作路径 + 不崩 + 台账口径一致」，不验任何解码语义。"
+  ]
+}

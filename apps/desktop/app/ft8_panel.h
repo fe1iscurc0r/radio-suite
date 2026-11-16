@@ -38,6 +38,8 @@ class Ft8Panel : public QWidget {
   ~Ft8Panel() override;
 
   bool decoding() const;
+  // 面板自己那一行状态：面板盖住主窗，失败原因不能只发 statusMessage
+  QString statusText() const;
   // utc_ms <= 0 用当前时刻；测试传 0 可立刻从边界开始
   void startDecoding(int64_t utc_ms = -1);
   void stopDecoding();

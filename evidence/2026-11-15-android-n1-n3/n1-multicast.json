@@ -1,0 +1,67 @@
+{
+  "item": "N1 · 组播收包实证（§2b 判据②）",
+  "checklist": "docs/android-真机验收清单.md §2b.2",
+  "verdict": "pass",
+  "verdict_scope": "判据②成立：真机确实收到组播包并出了解码行，组播锁全程持有。同一轮看到的「约 70 秒后彻底停止、连单播也收不到」当晚已定因——屏幕休眠时该机在 IP 层就不收包，不是组播通路的缺陷（详见 n1-rootcause.json）。但「锁屏挂机仍能一直收」这个真实场景还没保活，已单列待办，别把本条的 pass 读成「挂机可用」。",
+  "date_local": "2026-11-15",
+  "device": {
+    "model": "M2012K11AC",
+    "android_api": 33,
+    "abi": "arm64-v8a",
+    "package": "org.radiosuite.app",
+    "uid": 10332,
+    "wlan0_ipv4": "192.168.137.177/24"
+  },
+  "network": {
+    "topology": "PC 移动热点（Windows ICS）→ 手机 wlan0",
+    "pc_iface_ipv4": "192.168.137.1",
+    "group": "224.0.0.1",
+    "port": 2237,
+    "note": "手机已连上与 PC 同网段的 AP，§2b.2 里「wlan0: NO-CARRIER」那条前提已作废。"
+  },
+  "instrument": {
+    "kind": "自写 WSJT-X Decode 发送器（PC 侧）",
+    "wire_format": "照 apps/desktop/wsjtx/wsjtx.cpp 的 writeHeader + writeBody<Decode>：全大端；magic=0xadbccbda、schema=3、type=1；QString = u32 字节数 + UTF-16BE（不是码元数）",
+    "payload_bytes": 105,
+    "socket_options": "IP_MULTICAST_IF=192.168.137.1, IP_MULTICAST_TTL=4",
+    "reproduce_script": "见本目录 README.md 里的 Node 版发送器"
+  },
+  "lock_evidence": {
+    "line": "11-15 16:06:29.896 I WifiService: acquireMulticastLock uid=10332",
+    "release_following": false,
+    "security_exception": false,
+    "note": "uid 10332 与 dumpsys package 对得上；全程无 releaseMulticastLock，即「一拿就放 = join 失败」那种形态没有出现。"
+  },
+  "reception_timeline": [
+    { "window_local": "16:06:47–16:06:55", "sent": 5, "received": 4, "note": "面板出 4 行解码；首包丢失，UDP 组播无 ACK，常见" },
+    { "window_local": "16:07:51–16:08:02", "sent": 10, "received": 4, "note": "只有 T2–T5 进来（16:07:52–56），T1 与 T6–T10 全丢" },
+    { "window_local": "16:08:5x", "sent": 6, "received": 0, "note": "组播全丢" },
+    { "window_local": "16:09:04–16:09:06", "sent": 3, "received": 0, "note": "改单播直发手机 IP，同样 0 收 —— 说明不是组播/IGMP 的问题" }
+  ],
+  "open_defect": {
+    "summary": "收包在约 69 秒后彻底停止（16:06:47 起能收，16:07:56 之后再不收），单播也收不到。",
+    "ruled_out": [
+      "PC 侧发不出去：sendto 全部成功，ping 通",
+      "Windows 防火墙出站：出站不拦，且前 69 秒能收",
+      "组播锁被放掉：logcat 全程无 releaseMulticastLock",
+      "socket 没建起来：手机侧 socket 存在，绑 0.0.0.0:2237，无 drop、无积压",
+      "解码表不回顶（本轮一度误判成这个）：Qt 6.8.3 离屏探针实测 insertRow(0) 不改 verticalScrollBar().value()，且 8 张真机截图每一张都是最新行在顶。该误判已撤回，相关改动全部回退。"
+    ],
+    "not_yet_checked": [
+      "换一个 AP（非 Windows ICS）复现，区分是链路还是应用"
+    ],
+    "status": "已定因（2026-11-15 当晚补测），详见 n1-rootcause.json：屏幕休眠时该机在 IP 层就不收包，与组播通路无关；应用侧另有「退后台不读 socket」一层。原始那轮没记屏幕状态，属机制吻合而非逐字复现。真正的产品缺口是监听期没有 WifiLock/唤醒锁，已单列。"
+  },
+  "root_cause_ref": "n1-rootcause.json",
+  "recapture_attempt": {
+    "at_local": "17:19",
+    "sent": 6,
+    "result": "无法取证",
+    "reason": "同一台手机被另一个 adb 会话抢占前台（ActivityTaskManager: START ... pkg=com.lumo.mobile ... callingPackage com.android.shell），截图拍到的是别的应用。为免干扰对方，本轮停止真机 UI 操作。",
+    "counted_as_evidence": false
+  },
+  "notes": [
+    "本条读数的原始时间线来自 2026-11-15 16:06–16:09 那一轮的现场记录，未落成文件；17:19 的补拍被设备抢占打断，所以这里只登记读数本身，不附截图。",
+    "「join 成功」不算证据这条口径不变：本轮之所以能算判据②通，靠的是真的出了解码行。"
+  ]
+}

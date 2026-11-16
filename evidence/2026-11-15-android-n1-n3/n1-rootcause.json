@@ -1,0 +1,75 @@
+{
+  "item": "N1「收包约 70 秒后彻底停止」· 定因测量",
+  "checklist": "docs/android-真机验收清单.md §2b.2",
+  "date_local": "2026-11-15",
+  "verdict": "已定因：屏幕休眠时该机在 IP 层就不再收包，与组播/IGMP/socket 无关。原始那轮的屏幕状态没记录，所以这是「机制已实测且与症状逐条吻合」，不是当场逐字复现。",
+  "device": {
+    "model": "M2012K11AC",
+    "android_api": 33,
+    "package": "org.radiosuite.app",
+    "uid": 10332,
+    "wlan0_ipv4": "192.168.137.177/24",
+    "screen_off_timeout_system_ms": 600000
+  },
+  "question": "收包停止到底是【链路/组播】的问题，还是【设备休眠 / 应用挂起】？",
+  "method": "不改任何设备设置、不抢前台。用 input keyevent KEYCODE_WAKEUP 维持亮屏，同时读 /proc/net/udp 里本应用 0.0.0.0:2237 那一行的 rx_queue / drops。",
+  "socket_state_during_all_segments": {
+    "proc_net_udp_line": "3755: 00000000:08BD 00000000:0000 07 00000000:00000000 00:00000000 00000000 10332 0 10426944 2 0000000000000000 0",
+    "port_dec": 2237,
+    "bound": true,
+    "note": "全程绑着、uid 对得上。所以「socket 没了」这条先排掉。"
+  },
+  "segment_a_asleep": {
+    "window_local": "17:34:14–17:35:13",
+    "wakefulness": "Asleep",
+    "icmp_sent": 12,
+    "icmp_replies": 0,
+    "note": "12/12 请求超时，整分钟一个回包都没有。手机在休眠态连 ICMP 都不答。"
+  },
+  "segment_b_awake_icmp": {
+    "window_local": "17:36:46–17:37:50",
+    "wakefulness_samples": 6,
+    "wakefulness_all_awake": true,
+    "icmp_sent": 60,
+    "icmp_replies": 60,
+    "loss_pct": 0,
+    "rtt_ms": "min 22 / max 121 / avg 75",
+    "note": "每轮先发 KEYCODE_WAKEUP 再 ping 10 个包，6 轮 60 包全回。"
+  },
+  "segment_b_awake_udp": {
+    "window_local": "17:38:40–17:40:31",
+    "target": "192.168.137.177:2237（单播）",
+    "packets_sent": 90,
+    "wall_clock_s": 110.2,
+    "rx_queue_bytes_start": 0,
+    "rx_queue_bytes_end": 214016,
+    "drops_start": 0,
+    "drops_end": 4,
+    "note": "rx_queue 单调增长，跨过 70 秒仍在涨，直到 socket 缓冲（约 208 KiB）打满后才开始 drops（0→2→3→4）。包持续到达内核，**不存在 70 秒墙**。"
+  },
+  "conclusion": [
+    "链路上没有 70 秒这道墙：亮屏状态下单播连发 110 秒，包一路到内核。",
+    "收不到的分界线是屏幕状态：休眠态 ICMP 0/12，亮屏态 ICMP 60/60。原始现象里「改单播也 0 收」正是这个特征——休眠时不是丢组播，是整机在 IP 层不吭声。",
+    "另一层是应用侧：进程退到后台后不再读 socket，rx_queue 只涨不消，涨满就 drops。这与 Qt Android 在 onPause/onStop 停事件派发一致。"
+  ],
+  "what_this_does_not_prove": [
+    "原始那轮（16:06–16:09）没记录屏幕状态，无法逐字复现「当时屏幕确实灭了」。",
+    "B 段亮屏是靠每 10 秒发一次 input 维持的，严格说混杂了「有输入」这一因素；不过 A 段是纯休眠、无输入，两段差异足够大。",
+    "B 段的 UDP 测量只证到**内核收包**，没证应用解码——当时应用在后台，正是它不读 socket 的那半边。",
+    "休眠后 UDP 那一半（缓冲打满状态下包还到不到）没测：判据本来要看 drops 是否递增，这一项留待下次。"
+  ],
+  "product_gap": {
+    "summary": "应用在监听期间没有任何保活：手机一锁屏，监听就静默失效，而 UI 不会告诉用户「已经收不到了」。",
+    "current_state": "apps/desktop/app/multicast_lock.cpp 只拿了 WifiManager.MulticastLock——那只关掉 Wi-Fi 的组播过滤，不负责让 Wi-Fi 射频或 CPU 保持醒着。",
+    "missing": [
+      "监听期间持有 WifiLock（WIFI_MODE_FULL_HIGH_PERF）",
+      "监听期间持有 PARTIAL_WAKE_LOCK",
+      "面板/状态栏在应用失去前台或屏幕熄灭时如实提示「可能已停收」"
+    ],
+    "impact": "FT8 / WSJT-X 这类要长时间挂机收包的场景，锁屏即失效；用户以为在监听，其实一个字都没进来。"
+  },
+  "artifacts": [
+    "probe/ping-ab.sh —— A/B 的 ICMP 段（只发 KEYCODE_WAKEUP，不改设置）",
+    "probe/udp-awake-probe.js —— 亮屏态单播 + rx_queue/drops 采样"
+  ]
+}

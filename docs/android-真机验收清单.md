@@ -453,15 +453,32 @@ grep Qt6SerialPort_DIR build-android/CMakeCache.txt
 
 ### 2b.2 等网络的一轮（三条，都不需要电台）
 
-三条都卡在同一个前提：手机连上**和 PC 同网段**的 Wi-Fi AP。现在过不了是因为
-`wlan0: NO-CARRIER`（Wi-Fi 开关开着但没连 AP），不是代码问题。
+**前提已成立（2026-11-15）**：手机连上了 PC 的移动热点，`wlan0` = `192.168.137.177/24`，
+PC 侧 `192.168.137.1`。上面 §2b.1 里「`wlan0: NO-CARRIER`，没连 AP」那条前提**已作废**，
+不要再拿它当这三条过不了的理由。逐条读数与可重跑走法见
+[evidence/2026-11-15-android-n1-n3/](../evidence/2026-11-15-android-n1-n3/README.md)。
 
-- [ ] **N1 组播收包实证**（= §2b 判据②，判据①已通）
+- [x] **N1 组播收包实证**（= §2b 判据②，判据①已通）—— **判据②通**；停收已定因为设备休眠（不是组播缺陷），
+  但锁屏挂机保活还没做，单列待办
   操作：PC 起真 WSJT-X，或用我们的编码往 `224.0.0.1:2237` 发一包 Decode；
   手机 WSJT-X 面板「开始监听」（默认组播）。
   判定：面板**出解码行**。`"$ADB" logcat | grep -i multicast` 里本应用 uid 的
   `acquireMulticastLock` 后面**不**该紧跟 `releaseMulticastLock`（一拿就放 = join 失败）。
   ⚠️ 「join 成功」不算证据——不持锁时它也返回成功，必须有真的包进来。
+  **实测（16:06–16:09）**：`16:06:29.896 acquireMulticastLock uid=10332`，全程无 release；
+  16:06:47–55 发 5 收 4（面板真出了解码行），16:07:51–16:08:02 发 10 收 4。判据②到此成立。
+  **但同一轮抓到的新缺陷已定因**：16:07:56 之后**再收不到任何包**，
+  16:08:5x 发 6 收 0，16:09:04–06 **改单播直发手机 IP 也是 0 收** ——
+  说明不是组播/IGMP 的事。当晚补测：休眠态 ICMP **12 发 0 收**（整分钟全超时），
+  保持亮屏 **60 发 60 收**；同一状态下单播连发 110 秒，包一路到内核
+  （`rx_queue` 0→214016 字节，打满之后才开始 drops）——**链路上没有 70 秒这道墙**，
+  分界线是屏幕状态。应用侧另有一层：退到后台就不读 socket，`rx_queue` 只涨不消。
+  ⚠️ 原始那轮没记录屏幕状态，所以是「机制已实测且与症状逐条吻合」，不是逐字复现；
+  详见 `evidence/.../n1-rootcause.json`。
+  ⚠️ 别把「判据②打勾」读成「挂机收包可用」：亮屏能收 ≠ 锁屏还能收。
+  真正要修的产品缺口在**锁屏后挂机监听没有保活**——`multicast_lock.cpp` 只拿
+  `MulticastLock`（只关组播过滤，不保射频/CPU 醒着），缺 `WifiLock` +
+  `PARTIAL_WAKE_LOCK`，UI 也不提示「已经停收」。已单列为待办。
 
 - [ ] **N2 CI-V over TCP 端到端（无电台版，验 #30 那条链路）**
   操作：PC 上 `ncat -l 4533`（或任何能收字节的 TCP 监听），记下 PC 的局域网 IP；
@@ -472,13 +489,41 @@ grep Qt6SerialPort_DIR build-android/CMakeCache.txt
   失联——这正是清单 G-6 判的事，`poll()` 里主动收状态就是为它写的。
   ⚠️ 这条只证明「字节管道 + 链路状态如实」，**不证明任何电台语义**；CI-V 往返要真电台
   （G-1…G-5），别拿它给 G 线打勾。
+  **现在卡在哪（2026-11-15）**：不是手机没连网，是 **PC 的 Windows 防火墙默认拦入站**。
+  PC→手机方向通（N1 的包就是 PC 发出去的），手机→PC 的 TCP 连不上。两条路都要用户拍板，
+  **本轮没动任何防火墙设置**：
+  **A** 开一条限定入站规则（只放 TCP 4533 / UDP 2237，来源限 `192.168.137.0/24`），
+  验的是真 Wi-Fi 路径；**B** `adb reverse tcp:4533 tcp:4533`，不动防火墙，但走 adb 隧道、
+  **绕开 Wi-Fi 这一段**，选它必须在结论里写明「未证 Wi-Fi 路径」。
 
-- [ ] **N3 B1 撤销分支（按纠正后的走法）**
-  操作：`"$ADB" shell su -c 'pm revoke org.radiosuite.app android.permission.RECORD_AUDIO'`
+- [x] **N3 B1 撤销分支（按纠正后的走法）** —— **通（修好之后）**
+  操作：`"$ADB" shell pm revoke org.radiosuite.app android.permission.RECORD_AUDIO`
   → **必须冷启动**（运行中撤销会被系统直接杀进程，见 §2b.1 最后两条）
   → 进 FT8 面板选「本机麦克风」→ 开始解码。
   判定：如实失败并给出去系统设置的路径（台账那一行显示 `缺失`），不崩、不静默。
   验完 `pm grant` 还原，并回台账确认翻回 `可用`。
+  **修之前是不通的**：`Ft8Panel::openCapture()` 失败只 `emit statusMessage(...)`，
+  而 `MainWindow::flashStatus` 写的是**主窗顶栏**、3 秒后自动清空；面板在安卓上是
+  **盖住主窗的独立顶层窗**，所以手机上点「开始解码」**什么反馈都没有**。
+  修法：失败文案写进面板自己那一行（红字加粗）并留到下次动作，`statusMessage` 照发。
+  **实测（17:12，装的是含本修复的包）**：logcat 出全套拒绝链
+  （`Request denied by app op` → `getInputForAttr permission denied` →
+  `createRecord() ... error -1` → `AAUDIO_ERROR_INTERNAL`），面板显示
+  「FT8 麦克风采集启动失败（未授权或设备被占用）：去系统设置给本应用麦克风权限」，
+  按钮回到「开始解码」，不崩；台账该行 `缺失`，`pm grant` 后刷新翻回 `可用`。
+  三个取证坑（都实测过，走法与截图见 evidence 目录）：
+  ① `pm revoke` 必须写**全限定名**，简写报 `Unknown permission`；
+  ② 单设 `appops ... RECORD_AUDIO deny` **不管用**——进程不死、采集流照跑、logcat 无拒绝链，
+  必须 `pm revoke` + 系统弹窗点「拒绝」，让 MIUI 自己把 app-op 置成 `ignore`；
+  ③ 弹窗坐标别照截图估，用 `uiautomator dump` 取 `text="拒绝"` 的真实 bounds 再点。
+
+**本轮撤回的一个误判（留档免得再犯）**：曾把「解码表看着不动了」定成
+`WsjtxPanel` 三张表 `insertRow(0)` 后不回顶。**这个判断是错的**：Qt 6.8.3 离屏探针实测
+40 行 / 视口 4 行时 `insertRow(0)` 之后 `verticalScrollBar().value()` 仍是 0、
+`maximum()` 是 36；8 张真机截图逐张核对，**每一张都是最新行在顶**；加了
+`processEvents()` 的变异版本照样通过，说明那条回归测试是假测试。
+`wsjtx_panel.cpp` 与 `test_wsjtx_ui.cpp` 的改动**已全部回退**。
+「表看着不动」的真实原因是上面 N1 那条**收包停了**。
 
 ---
 
