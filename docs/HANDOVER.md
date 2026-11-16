@@ -519,24 +519,27 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     `evidence/2026-11-15-android-n1-n3/` 的真机读数、截图、拒绝链日志与两个可重跑探针脚本。
   - **#63** `feat/frequency-keypad` @ `19095d2` → merge commit **`56025e6`**。
     数字键盘输频（#97 第③条），8 文件 +296/−0；arm64 交叉编译并出过 APK。
-  - **#64** `fix/waterfall-axis-zoom` @ `ddc094d` → merge commit **`3291ac2`**（= 当前 main）。
+  - **#64** `fix/waterfall-axis-zoom` @ `ddc094d` → merge commit **`3291ac2`**。
     瀑布刻度曾能印出 `-0.2k` / `24.07k`：`setZoom` 的跨度下限用「围绕中心外扩」，贴边窄窗
     被推出 `[0,1]`；而刻度在 `paintGL` 里手写 `* 24.0f`，**没调用**已带单测的
     `columnToAudioHz`——护栏守的是没在跑的那份函数。本条把两套算术并成一个口径。
-  - **#61** `docs/handover-stack-cleared` —— 就是本节这段补记，只改 `docs/HANDOVER.md`；
-    它是四条里最后落地的一条，**写这段时它自己还在 open 状态**。它的 head 和增删行数
-    故意不写在这里：评审过程中的自证与纠错会反复推进这条分支，写一次就过期一次，
-    要准数看 `GET /pulls/61`。
+  - **#61** `docs/handover-stack-cleared` → merge commit **`b42b3f0`**。它是四条里最后落地的
+    一条；落地前这段原本写着「#61 还 open」，那句话连同 `3291ac2 = 当前 main` 一起被自己
+    的合并作废掉了——**这是本文件第 N 次栽在「把当下状态写死」**，所以从现在起
+    本文**不再写「当前 main = <sha>」**，要当前值请 `git rev-parse origin/main`。
+    它的 head 和增删行数同样故意不写：评审过程中的自证与纠错会反复推进分支，写一次过期一次。
   - 合并核验口径：**不核 `merge^{tree} == head^{tree}`**——那条只在 main 没动过时成立，
     连着合几条时后一条的 merge tree 必然同时包含前几条的改动。正确的核法是
     按「PR 相对**它自己 base** 的差集」逐文件比对：该进的字节原样进了、PR 没碰的文件一个没动、
-    旧文件一个没丢。三条都过（`lost=0`、越界覆盖 0、PR 改动未落地 0）。
-  - **11-16 这一串的回滚点**：三条合并前 main = **`a8d1757125bcd13e33966167aeec757978df46f2`**。
-    倒着撤依次 `git revert -m 1 3291ac2`（撤 #64）→ `git revert -m 1 56025e6`（撤 #63）→
-    `git revert -m 1 31eaf8b`（撤 #62）。改写已共享历史要 force-push，**不做**。
-    #61 落地后 main 会再前移一笔，要撤它得从 `GET /pulls/61` 现取 merge sha，别照抄本文。
-- ⚠️ **本节是带日期的快照，不是「现在还剩几条 open」的权威口径。** 要判存量一律按下面的
-  merge-base 规则逐条查，别照抄这里的数字——上一轮「open = 0」就是这么过期的。
+    旧文件一个没丢。四条都过（`lost=0`、越界覆盖 0、PR 改动未落地 0）。
+  - **11-16 这一串的回滚点**：合并前 main = **`a8d1757125bcd13e33966167aeec757978df46f2`**。
+    倒着撤依次 `git revert -m 1 b42b3f0`（撤 #61）→ `git revert -m 1 3291ac2`（撤 #64）→
+    `git revert -m 1 56025e6`（撤 #63）→ `git revert -m 1 31eaf8b`（撤 #62）。
+    改写已共享历史要 force-push，**不做**。本 PR 自己的 merge commit 不在这里写死，
+    它是 `git rev-parse origin/main` 当时读出来的那个。
+- ⚠️ **本节是带日期的快照，不是「现在还剩几条 open」也不是「当前 main 是哪个 sha」的权威口径。**
+  要判存量一律按下面的 merge-base 规则逐条查，要当前 sha 就 `git rev-parse origin/main`——
+  上一轮「open = 0」和这一轮「3291ac2 = 当前 main」都是这么过期的。
 - **判「这条 PR 到底进没进 main」只用 `git merge-base --is-ancestor <sha> origin/main`。**
   不要看 PR 的 open/closed，也不要看 `merged_at`——两者都会骗人：
   - 11-02 23:13 有四笔消息带 `(local equiv)` 的**本地 merge commit** 落上 main
@@ -557,7 +560,7 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   + 快捷交互全家桶（#58：键盘调谐、瀑布点击/框选/滚轮缩放、峰值保持线、AX.25 FCS 位纠错）。
   拆分完整性核过：main 上 `MainWindow::` 定义 61 处，拆成四份后合计仍是 61。
   本地口径 Qt 6.8.3 msvc2022_64：全量构建 + `ctest` **256/256**
-  （2026-11-16 在 `3291ac2f9`（= 当前 main，#62+#63+#64 都已进）的独立 detached 工作树上
+  （2026-11-16 在 `3291ac2f9`（当时 main，#62+#63+#64 都已进）的独立 detached 工作树上
   **实测**，27.99 s，工作树除 build 目录外干净）。历史口径供对照：11-05 是 212/212，
   11-15 的 `a8d175712` 是 246/246。各分支单独量到的数：#62 = 248（+2 FT8 面板用例）、
   #63 = 251（+5 数字键盘用例）、#64 = 249（+3 刻度/缩放窗用例）。
