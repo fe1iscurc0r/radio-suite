@@ -1,0 +1,1 @@
+    WifiLock{radio-suite-listen type=4 uid=1000 workSource=WorkSource{10332}}
