@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "app/WaterfallWidget.h"
 
+#include "app/spectrum_axis.h"
+
 #include <QColor>
 #include <QMouseEvent>
 #include <QPainter>
@@ -164,15 +166,14 @@ void WaterfallWidget::wheelEvent(QWheelEvent* e) {
 }
 
 void WaterfallWidget::setZoom(float lo, float hi) {
-  lo = std::clamp(lo, 0.0f, 1.0f);
-  hi = std::clamp(hi, 0.0f, 1.0f);
-  if (hi - lo < 1.0f / 64.0f) {  // 最小 16 列跨度，再小没有信息量
-    const float c = (lo + hi) * 0.5f;
-    lo = c - 1.0f / 128.0f;
-    hi = c + 1.0f / 128.0f;
-  }
-  zoom_lo_ = lo;
-  zoom_hi_ = hi;
+  // 跨度下限 1/64 ≈ 16 列，再窄没有信息量。算术交给 spectrum_axis：
+  // 之前这里手写「围绕中心外扩」，在 0.99..1.00 这种贴边请求上会把窗推出
+  // [0,1]（算出 0.987..1.003），右边刻度直接报 24.07k —— 越过奈奎斯特。
+  // 正确做法是平移。见 clampZoomWindow 的注释。
+  const auto [clamped_lo, clamped_hi] =
+      radio::app::clampZoomWindow(lo, hi, 1.0 / 64.0);
+  zoom_lo_ = static_cast<float>(clamped_lo);
+  zoom_hi_ = static_cast<float>(clamped_hi);
   line_dirty_ = true;  // 谱线顶点按新区间重映射
   update();
 }
@@ -372,10 +373,16 @@ void WaterfallWidget::paintGL() {
   p.setFont(f);
   p.setPen(QColor(174, 182, 192, 190));
   const int w = width();
-  const float zspan = zoom_hi_ - zoom_lo_;
+  // 与 MainWindow 里 analyzer/synth 的 48000.0 同值；奈奎斯特 = 24 kHz。
+  // 刻度算式必须走 spectrum_axis，别再在这里手写第二套：写死 *24.0f 的那版
+  // 和带单测的那版会各自漂移，而漂移出去的是用户看得见的那一行字。
+  constexpr double kAudioSampleRateHz = 48000.0;
   for (int k = 0; k <= 4; ++k) {
     const int x = static_cast<int>(k / 4.0 * (w - 1));
-    const float khz = (zoom_lo_ + zspan * k / 4.0f) * 24.0f;
+    const float khz =
+        static_cast<float>(radio::app::columnToAudioHz(
+            x, w, kAudioSampleRateHz, zoom_lo_, zoom_hi_) /
+            1000.0);
     const QString label = khz < 9.95f ? QString::number(khz, 'f', 1) + "k"
                                       : QString::number(static_cast<int>(khz + 0.5f)) + "k";
     p.drawText(std::max(0, x - 14), height() - 6, 44, 14,
