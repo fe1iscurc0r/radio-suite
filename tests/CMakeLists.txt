@@ -22,6 +22,7 @@ add_executable(radio_tests
   test_engine_spike.cpp
   # vendored libsgp4 对 Vallado 官方 C++ 输出的逐行对账（纯数学，CI 三平台都跑）
   test_sgp4_vectors.cpp
+  test_satellite.cpp
   # 纯数学，不碰控件：放这里而不是 radio_ui_tests，gui=OFF 的 CI 腿才跑得到
   test_waterfall_axis.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
@@ -32,6 +33,7 @@ target_link_libraries(radio_tests PRIVATE
   radio::wsjtx
   radio::ft8_codec
   radio::sgp4
+  radio::satellite
   radio::dsp
   Qt6::Core
   Catch2::Catch2WithMain)
