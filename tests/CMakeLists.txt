@@ -127,6 +127,7 @@ if(BUILD_GUI)
     test_multicast_lock.cpp
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_client.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/multicast_lock.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/keep_alive.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/wsjtx_panel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/touch_dialog.cpp")
   target_link_libraries(radio_wsjtx_ui_tests PRIVATE

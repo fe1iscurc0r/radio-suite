@@ -172,6 +172,26 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
                       QStringLiteral("单播不受 Wi-Fi 组播过滤影响，是手机端"
                                      "最先能验通的通路"));
     }
+    // 锁屏保活：组播和单播都需要它，所以放在上面那个 if/else 外面。
+    // 这行存在的理由是——没有它，「监听中」在锁屏后是个谎。
+    if (android) {
+      const bool both = in.wifi_lock_held && in.wake_lock_held;
+      rows << makeRow("WSJT-X", "锁屏保活",
+                      both ? ProbeState::Ok : ProbeState::Missing,
+                      both ? QStringLiteral(
+                                 "WifiLock(HIGH_PERF) + PARTIAL_WAKE_LOCK 都在，灭屏仍收")
+                           : QStringLiteral(
+                                 "缺一把（Wi-Fi %1 / CPU %2）：这台机实测一灭屏就在 IP 层"
+                                 "不收货，锁屏挂机等于没在听。%3")
+                               .arg(in.wifi_lock_held ? QStringLiteral("有")
+                                                      : QStringLiteral("无"),
+                                    in.wake_lock_held ? QStringLiteral("有")
+                                                      : QStringLiteral("无"),
+                                    in.keep_alive_error));
+    } else {
+      rows << makeRow("WSJT-X", "锁屏保活", ProbeState::NotApplicable,
+                      QStringLiteral("桌面不适用"));
+    }
   }
 
   // ---- 音频 ----

@@ -57,6 +57,11 @@ struct ReportInput {
   QString wsjtx_group;
   quint16 wsjtx_port = 0;
   bool multicast_lock_held = false;
+  // 锁屏挂机保活的两把锁要分开报：只成一把时的症状与两把都在时不同
+  // （见 app/keep_alive.h 的说明），合成一个 bool 就查不出是哪把没拿到。
+  bool wifi_lock_held = false;
+  bool wake_lock_held = false;
+  QString keep_alive_error;  // 拿锁失败的原因，成功则空
   QString wsjtx_last_error;  // 上一次 start() 失败的原因，成功则空
 
   bool net_audio_active = false;
