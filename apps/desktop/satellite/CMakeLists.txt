@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# radio_satellite：过境几何 + 多普勒 + 上下行预补偿（纯标准库，传播靠 vendored libsgp4）
-add_library(radio_satellite STATIC sat_track.cpp)
+# radio_satellite：过境几何 + 多普勒 + TLE 输入校验（纯标准库，传播靠 vendored libsgp4）
+add_library(radio_satellite STATIC
+  sat_track.cpp
+  tle_check.cpp)
 
 add_library(radio::satellite ALIAS radio_satellite)
 
