@@ -641,11 +641,14 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   11-16 按实际落地情况**拆成三段，别再当一整件重做**：
   - **① 瀑布图即调谐 —— 已在 main**（随 #58 / `a2ddad0`）：`freqPicked`、`setZoom`、
     滚轮以光标为中心缩放、左键框选放大、双击复位、峰值保持线。
-    ⚠️ 本地分支 `ui/quick-interactions`（= 已关闭未合的 #47）对它 main 上的 15 个文件
-    **逐字节相同**，属作废旧基；但**别删**——主工作树 `D:/my git/radio-suite` 正 checkout
-    在它上面，且带着未提交的看板面板 WIP（`kanban_panel.{h,cpp}`、`test_kanban_ui.cpp`
-    及 4 处 CMake/MainWindow 改动），删分支或 clean 会毁掉那份在制工作。
-    新工作一律另建 worktree 从 `origin/main` 起。
+    ⚠️ 本地分支 `ui/quick-interactions`（= 已关闭未合的 #47）是**作废旧基**，但作废的证法
+    要说准：它触及的 15 个文件里 **14 个与 main 逐字节相同**，唯一有差异的
+    `bus_server.cpp` 是 **main 比它多** +40/−9（#55 的链路活性改动），不是分支自己独有的东西。
+    而 `git cherry origin/main ui/quick-interactions` 按 patch-id 仍把三条全报成「不在 main」——
+    因为 #58 是重挂改写过的。**所以判「重挂落地」这类事不能只看 patch-id，要看文件内容。**
+    **别删这条分支**：主工作树 `D:/my git/radio-suite` 正 checkout 在它上面，且带着未提交的
+    看板面板 WIP（`kanban_panel.{h,cpp}`、`test_kanban_ui.cpp` 及 4 处 CMake/MainWindow 改动），
+    删分支或 clean 会毁掉那份在制工作。新工作一律另建 worktree 从 `origin/main` 起。
   - **③ 数字键盘输频 —— 交付在 #63**：手机点 `freq_edit_` 会弹系统软键盘、横屏下盖住
     频率区（看不见当前频率＝盲调），改成自建 12 键、Hz 左移进位；Android 上把输入框
     设成只读从源头堵住软键盘。
