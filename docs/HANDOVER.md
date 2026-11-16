@@ -507,12 +507,24 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 - 脚本注意：`.bat` 必须是 **CRLF**，否则 `^` 续行符失效（本轮踩过）；脚本里自带
   VS 的 CMake/Ninja 路径，不需要 vcvars。
 
-### GitHub 与 CI 现状（2026-11-15 更新：PR 栈已清空，open = 0）
+### GitHub 与 CI 现状（2026-11-16 更新：11-15 清完栈，随后又开出三条）
 
 - 远端：`https://github.com/fe1iscurc0r/radio-suite`（public，GitHub 自动识别
   **AGPL-3.0**），默认分支 `main`（现 **`a8d175712`** = PR #58 的 merge commit，
-  455 个 blob）。**open PR 数 = 0**：46 条已合并，14 条关闭未合（其中 11 条是
-  2026-11-15 这轮清的空壳/被取代件，见下面「11-15 清栈」）。
+  455 个 blob）。11-15 那轮清栈把 open 归零过（46 合 14 关，见下面「11-15 清栈」），
+  **但归零只是那一刻的口径**；到 2026-11-16 又累积 **三条 open**，全部 base main、
+  三平台 CI 全绿、`mergeable_state=clean`、`removed=0`，**逐条等按次合并授权**：
+  - **#61** `docs/handover-stack-cleared` —— 就是本节这段补记，只改 `docs/HANDOVER.md`。
+    它自己的文件数/增删行数**故意不写在这里**：这条分支被自己推进一次，那个数就过期一次，
+    要准数看 `GET /pulls/61`。
+  - **#62** `fix/ft8-panel-capture-failure` @ `a609b54` —— FT8 麦克风采集失败写进
+    **面板自己那一行**（N3 的静默失败：`flashStatus` 落在被面板盖住的主窗顶栏，3 秒还自动
+    清空，手机上根本看不见），13 文件 +595/−16，含 `evidence/2026-11-15-android-n1-n3/`
+    的真机读数、截图、拒绝链日志与两个可重跑探针脚本。
+  - **#63** `feat/frequency-keypad` @ `19095d2` —— 数字键盘输频（#97 第③条），
+    8 文件 +296/−0；arm64 交叉编译并出过 APK。
+- ⚠️ **本节是带日期的快照，不是「现在还剩几条 open」的权威口径。** 要判存量一律按下面的
+  merge-base 规则逐条查，别照抄这里的数字——上一轮「open = 0」就是这么过期的。
 - **判「这条 PR 到底进没进 main」只用 `git merge-base --is-ancestor <sha> origin/main`。**
   不要看 PR 的 open/closed，也不要看 `merged_at`——两者都会骗人：
   - 11-02 23:13 有四笔消息带 `(local equiv)` 的**本地 merge commit** 落上 main
@@ -534,7 +546,11 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   拆分完整性核过：main 上 `MainWindow::` 定义 61 处，拆成四份后合计仍是 61。
   本地口径 Qt 6.8.3 msvc2022_64：全量构建 + `ctest` **246/246**
   （2026-11-15 在 `a8d175712` 的独立 detached 工作树上实测，27.99 s；
-  11-05 时的口径是 212/212）。
+  11-05 时的口径是 212/212）。三条 open 分支各自的口径：#62 = **248/248**（+2 FT8
+  面板用例），#63 = **251/251**（+5 数字键盘用例，26.8 s）；#61 纯文档不改数。
+  ⚠️ 这三条都各自从 `a8d175712` 起、彼此**零文件重叠**，所以合并顺序不影响结果，但
+  **单独一条的数 ≠ 合起来的数**：main 现 246，#62 带 +2、#63 带 +5，两条都合完 main 应是
+  **253/253**（#61 纯文档不加数）。别把 #63 那条分支上量到的 251 当成合并后的目标数。
 - ⚠️ **`QT_NO_FAST_MOVE` / `QT_NO_FAST_SCROLL` 那套（#34）已从 main 撤掉**（经 #40）。
   它在真机上被证伪：设备上 `RSDBG fastmove=[1] fastscroll=[1]` 证明开关确实生效，
   屏幕左端那条滞后带一条没少；另外三条路（父控件/`window()->update()` 逐拍强绘、
@@ -561,10 +577,11 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   现在用 `writeBeginChunked` + `writeChunk`，用例也改成断言
   `transfer-encoding: chunked` 且无 `content-length`（做过变异对照：换回旧写法就 FAIL）。
   另：`apps/web/app.js` 里的 `openSse()` 之前定义了却没被调用，现已接上启动。
-- **没有待合的 PR 了**（open = 0）。最后一条待合件 #41 已于 11-05 合入
-  （PWA 静态件补 `Cache-Control: no-store`；总线不带缓存头时浏览器按启发式缓存旧
-  `app.js`，改完前端同端口刷新还在跑旧脚本，`ignoreCache` 的顶层导航都换不掉子资源
-  ——验前端改动时记得这一手）。
+- **最后一条旧待合件 #41 已于 11-05 合入**（PWA 静态件补 `Cache-Control: no-store`；
+  总线不带缓存头时浏览器按启发式缓存旧 `app.js`，改完前端同端口刷新还在跑旧脚本，
+  `ignoreCache` 的顶层导航都换不掉子资源——验前端改动时记得这一手）。
+  其后 11-15 清栈归零一轮，**再往后又开出上面 #61–#63 三条**，所以「归零」是过程态、
+  不是终态。
 - **PR #1–#14 均已合并进 main**：一键发射编排（`272bc5d`）、旋钮/频差/亚音（`854bf42`）、
   50003 音频链（`5014831`）、APRS 全量工作台（`09222e4`）、WSJT-X UDP 接入（`9b3e9ac`）、
   QSO 直写 HamLog（`bef3eec`）、审查修复 + 算法优化（`f531346`）、50003 设备可选与诊断
@@ -572,7 +589,7 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   （`fff069f`）、AAudio 后端（`f4091f6`）、APK 打包（`5a08fa4`）；每次合并后 main
   推送 CI 三平台 success。
 
-#### 2026-11-15 清栈：9 条合入 + 11 条关闭，open 归零
+#### 2026-11-15 清栈：9 条合入 + 11 条关闭（当时的口径；11-16 已被上面 #61–#63 推翻）
 
 授权口径是「全部合并」，但**字面意义的全合做不到**，先分诊再动手。判据三条：
 `ahead_by=0` ⇒ 空壳；PR 的 `files`/`additions` 是**对它自己的 base** 算的，堆叠 PR
@@ -621,6 +638,24 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
   能 fetch 就能开独立工作树真构建。本轮所有验证都在 detached 工作树里做，
   用户工作区（`ui/quick-interactions` 上的未提交看板改动）全程未碰。
 - **副作用**：#97（瀑布图即调谐 + 单屏操作台）原来卡在 #47，现因 #58 落地而**解锁**。
+  11-16 按实际落地情况**拆成三段，别再当一整件重做**：
+  - **① 瀑布图即调谐 —— 已在 main**（随 #58 / `a2ddad0`）：`freqPicked`、`setZoom`、
+    滚轮以光标为中心缩放、左键框选放大、双击复位、峰值保持线。
+    ⚠️ 本地分支 `ui/quick-interactions`（= 已关闭未合的 #47）对它 main 上的 15 个文件
+    **逐字节相同**，属作废旧基；但**别删**——主工作树 `D:/my git/radio-suite` 正 checkout
+    在它上面，且带着未提交的看板面板 WIP（`kanban_panel.{h,cpp}`、`test_kanban_ui.cpp`
+    及 4 处 CMake/MainWindow 改动），删分支或 clean 会毁掉那份在制工作。
+    新工作一律另建 worktree 从 `origin/main` 起。
+  - **③ 数字键盘输频 —— 交付在 #63**：手机点 `freq_edit_` 会弹系统软键盘、横屏下盖住
+    频率区（看不见当前频率＝盲调），改成自建 12 键、Hz 左移进位；Android 上把输入框
+    设成只读从源头堵住软键盘。
+  - **② 六行单屏操作台 —— 没做**，整页重排必须真机看，不适合盲改。
+  同一轮还记下两个真机事实：**N1 的「约 70 秒停收」已定因为是屏幕休眠**（休眠态 ICMP
+  12 发 0 收；亮屏态 60 发 60 收、单播连发 110 秒包一路进内核 `rx_queue` 0→214016 字节，
+  链路上没有那道墙），根证据在 #62 的 `evidence/2026-11-15-android-n1-n3/n1-rootcause.json`；
+  由此暴露的**监听期缺 `WifiLock` + `PARTIAL_WAKE_LOCK`** 是真缺口，锁屏挂机就静默失效。
+  **N2（CI-V over TCP 端到端）仍卡在 PC 入站防火墙**，等拍板：限定入站规则（验真 Wi-Fi）
+  vs `adb reverse`（不动防火墙但绕开 Wi-Fi 段，结论必须写明）。本轮没动过任何防火墙设置。
 - **CI 三平台全绿**只对 `main` 成立；`feat/arch-cleanup` 在 bus 独立成库后曾连续 5 次
   全红（run 102–106），成因见上面那条，修在 #38。
 - 推码注意：本机 **git 协议到 github.com:443 常不通**（api.github.com 通）。
