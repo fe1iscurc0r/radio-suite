@@ -143,4 +143,8 @@ std::vector<Pass> find_passes(const libsgp4::Tle& tle, const Station& st,
   return out;
 }
 
+double tsince_min(const libsgp4::Tle& tle, const libsgp4::DateTime& now_utc) {
+  return (now_utc - tle.Epoch()).TotalMinutes();
+}
+
 }  // namespace radio::satellite

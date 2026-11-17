@@ -2,7 +2,8 @@
 # radio_satellite：过境几何 + 多普勒 + TLE 输入校验（纯标准库，传播靠 vendored libsgp4）
 add_library(radio_satellite STATIC
   sat_track.cpp
-  tle_check.cpp)
+  tle_check.cpp
+  tle_source.cpp)
 
 add_library(radio::satellite ALIAS radio_satellite)
 

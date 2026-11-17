@@ -176,3 +176,27 @@ TEST_CASE("satellite: pass windows bracket the elevation floor",
   // 空区间不该抛也不该编出一个过境。
   CHECK(radio::satellite::find_passes(tle, kBeijing, 100.0, 100.0, 5.0).empty());
 }
+
+// ---- W2.1 时基（WO-275 §5.2）----
+// 判据来自 libsgp4 自己的历元数学：tsince = (now − epoch) 分钟。
+// 0.1 分钟量化是 TLE 数据特性，写成量级说明，不当 bug 修。
+TEST_CASE("satellite: tsince time base", "[satellite]") {
+  const libsgp4::Tle tle(kLine1, kLine2);
+  using libsgp4::TimeSpan;
+
+  // 历元前 10 分钟 → 负 tsince（反向传播属正常值）
+  const auto epoch = tle.Epoch();
+  CHECK(radio::satellite::tsince_min(tle, epoch - TimeSpan(0, 0, 10, 0)) ==
+        Catch::Approx(-10.0).margin(0.01));
+
+  // 跨年：2006-06-25 历元 → 2007-01-02，约 190 天量级
+  const libsgp4::DateTime y2007(2007, 1, 2, 0, 0, 0);
+  const double cross = radio::satellite::tsince_min(tle, y2007);
+  CHECK(cross > 180.0 * 24 * 60);
+  CHECK(cross < 200.0 * 24 * 60);
+
+  // D-2：两天后的 tsince ≈ 2880 min（容差含 0.1 min 量化）
+  const auto d2 = epoch + TimeSpan(2, 0, 0, 0);
+  CHECK(radio::satellite::tsince_min(tle, d2) ==
+        Catch::Approx(2880.0).margin(0.11));
+}

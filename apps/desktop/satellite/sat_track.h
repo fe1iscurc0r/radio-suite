@@ -33,6 +33,12 @@ struct Look {
 // 不吞——吞掉的话「算不出」就变成「算出来是 0」，那是更难查的错。
 Look look_at(const libsgp4::Tle& tle, double tsince_min, const Station& st);
 
+// ---- W2.1 时基 ----
+// tsince = (UTC_now − TLE 历元) 的分钟数。跨日/跨年/闰秒无所谓：SGP4 用 UT1≈UTC，
+// 本仓不引 EOP 自算（总纲 §5.2）。TLE 第 1 行历元只有 0.1 分钟量化（±3 s），
+// 是数据特性不是 bug，不修。历元之前 tsince 为负，属正常值（SGP4 支持反向传播）。
+double tsince_min(const libsgp4::Tle& tle, const libsgp4::DateTime& now_utc);
+
 // 单程多普勒：ṙ>0（远离）⇒ 收到的频率降低。返回的是「相对标称的偏移量」，
 // 不是绝对频率，调用方自己加。
 double doppler_hz(double rf_hz, double range_rate_kms);

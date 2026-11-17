@@ -20,10 +20,12 @@ add_executable(radio_tests
   test_ft8_tx.cpp
   test_transport_serial.cpp
   test_engine_spike.cpp
-  # vendored libsgp4 对 Vallado 官方 C++ 输出的逐行对账（纯数学，CI 三平台都跑）
+  # vendored libsgp4 对 Vallado 官方 C++ 校验和语料逐行对账（纯数学，CI 三平台都跑）
   test_sgp4_vectors.cpp
   test_satellite.cpp
   test_tle_check.cpp
+  # W2.2 星历来源：三行组解析/隔离区/缓存往返/时效（纯离线，不联网）
+  test_tle_source.cpp
   # 纯数学，不碰控件：放这里而不是 radio_ui_tests，gui=OFF 的 CI 腿才跑得到
   test_waterfall_axis.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
