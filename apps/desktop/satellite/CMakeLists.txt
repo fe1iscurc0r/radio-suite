@@ -3,7 +3,8 @@
 add_library(radio_satellite STATIC
   sat_track.cpp
   tle_check.cpp
-  tle_source.cpp)
+  tle_source.cpp
+  track_policy.cpp)
 
 add_library(radio::satellite ALIAS radio_satellite)
 

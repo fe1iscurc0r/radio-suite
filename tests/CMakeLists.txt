@@ -26,6 +26,8 @@ add_executable(radio_tests
   test_tle_check.cpp
   # W2.2 星历来源：三行组解析/隔离区/缓存往返/时效（纯离线，不联网）
   test_tle_source.cpp
+  # W2.4 写频策略：死区/间隔/发射中拒写（纯离线）
+  test_track_policy.cpp
   # 纯数学，不碰控件：放这里而不是 radio_ui_tests，gui=OFF 的 CI 腿才跑得到
   test_waterfall_axis.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
