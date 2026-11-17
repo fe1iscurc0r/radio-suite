@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // radio-suite · tests/fake_rsba1_server.h — 本机环回用的假 RS-BA1 V2 电台
 //
-// 只被测试目标链接（不进产品二进制），模拟电台侧三信道：
+// 只被测试目标与台架工具 fake_rig 链接（不进产品二进制/APK：bench 开关默认 OFF），
+// 模拟电台侧三信道：
 //   50001 ctrl  ：pkt3/4/6、login、auth(0x02/0x05)、0xA8 下推、ConnectTrans、deauth
 //   50002 serial：pkt3/4/6、serial open/close、CI-V 透传（双向）
 //   50003 audio ：pkt3/4/6、20ms 帧的音频包（24B 头，kappanhang sendPart1/2 布局）
@@ -51,6 +52,15 @@ class FakeRsba1Server {
   uint32_t new_client_sid = 0x22222222;  // ConnectTrans 应答 [12:16]
   std::string model = "IC-705";
 
+  // ---- 台架参数（start 前设置；默认 = 既有环回随机端口行为，测试零改动）----
+  // 事实基准不变：应答仍与 tests/fixtures/*.hex 逐字节一致。
+  QHostAddress bind_address{QHostAddress::LocalHost};
+  uint16_t ctrl_port = 0;    // 0 = 系统挑（既有测试行为）
+  uint16_t serial_port = 0;
+  uint16_t audio_port = 0;
+  int handshake_delay_ms = 0;     // slow-handshake：login 应答前一次性拖 N ms
+  int32_t login_result_code = 0;  // 非 0 = login 应答带拒绝结果码（auth-deny）
+
   // ---- 下行注入（下个服务循环发出）----
   void sendCiv(std::span<const uint8_t> frame);      // serial 信道，bulk 帧
   void sendAudio(std::span<const uint8_t> pcm, uint16_t seq);  // audio 信道
@@ -59,13 +69,17 @@ class FakeRsba1Server {
   std::vector<std::vector<uint8_t>> clientCivFrames();
   std::vector<std::vector<uint8_t>> clientAudioPackets();
   std::vector<std::vector<uint8_t>> clientAudioFrames();  // part1+part2 重组
+  // 排水读（台架长跑防无界增长；测试用的快照读保持不变）
+  std::vector<std::vector<uint8_t>> drainCivFrames();
+  std::vector<std::vector<uint8_t>> drainAudioFrames();
   bool serialOpened();
   bool serialClosed();
   bool gotDeauth();
   int disconnectCount();
 
   // ---- 应答报文构造（静态；与 fixtures 逐字节对照用）----
-  static std::vector<uint8_t> buildLoginReply(std::span<const uint8_t, 6> auth6);
+  static std::vector<uint8_t> buildLoginReply(std::span<const uint8_t, 6> auth6,
+                                              int32_t result_code = 0);
   static std::vector<uint8_t> buildAuthReply(uint8_t magic);
   static std::vector<uint8_t> buildA8Packet(std::span<const uint8_t, 16> reply16);
   static std::vector<uint8_t> buildConnectTransReply(uint32_t server_sid,
@@ -94,6 +108,7 @@ class FakeRsba1Server {
   void handleAudioPayload(const std::vector<uint8_t>& d);
   void flushInjections();
   void send(Chan& ch, std::span<const uint8_t> data);
+  void maybeHandshakeDelay();  // 服务线程内：slow-handshake 场景的一次性拖时
 
   std::thread thread_;
   std::atomic<bool> stop_{false};
@@ -119,4 +134,7 @@ class FakeRsba1Server {
   uint32_t run_server_sid_ = 0;
   uint32_t run_client_sid_ = 0;
   std::string run_model_;
+  int run_handshake_delay_ms_ = 0;
+  int32_t run_login_result_code_ = 0;
+  bool handshake_delayed_ = false;  // 只在服务线程内读写
 };
