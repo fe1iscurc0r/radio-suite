@@ -44,6 +44,8 @@ radio::app::ReportInput androidInput() {
   in.wsjtx_group = QStringLiteral("224.0.0.1");
   in.wsjtx_port = 2237;
   in.multicast_lock_held = true;
+  in.wifi_lock_held = true;
+  in.wake_lock_held = true;
   in.audio_output_devices = 1;
   in.net_audio_active = true;
   in.logbook_available = true;
@@ -224,4 +226,85 @@ TEST_CASE("device report: link liveness comes from replies, never from sends",
   CHECK(age->state == radio::app::ProbeState::Missing);
   // 断链的措辞必须点破「不许再显示在线」，这是 G-6 的口径
   CHECK(age->note.contains(QStringLiteral("在线")));
+}
+
+TEST_CASE("device report: android keep-alive needs BOTH locks and says which is missing",
+          "[report][keepalive]") {
+  // 两把都在才算保活
+  const auto good = radio::app::buildDeviceReport(androidInput());
+  const auto* ok = rowOf(good, QStringLiteral("锁屏保活"));
+  REQUIRE(ok != nullptr);
+  CHECK(ok->state == radio::app::ProbeState::Ok);
+  CHECK(ok->note.contains(QStringLiteral("两把都在")));
+  // 绿灯只许报「锁在手」，不许替用户断言「灭屏收到了包」——那一半要靠实测，
+  // 拿持有锁当收货证据就是这行文案最初的说法，改回来就靠这条拦住。
+  CHECK_FALSE(ok->note.contains(QStringLiteral("仍收")));
+  CHECK_FALSE(ok->note.contains(QStringLiteral("这台机")));
+
+  // 只有 WifiLock：包到得了内核，但 CPU 一suspend 就没人读 —— 症状是「收得到却不显示」
+  auto wifi_only = androidInput();
+  wifi_only.wake_lock_held = false;
+  const auto rows_wifi = radio::app::buildDeviceReport(wifi_only);
+  const auto* miss1 = rowOf(rows_wifi, QStringLiteral("锁屏保活"));
+  REQUIRE(miss1 != nullptr);
+  CHECK(miss1->state == radio::app::ProbeState::Missing);
+  CHECK(miss1->note.contains(QStringLiteral("Wi-Fi 有")));
+  CHECK(miss1->note.contains(QStringLiteral("CPU 无")));
+
+  // 只有 WakeLock：CPU 醒着但射频打盹 —— 反过来，症状是「整机不收货」
+  auto wake_only = androidInput();
+  wake_only.wifi_lock_held = false;
+  const auto rows_wake = radio::app::buildDeviceReport(wake_only);
+  const auto* miss2 = rowOf(rows_wake, QStringLiteral("锁屏保活"));
+  REQUIRE(miss2 != nullptr);
+  CHECK(miss2->state == radio::app::ProbeState::Missing);
+  CHECK(miss2->note.contains(QStringLiteral("Wi-Fi 无")));
+
+  // 拿锁失败的原因要能带出来，否则台账只能说「没保活」说不出为什么
+  auto with_reason = androidInput();
+  with_reason.wifi_lock_held = false;
+  with_reason.wake_lock_held = false;
+  with_reason.keep_alive_error = QStringLiteral("manifest 漏了 WAKE_LOCK");
+  const auto rows_err = radio::app::buildDeviceReport(with_reason);
+  CHECK(rowOf(rows_err, QStringLiteral("锁屏保活"))
+            ->note.contains(QStringLiteral("manifest 漏了 WAKE_LOCK")));
+}
+
+TEST_CASE("device report: unicast listening still needs the keep-alive row",
+          "[report][keepalive]") {
+  // 这是本行存在的核心理由：单播不受组播过滤影响，但**照样受锁屏省电影响**。
+  // 只看「组播锁」那一行会以为单播什么都不用管。
+  auto in = androidInput();
+  in.wsjtx_group = QStringLiteral("127.0.0.1");
+  const auto rows = radio::app::buildDeviceReport(in);
+  CHECK(rowOf(rows, QStringLiteral("Wi-Fi 组播锁")) == nullptr);  // 单播不该出这行
+  const auto* keep = rowOf(rows, QStringLiteral("锁屏保活"));
+  REQUIRE(keep != nullptr);
+  CHECK(keep->state == radio::app::ProbeState::Ok);
+
+  in.wifi_lock_held = false;
+  in.wake_lock_held = false;
+  const auto rows_bad = radio::app::buildDeviceReport(in);
+  CHECK(rowOf(rows_bad, QStringLiteral("锁屏保活"))->state ==
+        radio::app::ProbeState::Missing);
+}
+
+TEST_CASE("device report: not listening prints no keep-alive row", "[report][keepalive]") {
+  auto in = androidInput();
+  in.wsjtx_listening = false;
+  const auto rows = radio::app::buildDeviceReport(in);
+  CHECK(rowOf(rows, QStringLiteral("锁屏保活")) == nullptr);
+}
+
+TEST_CASE("device report: desktop does not pretend to need the keep-alive",
+          "[report][keepalive]") {
+  auto in = androidInput();
+  in.platform = QStringLiteral("windows");
+  in.android_api = 0;
+  in.wifi_lock_held = false;   // 桌面上这两把本来就不存在，必须是 NA 而不是 Missing
+  in.wake_lock_held = false;
+  const auto rows = radio::app::buildDeviceReport(in);
+  const auto* keep = rowOf(rows, QStringLiteral("锁屏保活"));
+  REQUIRE(keep != nullptr);
+  CHECK(keep->state == radio::app::ProbeState::NotApplicable);
 }

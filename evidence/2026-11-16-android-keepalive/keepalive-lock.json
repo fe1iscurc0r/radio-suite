@@ -1,0 +1,126 @@
+{
+  "item": "N4 · 监听期保活（WifiLock + PARTIAL_WAKE_LOCK）",
+  "checklist": "docs/android-真机验收清单.md §2b.2 N4",
+  "work_order": "#121",
+  "verdict": "partial",
+  "verdict_scope": "WifiLock 已真机确证持有；PARTIAL_WAKE_LOCK 被这台 ROM 拒（权限齐，是框架级拒绝）；「灭屏后包能不能到内核」本轮没量——手机没连任何 AP，PC 也不在与 N1 同一网段。不许把 partial 读成已通过。",
+  "date_local": "2026-11-16",
+  "device": {
+    "model": "M2012K11AC",
+    "android_api": 33,
+    "abi": "arm64-v8a",
+    "rom": "MIUI V14.0.6.0.TKHCNXM (V140)",
+    "package": "org.radiosuite.app",
+    "uid": 10332,
+    "pid": 4364,
+    "adb_serial": "6b65dc1a"
+  },
+  "build_under_test": {
+    "apk_sha256": "9588b659bfc0e2dfdec26dbf0a343a2b12d5a31d6f820de5dc06f2a2d1f1965c",
+    "apk_sha256_provenance": "构建产物 aligned.apk 与 adb install -r 后从机上 pm path 拉回的 base.apk 两次 sha256sum 相同（BYTE_MATCH=YES）。本轮共四次装包，四次都做了这个比对。",
+    "earlier_installs_this_session": [
+      "26797284883c32ad91710a6e78b36d50160b0099674da20fce1d3fe89aeb63fb（JNI 签名错的初版，装机后由 logcat 抓到 NoSuchMethodError）",
+      "f3265c3ae8368b92cc7724b314dd7b224376da0c25cac42728998e20408634d0（签名修对，但异常被 Qt 吞掉，台账原因失真）",
+      "ab88a233dd817899b58325094498715c749659d294e933fabd991b035ef8a406（自己接异常，台账给出 Java 原话；但文案仍把设备专属结论硬编进通用字符串）",
+      "9588b659bfc0e2dfdec26dbf0a343a2b12d5a31d6f820de5dc06f2a2d1f1965c（本版：文案不绑设备 + 反向护栏；本目录读数出自这一版）"
+    ],
+    "signing": "debug keystore；注意 apksigner verify --print-certs 回显的证书 SHA-256 是 fb5b773a…，那是密钥属性、每次签名都一样，不是 APK 身份（见 2026-11-15-android-n1-n3/README.md 勘误）",
+    "qt": "6.7.3 android_arm64_v8a",
+    "manifest_permission_confirmed": "android.permission.WAKE_LOCK（aapt2 dump permissions 回显）"
+  },
+  "observations": {
+    "wifilock_system_side": "WifiLock{radio-suite-listen type=4 uid=1000 workSource=WorkSource{10332}}  ← dumpsys wifi；type=4 = WIFI_MODE_FULL_HIGH_PERF",
+    "wifilock_service_log": "WifiService: acquireWifiLock uid=10332 lockMode=4",
+    "wakelock_system_side": "dumpsys power | grep radio-suite-listen → 空（命中数 0）",
+    "wakelock_java_exception": "java.lang.IllegalArgumentException: Must specify a valid wake lock level.  at android.os.PowerManager.validateWakeLockParameters(PowerManager.java:1330) at android.os.PowerManager.newWakeLock(PowerManager.java:1293)",
+    "ledger_row": {
+      "group": "WSJT-X",
+      "item": "锁屏保活",
+      "status": "缺失",
+      "detail": "缺一把（Wi-Fi 有 / CPU 无）：灭屏后 CPU 会 suspend、射频进省电，此时「监听中」不等于在收货。newWakeLock 失败：java.lang.IllegalArgumentException: Must specify a valid wake lock level."
+    },
+    "ledger_row_wording_rework": {
+      "first_printing_build": "ab88a233…",
+      "first_printing_detail": "缺一把（Wi-Fi 有 / CPU 无）：这台机实测一灭屏就在 IP 层不收货，锁屏挂机等于没在听。newWakeLock 失败：java.lang.IllegalArgumentException: Must specify a valid wake lock level.",
+      "why_changed": [
+        "「这台机实测…」是 M2012K11AC 上的测量结论，却硬编在所有安卓设备都会跑的运行时字符串里——在拿得到 wake lock 的机器上这句就是谎。",
+        "OK 分支原文「WifiLock(HIGH_PERF) + PARTIAL_WAKE_LOCK 都在，灭屏仍收」更严重：拿「锁在手」当「实测到货」的绿灯，而灭屏收包恰恰是本条还没量的那一半。"
+      ],
+      "guard_added": "test_device_report.cpp 里两条反向断言：CHECK_FALSE(note 含「仍收」)、CHECK_FALSE(note 含「这台机」)。",
+      "mutation_proof": "把 OK 分支文案改回含「灭屏仍收」⇒ #260 FAIL（test_device_report.cpp:241）；改回后 263/263。",
+      "final_verified_on_device": "22:24，包 9588b659…，真机台账即 ledger_row.detail 那段"
+    },
+    "listening_row": {
+      "group": "WSJT-X",
+      "item": "监听",
+      "status": "可用",
+      "detail": "127.0.0.1:2237"
+    },
+    "kernel_socket": "00000000:08BD（0.0.0.0:2237）在 /proc/net/udp，uid 10332 —— 监听确实在内核层",
+    "lock_failure_does_not_break_listening": true
+  },
+  "rom_fact": {
+    "claim": "这台 MIUI V140 / API 33 的 PowerManager.validateWakeLockParameters 不接受 level 0（AOSP 的 PARTIAL_WAKE_LOCK）",
+    "how_measured": "adb pull /system/framework/framework.jar → 解出 classes3.dex → dexdump 定位 1fe9ec（该方法）→ 按 ART sparse-switch-payload 布局直接读字节：ident_format=0x0200、size=7、keys=[1,6,10,26,32,64,128]、targets=[11]*7。0 不在集合里。",
+    "control": "同一份 dump 里 PowerManager.newWakeLock:(ILjava/lang/String;)Landroid/os/PowerManager$WakeLock; 存在，与 logcat 里 GMS 持有 PARTIAL_WAKE_LOCK 'NlpWakeLock' 并存——所以「别的 app 能拿到」与「这台机的 2 参 public 入口拒 0」两件事同时为真，我们没有把后者解释掉，只是记下测到的形状。",
+    "not_done": "没有拿 level=1 去凑。1 不是公开常量，凑上只在这台机成立，属于把 ROM 私有行为写进产品代码。"
+  },
+  "jni_signature_ground_truth": {
+    "createWifiLock": "(ILjava/lang/String;)Landroid/net/wifi/WifiManager$WifiLock;  ← 嵌套类；android/net/wifi/WifiLock 不存在",
+    "newWakeLock": "(ILjava/lang/String;)Landroid/os/PowerManager$WakeLock;  ← android/os/，不是 android/os/power/（那是另一个同名不同门的类）",
+    "how_measured": "createWifiLock 不在 framework.jar 里（Wi-Fi 已进 mainline APEX），要 adb pull /apex/com.android.wifi/javalib/framework-wifi.jar 再 dexdump；newWakeLock 在 framework.jar classes3.dex。",
+    "cost": "两处都写错过。桌面 263 项测试 + arm64 交叉编译 + aapt2 权限核对全部通过，抓不到它——只有真机能。"
+  },
+  "diagnostic_defect_found": {
+    "what": "QJniObject::callObjectMethod 会替调用方打印并清掉挂起的 Java 异常，之后 ExceptionCheck 恒为空",
+    "consequence_before_fix": "台账把真实原因说成「newWakeLock 返回空对象」；更糟的是 acquire() 若抛异常会被当成成功、把 wifi_held_/wake_held_ 置真，即报「已持有」而实际没持有（假阳性）",
+    "fix": "两把锁的 create/acquire 全部改用 JNIEnv 直接调（jni_call_int_string / jni_call_void），异常自己 ExceptionOccurred + ExceptionClear 接住并 toString 进台账",
+    "proof": "本版台账原文含 java.lang.IllegalArgumentException 逐字文本；同时新进程 logcat 里 radio-suite 标签不再出现该异常栈（异常被我们消费，不再由 Qt 打印）"
+  },
+  "procedure": [
+    "adb install -r aligned.apk（不卸载，保住本机 HamLog 与设置）",
+    "am start -n org.radiosuite.app/org.qtproject.qt.android.bindings.QtActivity",
+    "面板页 → WSJT-X 接入（面板里默认组播 224.0.0.1 会 join 失败：本机多网卡，见 wsjtx_client.cpp 注释）",
+    "设置 → 组播/单播地址 = 127.0.0.1 → OK（bind 一直是 0.0.0.0，非组播值只是跳过 join，外部单播仍进得来）",
+    "dumpsys wifi / dumpsys power grep radio-suite-listen",
+    "面板页 → 自检台账 → 滚动到 WSJT-X 组，截图"
+  ],
+  "false_starts": [
+    {
+      "attempt": "初版按 android/net/wifi/WifiLock 写签名",
+      "result": "logcat: NoSuchMethodError no non-static method createWifiLock(ILjava/lang/String;)Landroid/net/wifi/WifiLock;"
+    },
+    {
+      "attempt": "据此推断「API 33 起只有静态 createWifiLock(Context,int,String)」并加 sdkVersion 分派",
+      "result": "换报 no static method。这条推断是错的：真原因是返回类型写成不存在的顶层类。已把分派代码删掉，只留设备核过的形状。"
+    },
+    {
+      "attempt": "签名修对后读台账找原因",
+      "result": "台账说「返回空对象」，与 logcat 里的 IllegalArgumentException 不一致 → 查出 Qt 吞异常这一层"
+    },
+    {
+      "attempt": "点完「开始监听」再看锁",
+      "result": "监听 2 秒后自停、锁被释放。真实原因是设置保存时面板已自动重启监听，我随后那一下点击把 toggle 按钮按成了停止——是我操作重复，不是产品缺陷。"
+    },
+    {
+      "attempt": "adb shell cmd power acquire-wake-lock 做旁证",
+      "result": "这台 MIUI 回 Unknown command，旁证路线不成立，改走 dexdump 读字节码。"
+    }
+  ],
+  "what_this_does_not_prove": [
+    "没证明灭屏后包能到内核——这是 #121 的验收目标本身，本轮没量（无同网段对端）。",
+    "没证明 WifiLock 单独足以解决 N1。",
+    "没证明 PARTIAL_WAKE_LOCK 在任何别的机器上不可得；只测了这台 MIUI V140 / API 33。",
+    "没测组播通路（本轮走的是单播 bind，组播 join 在这台 PC/手机组合上本来就失败）。",
+    "没测锁释放路径的真机行为（release 只在桌面用例里验过不泄漏）。"
+  ],
+  "artifacts": [
+    "n4-ledger-keepalive-row.png",
+    "dumpsys-wifilock.txt",
+    "dumpsys-power.txt"
+  ],
+  "next": [
+    "手机与 PC 回到同一网段（N1 那晚是 PC 移动热点 192.168.137.0/24），再跑 evidence/2026-11-15-android-n1-n3/probe/ 的休眠段，判 WifiLock 够不够。",
+    "若不够：这台机上 public newWakeLock 走不通，得另找路子（前台服务 / 换机验证），并把它记成 ROM 级限制而不是产品缺陷。"
+  ]
+}

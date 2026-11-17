@@ -488,6 +488,40 @@ PC 侧 `192.168.137.1`。上面 §2b.1 里「`wlan0: NO-CARRIER`，没连 AP」�
   `MulticastLock`（只关组播过滤，不保射频/CPU 醒着），缺 `WifiLock` +
   `PARTIAL_WAKE_LOCK`，UI 也不提示「已经停收」。已单列为待办。
 
+- [ ] **N4 监听期保活（#121：WifiLock + PARTIAL_WAKE_LOCK）** —— **WifiLock 真机已确证拿到；
+  WakeLock 被这台 ROM 拒；灭屏能不能收到包还没量（缺同一网段的对端）**
+  操作：面板页 → WSJT-X 接入 → 「开始监听」（组播地址留 `224.0.0.1` 会 join 失败，
+  改「设置 → 组播/单播地址」填 `127.0.0.1` 即可——`bind` 用的始终是 `0.0.0.0`，
+  非组播值只是跳过 join，外部单播照样进得来）。
+  判定（**不看 UI，看系统侧**，UI 只是它的投影）：
+  ① `"$ADB" shell "dumpsys wifi | grep radio-suite-listen"` →
+  `WifiLock{radio-suite-listen type=4 uid=1000 workSource=WorkSource{10332}}`，`type=4` = `WIFI_MODE_FULL_HIGH_PERF`；
+  ② `"$ADB" shell "dumpsys power | grep radio-suite-listen"` → 这台机上**为空**（见下面的 ROM 事实）；
+  ③ 台账「锁屏保活」= 缺失，且文案点名缺哪把、为什么。
+  **实测（22:24，包 sha256 `9588b659…`，装后回拉字节一致）**：① 通、② 空、③ 通，台账原文
+  `缺一把（Wi-Fi 有 / CPU 无）：灭屏后 CPU 会 suspend、射频进省电，此时「监听中」不等于在收货。
+  newWakeLock 失败：java.lang.IllegalArgumentException: Must specify a valid wake lock level.`
+  ⚠️ 这一行的文案返工过一次，原因值得记：初版（包 `ab88a233…`）写的是「**这台机**实测一灭屏
+  就在 IP 层不收货」，把 M2012K11AC 上的测量结论硬编进**所有**安卓设备都会跑的运行时字符串——
+  在拿得到 wake lock 的机器上它就成了谎；OK 分支更糟，写的是「两把都在，**灭屏仍收**」，
+  等于拿「锁在手」当「实测到货」的绿灯，而那正是本条还没量的那一半。
+  现在 OK 分支只报锁的状态并明写「不等于已经验到灭屏真收到包」，`test_device_report.cpp`
+  加了 `CHECK_FALSE(含「仍收」)` 与 `CHECK_FALSE(含「这台机」)` 两条反向护栏；
+  变异对照：把过度断言的文案改回去 ⇒ #260 FAIL，改回后 263/263。
+  🔴 **ROM 事实（对着设备 dex 核过，不是猜的）**：这台 MIUI V140 / API 33 上
+  `PowerManager.validateWakeLockParameters` 接受的 level 集合是 `{1, 6, 10, 26, 32, 64, 128}`，
+  **AOSP 的第一项 0（`PARTIAL_WAKE_LOCK`）在这里不是合法值**。权限是齐的
+  （`aapt2 dump permissions` 里有 `android.permission.WAKE_LOCK`），所以这不是我们的 manifest 问题，
+  也不是「没弹窗」；不拿 level=1 去凑，因为 1 不是公开常量，凑上了也只在这台机上成立。
+  ⚠️ 顺带修掉一个**诊断说谎**的坑：`QJniObject::callObjectMethod` 会替调用方打印并清掉挂起的 Java 异常，
+  回头再 `ExceptionCheck` 就什么都没了——于是台账只能写「返回空对象」，把真原因说成另一个原因；
+  而 `acquire()` 若抛异常更会被当成成功、报「已持有」。现在两把锁都直接用 `JNIEnv` 调、异常自己接。
+  **还没做的那半**：灭屏后包能不能到内核（判据仍是 `rx_queue` 递增，走法同 N1 的
+  `evidence/2026-11-15-android-n1-n3/probe/`）。现在手机 Wi-Fi 只是 enabled、没连任何 AP，
+  PC 也不在当初那个 `192.168.137.0/24` 上，所以**这一条本轮没量，不许写成已通过**。
+  它决定的是「只有 WifiLock 够不够」：够 ⇒ 这把 ROM 拒掉的 WakeLock 只是遗憾；
+  不够 ⇒ #121 在这台机上只能靠前台服务之类的别的路子。
+
 - [ ] **N2 CI-V over TCP 端到端（无电台版，验 #30 那条链路）**
   操作：PC 上 `ncat -l 4533`（或任何能收字节的 TCP 监听），记下 PC 的局域网 IP；
   手机「连接…」→ 链路选「CI-V over TCP（串口网关透传）」→ 网关 IP 填 PC 的 IP →

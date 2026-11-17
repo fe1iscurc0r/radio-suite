@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 
+#include "app/keep_alive.h"
 #include "app/multicast_lock.h"
 #include "wsjtx/wsjtx.h"
 
@@ -38,6 +39,13 @@ class WsjtxClient : public QObject {
 
   // 组播监听时是否真的握着 Android Wi-Fi 组播锁（非 Android 恒 false：不适用）。
   bool multicastLockHeld() const { return multicast_lock_.held(); }
+  // 监听期间是否握着「Wi-Fi 高性能锁 + CPU 唤醒锁」。锁屏挂机全靠它：
+  // 没有它，手机一灭屏整机在 IP 层就不收货，而 UI 看上去还在「监听中」。
+  bool keepAliveHeld() const { return keep_alive_.held(); }
+  // 两把锁分开看：只成一把时症状不同（见 keep_alive.h）。
+  bool wifiLockHeld() const { return keep_alive_.wifiLockHeld(); }
+  bool wakeLockHeld() const { return keep_alive_.wakeLockHeld(); }
+  QString keepAliveError() const { return keep_alive_.lastError(); }
   // 上一次 start() 失败的原因；成功或没试过则空。台账页靠它把「没在监听」讲清成
   // 「为什么没起来」，不然这条信息只存在于面板一闪而过的红字里。
   QString lastError() const { return last_error_; }
@@ -71,6 +79,7 @@ class WsjtxClient : public QObject {
   quint16 port_ = radio::wsjtx::kDefaultPort;
   QString client_id_ = "radio-suite";
   MulticastLock multicast_lock_;
+  KeepAlive keep_alive_;
   QString last_error_;
 };
 

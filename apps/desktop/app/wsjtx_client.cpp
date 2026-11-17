@@ -41,6 +41,10 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
     return false;
   }
   port_ = socket_->localPort();
+  // 锁屏挂机保活。拿不到**不**阻止开始监听——亮屏时照样能收，硬不让听反而更糟；
+  // 但原因要留在 keepAliveError() 里，让台账能说清「在监听，可一锁屏就会断」，
+  // 别重蹈 N3 那种静默失效。单播监听同样需要它，所以放在组播分支之前。
+  keep_alive_.acquire();
   const QHostAddress address(group_);
   if (address.isNull()) {
     fail(QString("无效的组播/单播地址：%1").arg(group_));
@@ -75,6 +79,7 @@ bool WsjtxClient::start(const QString& group, quint16 port, QString* error) {
 void WsjtxClient::stop() {
   if (!socket_) {
     multicast_lock_.release();  // 半路失败时可能已经拿到锁却没建起监听
+    keep_alive_.release();      // 同上：保活是在 bind 成功后立刻拿的，可能已拿到
     return;
   }
   socket_->disconnect(this);
@@ -84,6 +89,7 @@ void WsjtxClient::stop() {
   socket_->deleteLater();
   socket_ = nullptr;
   multicast_lock_.release();
+  keep_alive_.release();  // 不监听就立刻放：这两把锁都耗电，不能挂着不管
   emit listeningChanged(false);
 }
 

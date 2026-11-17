@@ -13,6 +13,10 @@
          表现为「加入组播成功却一个包都收不到」。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- 监听期间要持 PARTIAL_WAKE_LOCK（配合 WifiLock FULL_HIGH_PERF）才能锁屏挂机：
+         实测这台机一灭屏就在 IP 层不收货。WAKE_LOCK 是 normal 权限，装机即授，
+         不弹运行时窗；少了它 newWakeLock 会抛 SecurityException。 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- %%INSERT_PERMISSIONS -->
     <!-- %%INSERT_FEATURES -->

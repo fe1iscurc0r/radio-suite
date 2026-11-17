@@ -36,6 +36,7 @@ set(APP_SRC
   aprs_rf.cpp
   wsjtx_client.cpp
   multicast_lock.cpp
+  keep_alive.cpp
   device_report.cpp
   self_check_dialog.cpp
   wsjtx_panel.cpp
