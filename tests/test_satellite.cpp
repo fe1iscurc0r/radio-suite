@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace {
 
@@ -199,4 +200,30 @@ TEST_CASE("satellite: tsince time base", "[satellite]") {
   const auto d2 = epoch + TimeSpan(2, 0, 0, 0);
   CHECK(radio::satellite::tsince_min(tle, d2) ==
         Catch::Approx(2880.0).margin(0.11));
+}
+
+// ---- A-2.2 金值回归：站坐标一换，az/el/range/AOS/LOS 全变——专门堵
+// 「过境边界自洽性检查对站坐标互换全盲」这个洞（变异实验实测存活过）。
+// 金值由未变异实现在 t=1000 与 [1000,2000] 区间一次生成，变更需显式重录。
+TEST_CASE("satellite: beijing golden pins", "[satellite]") {
+  const libsgp4::Tle tle(kLine1, kLine2);
+  const radio::satellite::Station beijing{39.9, 116.4, 0.05};
+  const double t = 1000.0;
+  const auto look = radio::satellite::look_at(tle, t, beijing);
+  CHECK(look.az_deg == Catch::Approx(126.508864).margin(0.01));
+  CHECK(look.el_deg == Catch::Approx(-75.173350).margin(0.01));
+  CHECK(look.range_km == Catch::Approx(12752.385256).margin(0.01));
+  CHECK(look.range_rate_kms == Catch::Approx(1.639376).margin(0.01));
+
+  const auto passes =
+      radio::satellite::find_passes(tle, beijing, 1000.0, 2000.0, 5.0);
+  REQUIRE(passes.size() == 2);
+  CHECK(passes[0].aos_min == Catch::Approx(1857.685306).margin(0.01));
+  CHECK(passes[0].tca_min == Catch::Approx(1861.697442).margin(0.01));
+  CHECK(passes[0].los_min == Catch::Approx(1865.671675).margin(0.01));
+  CHECK(passes[0].max_el_deg == Catch::Approx(42.947826).margin(0.01));
+  CHECK(passes[1].aos_min == Catch::Approx(1954.255501).margin(0.01));
+  CHECK(passes[1].tca_min == Catch::Approx(1957.621868).margin(0.01));
+  CHECK(passes[1].los_min == Catch::Approx(1960.962965).margin(0.01));
+  CHECK(passes[1].max_el_deg == Catch::Approx(16.572445).margin(0.01));
 }
