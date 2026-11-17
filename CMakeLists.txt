@@ -28,7 +28,7 @@ enable_testing()
 
 include(cmake/dependencies.cmake)
 
-add_subdirectory(third_party)  # vendored C 库（ft8_lib，MIT）
+add_subdirectory(third_party)  # vendored 源码：ft8_lib（MIT，C）+ libsgp4（Apache-2.0，C++）
 add_subdirectory(apps/desktop/core)
 add_subdirectory(apps/desktop/session)  # QObject 会话层：RadioSession + SafetyGate 编排
 add_subdirectory(apps/desktop/bus)  # HTTP 总线 + rigctld（依赖 radio_session，需 Qt6HttpServer）

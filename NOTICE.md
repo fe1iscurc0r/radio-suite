@@ -13,6 +13,8 @@
 | rsba1-core | 上游 main（subtree 同步，见 `docs/rsba1-core-collab.md`） | MIT | **跟随副本**（旧仓，准备与 rigplane 合并） | Python 协议源（MCP/桥可直接运行，`tools/rsba1_bridge.py` 从此处 import）；C++ 实现与其 fixtures 字节级互锁；合并落地后本目录退役，引擎原生支持 RS-BA1 |
 | GLM | （M2 引入） | MIT | — | 仅矩阵/向量数学，不作框架 |
 | ft8_lib | master（引入 2026-10-30） | MIT | **整目录 vendored**：third_party/ft8_lib（另附 kiss-fft BSD-3-Clause） | 本地 FT8 编解码/同步（`radio::ft8`）；见 [third_party/ft8_lib/VENDORED.md](third_party/ft8_lib/VENDORED.md)；© 2018 Kārlis Goba |
+| libsgp4（dnwrnr/sgp4） | commit `b915de60`（引入 2026-11-16） | **Apache-2.0** | **整目录 vendored、零改动**：third_party/sgp4/libsgp4（`diff -r` 对上游逐字节一致） | TLE 解析 + SGP4/SDP4 传播 + 大地/天顶坐标（`radio::sgp4`，卫星页 #99 的地基）；见 [third_party/sgp4/VENDORED.md](third_party/sgp4/VENDORED.md)；© 2013 Daniel Warner |
+| python-sgp4 向量数据 | `master`（引入 2026-11-16） | MIT | **只取数据文件**：tests/fixtures/sgp4/{SGP4-VER.TLE,tcppver.out} | 官方向量对账的期望值（Vallado 参考实现输出 33 例/667 行）。**上游 runtest 只打印不比对，判据必须从外部来**；见 [tests/test_sgp4_vectors.cpp](tests/test_sgp4_vectors.cpp) |
 
 第三方许可原文目录：[LICENSES/](LICENSES/)（含 [LGPL-3.0-only.txt](LICENSES/LGPL-3.0-only.txt)）。
 
