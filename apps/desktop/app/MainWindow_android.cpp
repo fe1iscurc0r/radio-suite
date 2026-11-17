@@ -8,6 +8,7 @@
 #include "app/meter_widgets.h"
 #include "app/network_audio.h"
 #include "app/repeater_dialog.h"
+#include "app/satellite_panel.h"
 #include "app/touch_dialog.h"
 
 #include <QButtonGroup>
@@ -198,6 +199,25 @@ void MainWindow::buildAndroidUi() {
   }
 #endif
 
+  // 6) 卫星：过境/多普勒/填频（只填不发射，A-2.8 口径）
+  {
+    auto* page = new QWidget(pages_);
+    auto* lay = new QVBoxLayout(page);
+    lay->setContentsMargins(0, 0, 0, 0);
+    auto* panel = new radio::app::SatellitePanel(page);
+    lay->addWidget(panel);
+    connect(panel, &radio::app::SatellitePanel::requestFill, this,
+            [this](double rx, double tx, const QString& note) {
+              session_.tuneTo(static_cast<uint64_t>(rx));
+              flashStatus(QString("%1：RX 已填 %2 Hz（TX 预补偿 %3 Hz，只填不发射）")
+                              .arg(note)
+                              .arg(rx, 0, 'f', 0)
+                              .arg(tx, 0, 'f', 0),
+                          false);
+            });
+    pages_->addWidget(page);
+  }
+
   // ---- 底部页签 ----
   auto* tab_row = new QHBoxLayout();
   tab_row->setSpacing(4);
@@ -205,6 +225,7 @@ void MainWindow::buildAndroidUi() {
   group->setExclusive(true);
   QStringList tabs{"频谱", "调谐", "制式", "面板"};
   if (have_log_page) tabs << "日志";
+  tabs << "卫星";
   for (int i = 0; i < tabs.size(); ++i) {
     auto* b = new QPushButton(tabs[i], central);
     b->setCheckable(true);

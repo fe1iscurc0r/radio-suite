@@ -14,6 +14,7 @@
 #include "app/self_check_dialog.h"
 #include "app/set_mode_dialog.h"
 #include "app/sstv_dialog.h"
+#include "app/satellite_panel.h"
 #include "app/touch_dialog.h"
 #include "app/voice_memory.h"
 #include "app/wsjtx_panel.h"
@@ -412,6 +413,8 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   set_big_btn_->setToolTip("Set Mode 深设置树：0x1A 0x05 菜单项读写（原厂件）");
   auto* memch_big_btn_ = makeBigButton(parent, "MEM\n信道", QColor(0x00, 0x69, 0x5c));
   memch_big_btn_->setToolTip("记忆信道：0x1A 0x00 内容读写 + 0x08 组/信道选择（原厂件）");
+  auto* sat_big_btn_ = makeBigButton(parent, "卫星\n跟踪", QColor(0x1b, 0x5e, 0x20));
+  sat_big_btn_->setToolTip("卫星过境/多普勒：星历缓存 + 填频（只填不发射）");
   auto* check_big_btn_ = makeBigButton(parent, "自检\n台账", QColor(0x33, 0x2a, 0x1f));
   check_big_btn_->setToolTip(
       "链路与权限台账：这台设备上每条能力是真能用、被降级还是压根没编进来");
@@ -442,6 +445,24 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
   });
   connect(check_big_btn_, &QPushButton::clicked, this, [this] {
     radio::app::SelfCheckDialog dlg([this] { return selfCheckInput(); }, this);
+    dlg.exec();
+  });
+  connect(sat_big_btn_, &QPushButton::clicked, this, [this] {
+    // 卫星页：填频只填不发射（A-2.8 口径），发射仍走 SafetyGate 两击门禁
+    QDialog dlg(this);
+    auto* lay = new QVBoxLayout(&dlg);
+    auto* panel = new radio::app::SatellitePanel(&dlg);
+    lay->addWidget(panel);
+    connect(panel, &radio::app::SatellitePanel::requestFill, this,
+            [this](double rx, double tx, const QString& note) {
+              session_.tuneTo(static_cast<uint64_t>(rx));
+              flashStatus(QString("%1：RX 已填 %2 Hz（TX 预补偿 %3 Hz，只填不发射）")
+                              .arg(note)
+                              .arg(rx, 0, 'f', 0)
+                              .arg(tx, 0, 'f', 0),
+                          false);
+            });
+    dlg.setWindowTitle("卫星跟踪");
     dlg.exec();
   });
 
