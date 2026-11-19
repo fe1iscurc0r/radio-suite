@@ -15,3 +15,18 @@ if(NOT ANDROID AND TARGET Qt6::Network)
   target_include_directories(civ_tcp_gateway PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/desktop")
 endif()
+
+# WO-275 L1：fake_rig —— 假电台 LAN 化台架工具（受控局域网用，默认不建）。
+# 开关与 BUILD_ENGINE_SPIKE 同构（默认 OFF）；链接 tests/fake_rsba1_server.cpp，
+# 不进产品二进制、不进 APK（总纲 A-1.8 口径）。RADIO_SUITE_UDP=ON 才有真客户端自证。
+if(RADIO_SUITE_BUILD_BENCH_TOOLS AND NOT ANDROID AND TARGET Qt6::Network
+   AND RADIO_SUITE_UDP)
+  add_executable(fake_rig
+    fake_rig.cpp
+    "${CMAKE_SOURCE_DIR}/tests/fake_rsba1_server.cpp")
+  target_link_libraries(fake_rig PRIVATE radio::core Qt6::Network)
+  target_include_directories(fake_rig PRIVATE
+    "${CMAKE_SOURCE_DIR}/apps/desktop"
+    "${CMAKE_SOURCE_DIR}/tests")
+  set_target_properties(fake_rig PROPERTIES AUTOMOC ON)
+endif()

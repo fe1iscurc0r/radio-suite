@@ -50,15 +50,22 @@ bool FakeRsba1Server::start(std::string* error) {
   run_server_sid_ = new_server_sid;
   run_client_sid_ = new_client_sid;
   run_model_ = model;
+  run_handshake_delay_ms_ = handshake_delay_ms;
+  run_login_result_code_ = login_result_code;
+  handshake_delayed_ = false;
   stop_ = false;
 
+  const QHostAddress addr = bind_address;
+  const uint16_t want_ctrl = ctrl_port;
+  const uint16_t want_ser = serial_port;
+  const uint16_t want_aud = audio_port;
   auto ports = std::make_shared<std::promise<std::array<uint16_t, 3>>>();
   auto fut = ports->get_future();
-  thread_ = std::thread([this, ports] {
+  thread_ = std::thread([this, ports, addr, want_ctrl, want_ser, want_aud] {
     QUdpSocket ctrl, ser, aud;
-    if (!ctrl.bind(QHostAddress::LocalHost, 0) ||
-        !ser.bind(QHostAddress::LocalHost, 0) ||
-        !aud.bind(QHostAddress::LocalHost, 0)) {
+    if (!ctrl.bind(addr, want_ctrl) ||
+        !ser.bind(addr, want_ser) ||
+        !aud.bind(addr, want_aud)) {
       ports->set_value({0, 0, 0});
       return;
     }
@@ -84,7 +91,8 @@ bool FakeRsba1Server::start(std::string* error) {
   }
   const auto p = fut.get();
   if (p[0] == 0) {
-    if (error) *error = "UDP 绑定 127.0.0.1 失败";
+    if (error)
+      *error = "UDP 绑定失败（" + addr.toString().toStdString() + "，端口可能被占用）";
     stop();
     return false;
   }
@@ -136,7 +144,8 @@ void FakeRsba1Server::handlePacket(Chan& ch, const std::vector<uint8_t>& d) {
   }
   if (d.size() == 0x80) {  // login：记下客户端 SID，回 0x60 应答
     ch.client_sid = be32(d, 8);
-    send(ch, buildLoginReply(run_auth_));
+    maybeHandshakeDelay();
+    send(ch, buildLoginReply(run_auth_, run_login_result_code_));
     return;
   }
   if (d.size() == 0x40) {  // auth（0x02/0x05）/ deauth（0x01）；magic 在 biz 头 +5
@@ -207,6 +216,14 @@ void FakeRsba1Server::handleAudioPayload(const std::vector<uint8_t>& d) {
   }
 }
 
+void FakeRsba1Server::maybeHandshakeDelay() {
+  if (run_handshake_delay_ms_ > 0 && !handshake_delayed_) {
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(run_handshake_delay_ms_));
+    handshake_delayed_ = true;
+  }
+}
+
 void FakeRsba1Server::flushInjections() {
   std::lock_guard lk(mu_);
   auto flush = [this](std::vector<std::vector<uint8_t>>& q, Chan& ch) {
@@ -250,6 +267,20 @@ std::vector<std::vector<uint8_t>> FakeRsba1Server::clientAudioFrames() {
   return audio_frames_;
 }
 
+std::vector<std::vector<uint8_t>> FakeRsba1Server::drainCivFrames() {
+  std::lock_guard lk(mu_);
+  auto out = std::move(civ_frames_);
+  civ_frames_.clear();
+  return out;
+}
+
+std::vector<std::vector<uint8_t>> FakeRsba1Server::drainAudioFrames() {
+  std::lock_guard lk(mu_);
+  auto out = std::move(audio_frames_);
+  audio_frames_.clear();
+  return out;
+}
+
 bool FakeRsba1Server::serialOpened() {
   std::lock_guard lk(mu_);
   return serial_opened_;
@@ -273,12 +304,15 @@ int FakeRsba1Server::disconnectCount() {
 // ---- 应答报文构造（布局对齐 tests/fixtures/*.hex）----
 
 std::vector<uint8_t> FakeRsba1Server::buildLoginReply(
-    std::span<const uint8_t, 6> auth6) {
+    std::span<const uint8_t, 6> auth6, int32_t result_code) {
   std::vector<uint8_t> pkt(0x60, 0);
   pkt[0] = 0x60;  // totalLen
   pkt[6] = 0x01;  // seq=1（与 udp_login_resp_ok.hex 一致）
   std::memcpy(pkt.data() + 26, auth6.data(), 6);
-  // [48:52] 结果码 0 = 通过
+  // [48:52] 结果码（0 = 通过；auth-deny 场景设非 0）
+  for (int i = 0; i < 4; ++i)
+    pkt[48 + static_cast<size_t>(3 - i)] =
+        static_cast<uint8_t>(result_code >> (8 * i));
   return pkt;
 }
 

@@ -16,6 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_GUI "构建 Qt6 Widgets 应用；OFF 仍构建需 Qt6 Core/Network 的 core 与测试" ON)
 option(RADIO_SUITE_BUILD_TESTS "构建 Catch2 单元测试" ON)
 option(BUILD_ENGINE_SPIKE "构建 WO-274 rigplane 引擎 spike（需 Qt6 WebSockets）" OFF)
+option(RADIO_SUITE_BUILD_BENCH_TOOLS "构建台架工具 fake_rig（假电台 LAN 化；默认 OFF，不进产品/APK）" OFF)
 
 if(MSVC)
   # /utf-8: 源码含中文注释，防止 C4819 与乱码

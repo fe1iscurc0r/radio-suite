@@ -21,7 +21,9 @@ C10 全部通过，并补了两个新根因的修复（下拉弹窗触摸错位�
 「日志」页签在手机上出得来、记 QSO 真写进库，17:53 顺带验了同页的 ADIF 导出
 （走系统 SAF 选择器，`content://` 直写成功）。**其余每一条仍是
 PC 上静态核对的「代码事实」，没有真机结论。** 条目里写「现状」的部分只记录源码行号、aapt
-出包信息、jar 字节码，不代表真机行为。
+  出包信息、jar 字节码，不代表真机行为。
+
+**口径四档（WO-275 L1 起，2026-11-18）**：每条结论按四档记——「真机验通」（K4/C10/D1/D3/G-0 那批）、「LAN 假电台验通」（`tools/fake_rig`，验 fixtures 一致性与故障注入，不验真实抖动丢包/PTT 尾/音质保真）、「mock 验通」（只证代码路径）、「静态核对」（源码行号/aapt/jar 字节码）。**本清单历史条目未标注者 = 静态核对。**
 
 ## K4 · 真机首跑记录（2026-10-31，Redmi K40 / Android 13 / arm64-v8a / MIUI V14.0.6）
 
@@ -1027,8 +1029,29 @@ transport，见 K1）。第 1 条也顺带做了（对话框真返回表单内�
   active 时才切真实 PCM，与链路类型无关。看这条时**别拿瀑布当在线判据**，
   也别把假峰记成「链路正常」。
 
-以上七条（G-0…G-6）**一条都不许靠 mock 行为打勾**——那会写出假报告。G-0 过不了就说明
+以上七条（G-0…G-6）**一条都不许靠 mock 行为打勾**——那会写下假报告。G-0 过不了就说明
 偏好在安卓上没落地，回头查 D1 的 `run-as` 那条命令，别往下猜。
+
+## 7b. Gate G 的 LAN 假电台口径（WO-275 L1，2026-11-18）
+
+真机不在场时（§5 第 11 条硬件缺口），Gate G 行为判据可用 `tools/fake_rig`（假电台 LAN 化）
+先验到「LAN 假电台验通」档；限定词写在工具文件头（总纲 §4.3 红线）。以下为本机实测
+（2026-11-18，MSVC Release，`build/tools/fake_rig.exe`，`--selftest` = 内部真客户端
+Rsba1UdpTransport 握手→CI-V 往返）：
+
+| 条目 | 场景 | 实测 | 口径 |
+|---|---|---|---|
+| G-1'/G-2' | nominal + selftest | PASS：握手→认证→建流→CI-V 往返全通，回帧与 fixtures 同源 | LAN 假 |
+| G-3' | auth-deny | 预期 FAIL：登录被拒 result=1，客户端诚实报错不谎称在线 | LAN 假 |
+| G-4' | audio-rx-only | selftest PASS；「频谱非合成谱」的 UI 判定仍未验（需 app 出图） | LAN 假 |
+| G-5' | audio-loopback | selftest PASS；PTT 上行回喂的 UI 判定仍未验 | LAN 假 |
+| G-6'（#100） | silence-after-N | [silence] 注入成功（三信道静默、进程存活）；断链指示持续性的 UI 判定仍未验 | LAN 假 |
+| K3' | slow-handshake 3s/5s | selftest PASS（客户端 15s 容忍）；「UI 不提前显示在线」仍未验 | LAN 假 |
+| G-4/G-5'（flap） | flap | 断链→2s→同端口重绑，事件齐全；恢复行为与不谎报的 UI 判定仍未验 | LAN 假 |
+
+仍未验的统一原因：UI 侧判定需要手机/桌面 app 出证据（logcat/截屏），本机无 K40 连接。
+A-1.5（手机↔PC 跨机 nominal）未跑：无第二机位。A-1.8 的 APK 排除性未验（未出包），
+CMake 层面已保证：bench 开关默认 OFF、tools 不在 android 构建图内。
 
 ---
 
