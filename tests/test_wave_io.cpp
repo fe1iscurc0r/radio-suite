@@ -4,6 +4,7 @@
 // 同一录制文件连跑 3 次解码结果逐条一致（A-3.3 回放幂等）。
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
