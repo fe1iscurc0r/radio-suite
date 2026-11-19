@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace {
 
@@ -175,4 +176,54 @@ TEST_CASE("satellite: pass windows bracket the elevation floor",
 
   // 空区间不该抛也不该编出一个过境。
   CHECK(radio::satellite::find_passes(tle, kBeijing, 100.0, 100.0, 5.0).empty());
+}
+
+// ---- W2.1 时基（WO-275 §5.2）----
+// 判据来自 libsgp4 自己的历元数学：tsince = (now − epoch) 分钟。
+// 0.1 分钟量化是 TLE 数据特性，写成量级说明，不当 bug 修。
+TEST_CASE("satellite: tsince time base", "[satellite]") {
+  const libsgp4::Tle tle(kLine1, kLine2);
+  using libsgp4::TimeSpan;
+
+  // 历元前 10 分钟 → 负 tsince（反向传播属正常值）
+  const auto epoch = tle.Epoch();
+  CHECK(radio::satellite::tsince_min(tle, epoch - TimeSpan(0, 0, 10, 0)) ==
+        Catch::Approx(-10.0).margin(0.01));
+
+  // 跨年：2006-06-25 历元 → 2007-01-02，约 190 天量级
+  const libsgp4::DateTime y2007(2007, 1, 2, 0, 0, 0);
+  const double cross = radio::satellite::tsince_min(tle, y2007);
+  CHECK(cross > 180.0 * 24 * 60);
+  CHECK(cross < 200.0 * 24 * 60);
+
+  // D-2：两天后的 tsince ≈ 2880 min（容差含 0.1 min 量化）
+  const auto d2 = epoch + TimeSpan(2, 0, 0, 0);
+  CHECK(radio::satellite::tsince_min(tle, d2) ==
+        Catch::Approx(2880.0).margin(0.11));
+}
+
+// ---- A-2.2 金值回归：站坐标一换，az/el/range/AOS/LOS 全变——专门堵
+// 「过境边界自洽性检查对站坐标互换全盲」这个洞（变异实验实测存活过）。
+// 金值由未变异实现在 t=1000 与 [1000,2000] 区间一次生成，变更需显式重录。
+TEST_CASE("satellite: beijing golden pins", "[satellite]") {
+  const libsgp4::Tle tle(kLine1, kLine2);
+  const radio::satellite::Station beijing{39.9, 116.4, 0.05};
+  const double t = 1000.0;
+  const auto look = radio::satellite::look_at(tle, t, beijing);
+  CHECK(look.az_deg == Catch::Approx(126.508864).margin(0.01));
+  CHECK(look.el_deg == Catch::Approx(-75.173350).margin(0.01));
+  CHECK(look.range_km == Catch::Approx(12752.385256).margin(0.01));
+  CHECK(look.range_rate_kms == Catch::Approx(1.639376).margin(0.01));
+
+  const auto passes =
+      radio::satellite::find_passes(tle, beijing, 1000.0, 2000.0, 5.0);
+  REQUIRE(passes.size() == 2);
+  CHECK(passes[0].aos_min == Catch::Approx(1857.685306).margin(0.01));
+  CHECK(passes[0].tca_min == Catch::Approx(1861.697442).margin(0.01));
+  CHECK(passes[0].los_min == Catch::Approx(1865.671675).margin(0.01));
+  CHECK(passes[0].max_el_deg == Catch::Approx(42.947826).margin(0.01));
+  CHECK(passes[1].aos_min == Catch::Approx(1954.255501).margin(0.01));
+  CHECK(passes[1].tca_min == Catch::Approx(1957.621868).margin(0.01));
+  CHECK(passes[1].los_min == Catch::Approx(1960.962965).margin(0.01));
+  CHECK(passes[1].max_el_deg == Catch::Approx(16.572445).margin(0.01));
 }

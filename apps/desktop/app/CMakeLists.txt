@@ -40,7 +40,8 @@ set(APP_SRC
   device_report.cpp
   self_check_dialog.cpp
   wsjtx_panel.cpp
-  ft8_panel.cpp)
+  ft8_panel.cpp
+  satellite_panel.cpp)
 
 # Android 用 qt_add_executable：它会挂上 androiddeployqt 的部署设置与 apk 目标
 if(ANDROID)
@@ -60,7 +61,8 @@ target_link_libraries(radio-suite PRIVATE
   radio::aprs
   radio::wsjtx
   radio::ft8_codec
-  radio::ui_common)
+  radio::ui_common
+  radio::satellite)
 # bus 在缺 Qt6::HttpServer 的套件（安卓交叉编译套件）里整个不建；RADIO_SUITE_HAVE_BUS
 # 由 radio_bus 的 PUBLIC 定义带进来，没链上的时候 app 侧总线相关代码走 #ifdef 分支
 if(TARGET radio::bus)
