@@ -23,11 +23,14 @@
 
 ## 定性结论
 1. 段错误发生在**进程退出期**，打穿 libQt6Sql；间歇性（~80%），ASan/UBSan 下 0 复现
-   ——sanitizer 改变了退出序，这类问题 sanitizer 看不见，**量具盲区**。
-2. `qa_main.cpp`（给 SQL 测试目标装 QCoreApplication）**修好 logbook 一半**；
-   aprs_db 半边仍在，残留物不在测试/库层可达范围，疑 Qt 6.10.1 内部退出序回归。
+   ——sanitizer 改变退出序，这类问题 sanitizer 看不见，**量具盲区**。
+2. **对症修复已验证**：`tests/qt_test_app.h` 的静态存储期 QCoreApplication 改为
+   堆分配、有意泄漏、永不析构——退出期不再有 app 析构参与，顺序冲突整体消失。
+   修复后 plain 构建 **10/10 不崩**，全量 **188/188**（Linux + Qt 6.10.1）。
+   代价 = 进程退出跳过 app 析构，测试进程可接受；产品代码不适用本模式。
 3. #106 的另一半（bus 析构 double-free）本轮未触发（gui=OFF 下 bus 测试全过）。
-4. 回归判据 = 本目录 10 连跑矩阵 + qa_main.cpp 头注释；根修属上游/后续单。
+4. 回归判据 = 本目录 10 连跑矩阵 + gdb 栈；中间方案 qa_main.cpp 已撤销（与
+   Catch2WithMain 冲突，CI 抓到）。
 
 ## 采集命令
 见 `wsl-*.sh`（构建/探测/取证脚本模板），全部可重跑；现场读数（gdb 栈、矩阵数字）

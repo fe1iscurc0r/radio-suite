@@ -184,9 +184,8 @@ endif()
 
 if(TARGET radio::aprs_db)
   find_package(Qt6 REQUIRED COMPONENTS Sql)
-  # SQL 测试目标带 QCoreApplication 主函数：Qt 6.10 退出期 QSql 驱动清理
-  # 没有 app 对象会段错误（#106，evidence/2026-11-20-linux-qt610/）。
-  add_executable(radio_aprs_db_tests test_aprs_persist.cpp qa_main.cpp)
+  # SQL 测试目标：qt_test_app.h 已改为堆分配永不析构的 app（#106 对症修复）
+  add_executable(radio_aprs_db_tests test_aprs_persist.cpp)
   target_link_libraries(radio_aprs_db_tests PRIVATE
     radio::aprs_db
     Qt6::Sql
@@ -199,8 +198,8 @@ endif()
 
 if(TARGET radio::logbook)
   find_package(Qt6 REQUIRED COMPONENTS Sql)
-  # 同上：QCoreApplication 主函数（Qt 6.10 退出期 QSql 清理，#106）
-  add_executable(radio_logbook_tests test_logbook.cpp qa_main.cpp)
+  # 同上：qt_test_app.h 堆分配 app（#106 对症修复）
+  add_executable(radio_logbook_tests test_logbook.cpp)
   target_include_directories(radio_logbook_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/apps/desktop")
