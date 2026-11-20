@@ -1,0 +1,84 @@
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#0  0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#1  0x00007ffff7f7a731 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#2  0x00007ffff7f7aa8c in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#3  0x00007ffff79e84f5 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#4  0x00007ffff79e0923 in QObject::destroyed(QObject*) () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#5  0x00007ffff79e53a2 in QObject::~QObject() () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#6  0x00007ffff7047a76 in __run_exit_handlers (status=0, listp=<optimized out>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:108
+#7  0x00007ffff7047bbe in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#8  0x00007ffff702a1d1 in __libc_start_call_main (main=main@entry=0x555555583afe <main(int, char**)>, argc=argc@entry=2, argv=argv@entry=0x7fffffffe1c8) at ../sysdeps/nptl/libc_start_call_main.h:74
+#9  0x00007ffff702a28b in __libc_start_main_impl (main=0x555555583afe <main(int, char**)>, argc=2, argv=0x7fffffffe1c8, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffe1b8) at ../csu/libc-start.c:360
+#10 0x000055555556bdf5 in _start ()
+==== run1 ====
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#0  0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#1  0x00007ffff7f7a731 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#2  0x00007ffff7f7aa8c in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#3  0x00007ffff79e84f5 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#4  0x00007ffff79e0923 in QObject::destroyed(QObject*) () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#5  0x00007ffff79e53a2 in QObject::~QObject() () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#6  0x00007ffff7047a76 in __run_exit_handlers (status=0, listp=<optimized out>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:108
+#7  0x00007ffff7047bbe in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#8  0x00007ffff702a1d1 in __libc_start_call_main (main=main@entry=0x555555583afe <main(int, char**)>, argc=argc@entry=2, argv=argv@entry=0x7fffffffe1c8) at ../sysdeps/nptl/libc_start_call_main.h:74
+#9  0x00007ffff702a28b in __libc_start_main_impl (main=0x555555583afe <main(int, char**)>, argc=2, argv=0x7fffffffe1c8, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffe1b8) at ../csu/libc-start.c:360
+#10 0x000055555556bdf5 in _start ()
+==== run2 ====
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#0  0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#1  0x00007ffff7f7a731 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#2  0x00007ffff7f7aa8c in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#3  0x00007ffff79e84f5 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#4  0x00007ffff79e0923 in QObject::destroyed(QObject*) () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#5  0x00007ffff79e53a2 in QObject::~QObject() () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#6  0x00007ffff7047a76 in __run_exit_handlers (status=0, listp=<optimized out>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:108
+#7  0x00007ffff7047bbe in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#8  0x00007ffff702a1d1 in __libc_start_call_main (main=main@entry=0x555555583afe <main(int, char**)>, argc=argc@entry=2, argv=argv@entry=0x7fffffffe1c8) at ../sysdeps/nptl/libc_start_call_main.h:74
+#9  0x00007ffff702a28b in __libc_start_main_impl (main=0x555555583afe <main(int, char**)>, argc=2, argv=0x7fffffffe1c8, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffe1b8) at ../csu/libc-start.c:360
+#10 0x000055555556bdf5 in _start ()
+==== run3 ====
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#0  0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#1  0x00007ffff7f7a731 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#2  0x00007ffff7f7aa8c in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#3  0x00007ffff79e84f5 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#4  0x00007ffff79e0923 in QObject::destroyed(QObject*) () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#5  0x00007ffff79e53a2 in QObject::~QObject() () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#6  0x00007ffff7047a76 in __run_exit_handlers (status=0, listp=<optimized out>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:108
+#7  0x00007ffff7047bbe in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#8  0x00007ffff702a1d1 in __libc_start_call_main (main=main@entry=0x555555583afe <main(int, char**)>, argc=argc@entry=2, argv=argv@entry=0x7fffffffe1c8) at ../sysdeps/nptl/libc_start_call_main.h:74
+#9  0x00007ffff702a28b in __libc_start_main_impl (main=0x555555583afe <main(int, char**)>, argc=2, argv=0x7fffffffe1c8, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffe1b8) at ../csu/libc-start.c:360
+#10 0x000055555556bdf5 in _start ()
+==== run4 ====
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#0  0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#1  0x00007ffff7f7a731 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#2  0x00007ffff7f7aa8c in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#3  0x00007ffff79e84f5 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#4  0x00007ffff79e0923 in QObject::destroyed(QObject*) () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#5  0x00007ffff79e53a2 in QObject::~QObject() () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#6  0x00007ffff7047a76 in __run_exit_handlers (status=0, listp=<optimized out>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:108
+#7  0x00007ffff7047bbe in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#8  0x00007ffff702a1d1 in __libc_start_call_main (main=main@entry=0x555555583afe <main(int, char**)>, argc=argc@entry=2, argv=argv@entry=0x7fffffffe1c8) at ../sysdeps/nptl/libc_start_call_main.h:74
+#9  0x00007ffff702a28b in __libc_start_main_impl (main=0x555555583afe <main(int, char**)>, argc=2, argv=0x7fffffffe1c8, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffe1b8) at ../csu/libc-start.c:360
+#10 0x000055555556bdf5 in _start ()
+==== run5 ====
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#0  0x00007ffff7f7a51b in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#1  0x00007ffff7f7a731 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#2  0x00007ffff7f7aa8c in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Sql.so.6
+#3  0x00007ffff79e84f5 in ?? () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#4  0x00007ffff79e0923 in QObject::destroyed(QObject*) () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#5  0x00007ffff79e53a2 in QObject::~QObject() () from /root/Qt/6.10.1/gcc_64/lib/libQt6Core.so.6
+#6  0x00007ffff7047a76 in __run_exit_handlers (status=0, listp=<optimized out>, run_list_atexit=run_list_atexit@entry=true, run_dtors=run_dtors@entry=true) at ./stdlib/exit.c:108
+#7  0x00007ffff7047bbe in __GI_exit (status=<optimized out>) at ./stdlib/exit.c:138
+#8  0x00007ffff702a1d1 in __libc_start_call_main (main=main@entry=0x555555583afe <main(int, char**)>, argc=argc@entry=2, argv=argv@entry=0x7fffffffe1c8) at ../sysdeps/nptl/libc_start_call_main.h:74
+#9  0x00007ffff702a28b in __libc_start_main_impl (main=0x555555583afe <main(int, char**)>, argc=2, argv=0x7fffffffe1c8, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffe1b8) at ../csu/libc-start.c:360
+#10 0x000055555556bdf5 in _start ()
+==== run6 ====
