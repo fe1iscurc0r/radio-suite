@@ -39,6 +39,8 @@ class CwKeyerDialog;
 class SetModeDialog;
 class MemoryChannelDialog;
 class NetworkAudio;
+class SatellitePanel;
+class SatelliteTracker;
 }
 namespace radio::audio {
 class AudioOut;
@@ -116,12 +118,14 @@ class MainWindow : public QMainWindow, public std::enable_shared_from_this<MainW
   void wireHamlogPanels();
 #endif
   void flashStatus(const QString& text, bool warn);
+  radio::app::SatelliteTracker* satTracker();  // 惰性创建：apply=会话写频，tx=现刻 PTT
   void syncTogglesFromState(const radio::core::RadioState& s);
   void syncBandHighlight(uint64_t hz);  // 当前频率落在哪个频段/波段快捷上
 
   // 启动链路偏好：状态栏文案的唯一来源，「连接…」对话框的初始值
   radio::app::LinkPrefs link_;
   radio::app::RadioSession session_;
+  std::unique_ptr<radio::app::SatelliteTracker> sat_tracker_;
   radio::app::RadioSession* session_alias_ = nullptr;  // 指向 session_（对话框用，无所有权）
 
   WaterfallWidget* waterfall_ = nullptr;

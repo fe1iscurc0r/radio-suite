@@ -12,6 +12,7 @@
 #include <QWidget>
 
 #include <memory>
+#include <optional>
 
 #include "satellite/sat_track.h"
 #include "satellite/tle_source.h"
@@ -30,22 +31,33 @@ class SatellitePanel : public QWidget {
   explicit SatellitePanel(QWidget* parent = nullptr);
 
   // 填频请求（只填不发射）。rx_hz = 下行标称 + 现刻多普勒；tx_hz = linear_uplink 结果。
-  signals:
+  // 跟踪请求（W2.4）：面板只出「开始/停止」，写频由 MainWindow 的 SatelliteTracker 执行。
+ signals:
     void requestFill(double rx_hz, double tx_hz, const QString& note);
+    void trackToggled(bool on);
+
+ public slots:
+  void setTrackingActive(bool on);
+  void setTrackerStatus(const QString& text);
+
+ public:
+  bool hasTle() const { return tle_valid_ && tle_.has_value() && !ephemeris_stale_; }
+  const libsgp4::Tle& currentTle() const { return *tle_; }
+  radio::satellite::Station station() const;
+  double nominalDownlinkHz() const;
+  QString currentName() const;
 
  private:
   void refreshNow();     // 1s：此刻 az/el/斜距/ṙ + 多普勒
   void refreshPasses();  // 60s：未来 24h 过境窗（粗+细收敛）
   void reloadCatalog();  // 打开时:扫缓存目录重载星历
-  radio::satellite::Station station() const;
-  double nominalDownlinkHz() const;
+  void setActionsEnabled(bool on);  // 填频/跟踪统一开关（含星历过期闸）
   double nominalUplinkHz() const;
-  QString currentName() const;
 
   std::unique_ptr<radio::satellite::TleStore> store_;
   std::vector<radio::satellite::TleEntry> entries_;
   int selected_ = -1;
-  libsgp4::Tle tle_ = libsgp4::Tle("1 1", "2 1");  // 占位，选中后替换
+  std::optional<libsgp4::Tle> tle_;  // 选中前为空；占位串构造会在 ctor 里抛 TleException
   bool tle_valid_ = false;
   bool ephemeris_stale_ = false;
 
@@ -56,6 +68,8 @@ class SatellitePanel : public QWidget {
   QLabel* freq_label_ = nullptr;
   QLabel* tx_label_ = nullptr;
   QPushButton* fill_btn_ = nullptr;
+  QPushButton* track_btn_ = nullptr;
+  QString track_status_;
   QTimer* now_timer_ = nullptr;
   QTimer* pass_timer_ = nullptr;
 };

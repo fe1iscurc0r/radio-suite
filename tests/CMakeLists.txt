@@ -30,9 +30,14 @@ add_executable(radio_tests
   test_track_policy.cpp
   # W3.2 录制/回放：WAV 往返/采样率变异拒读/AFSK 回放幂等（纯离线）
   test_wave_io.cpp
+  # W2.4 跟踪执行者：节流/死区/发射中拒写/LOS 自动停（时钟注入，无 GUI）
+  test_satellite_tracker.cpp
+  "${CMAKE_SOURCE_DIR}/apps/desktop/app/satellite_tracker.cpp"
   # 纯数学，不碰控件：放这里而不是 radio_ui_tests，gui=OFF 的 CI 腿才跑得到
   test_waterfall_axis.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
+
+set_target_properties(radio_tests PROPERTIES AUTOMOC ON)
 
 target_link_libraries(radio_tests PRIVATE
   radio::core

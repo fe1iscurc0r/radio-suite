@@ -88,11 +88,11 @@ SatellitePanel::SatellitePanel(QWidget* parent) : QWidget(parent) {
   fill_row->addWidget(tx_label_, 1);
   fill_btn_ = new QPushButton("填频（只填不发射）", this);
   fill_btn_->setMinimumHeight(44);
-  fill_btn_->setEnabled(false);
+  fill_btn_->setEnabled(false);  // track_btn_ 尚未创建，不能走 setActionsEnabled
   connect(fill_btn_, &QPushButton::clicked, this, [this] {
     if (!tle_valid_ || selected_ < 0) return;
     const auto look = radio::satellite::look_at(
-        tle_, radio::satellite::tsince_min(tle_, libsgp4::DateTime::Now()), station());
+        *tle_, radio::satellite::tsince_min(*tle_, libsgp4::DateTime::Now()), station());
     const double dl = nominalDownlinkHz();
     const double rx = dl + radio::satellite::doppler_hz(dl, look.range_rate_kms);
     const double tx = radio::satellite::linear_uplink_hz(nominalUplinkHz(),
@@ -100,6 +100,19 @@ SatellitePanel::SatellitePanel(QWidget* parent) : QWidget(parent) {
     emit requestFill(rx, tx, QString("%1 现刻多普勒修正").arg(currentName()));
   });
   fill_row->addWidget(fill_btn_);
+  track_btn_ = new QPushButton("跟踪", this);
+  track_btn_->setMinimumHeight(44);
+  track_btn_->setCheckable(true);
+  track_btn_->setEnabled(false);
+  connect(track_btn_, &QPushButton::toggled, this, [this](bool on) {
+    if (on && !hasTle()) {
+      track_btn_->setChecked(false);
+      return;
+    }
+    if (!on) track_status_.clear();
+    emit trackToggled(on);
+  });
+  fill_row->addWidget(track_btn_);
   lay->addLayout(fill_row);
   lay->addStretch(1);
 
@@ -160,7 +173,7 @@ void SatellitePanel::reloadCatalog() {
     sat_combo_->setCurrentIndex(0);  // 首载自动选中第一颗
   }
   sat_combo_->setEnabled(!entries_.empty());
-  fill_btn_->setEnabled(false);
+  setActionsEnabled(false);
   // 星历时效行
   if (newest_src == 0) {
     ephemeris_label_->setText("无星历缓存（设置里联网拉取后可用）");
@@ -184,19 +197,39 @@ void SatellitePanel::reloadCatalog() {
   }
 }
 
+void SatellitePanel::setTrackingActive(bool on) {
+  if (!on) track_status_.clear();
+  if (track_btn_->isChecked() != on) track_btn_->setChecked(on);
+  refreshNow();
+}
+
+// A-2.5：星历过期时填频与跟踪一律禁用；refreshNow 每秒跑，必须由这里再判一次，
+// 否则 60s 的过期闸会被 1s 刷新覆盖掉。
+void SatellitePanel::setActionsEnabled(bool on) {
+  fill_btn_->setEnabled(on && !ephemeris_stale_);
+  const bool track_on = on && hasTle();
+  track_btn_->setEnabled(track_on);
+  if (!track_on && track_btn_->isChecked()) track_btn_->setChecked(false);
+}
+
+void SatellitePanel::setTrackerStatus(const QString& text) {
+  track_status_ = text;
+  refreshNow();
+}
+
 void SatellitePanel::refreshNow() {
   if (!tle_valid_) {
     now_label_->setText("未选中卫星（无缓存或未选）");
     pass_label_->setText("—");
     freq_label_->setText("—");
     tx_label_->setText("—");
-    fill_btn_->setEnabled(false);
+    setActionsEnabled(false);
     return;
   }
   try {
     const auto now = libsgp4::DateTime::Now();
-    const double ts = radio::satellite::tsince_min(tle_, now);
-    const auto look = radio::satellite::look_at(tle_, ts, station());
+    const double ts = radio::satellite::tsince_min(*tle_, now);
+    const auto look = radio::satellite::look_at(*tle_, ts, station());
     const double dl = nominalDownlinkHz();
     const double ul = nominalUplinkHz();
     const double dop = radio::satellite::doppler_hz(dl, look.range_rate_kms);
@@ -206,7 +239,7 @@ void SatellitePanel::refreshNow() {
       freq_label_->setText(
           "未配置转发频率（设置键 satellite/dl_hz 与 satellite/ul_hz，Hz）");
       tx_label_->setText("—");
-      fill_btn_->setEnabled(false);
+      setActionsEnabled(false);
     } else {
       now_label_->setText(QString("az %1° el %2° 斜距 %3 km ṙ %4 km/s")
                               .arg(look.az_deg, 0, 'f', 1)
@@ -220,12 +253,14 @@ void SatellitePanel::refreshNow() {
       tx_label_->setText(QString("TX 预补偿 %1 kHz（标称 %2）")
                              .arg(tx / 1e3, 0, 'f', 2)
                              .arg(ul / 1e3, 0, 'f', 2));
-      fill_btn_->setEnabled(true);
+      setActionsEnabled(true);
     }
   } catch (const std::exception& e) {
     now_label_->setText(QString("传播失败: %1").arg(e.what()));
-    fill_btn_->setEnabled(false);
+    setActionsEnabled(false);
   }
+  if (!track_status_.isEmpty())
+    freq_label_->setText(freq_label_->text() + QStringLiteral("\n") + track_status_);
 }
 
 void SatellitePanel::refreshPasses() {
@@ -236,24 +271,24 @@ void SatellitePanel::refreshPasses() {
     } else {
       pass_label_->setText("—");
     }
-    fill_btn_->setEnabled(false);
+    setActionsEnabled(false);
     return;
   }
   pass_label_->setEnabled(true);
   try {
     const auto now = libsgp4::DateTime::Now();
-    const double ts0 = radio::satellite::tsince_min(tle_, now);
+    const double ts0 = radio::satellite::tsince_min(*tle_, now);
     const auto passes =
-        radio::satellite::find_passes(tle_, station(), ts0, ts0 + 24 * 60, 5.0);
+        radio::satellite::find_passes(*tle_, station(), ts0, ts0 + 24 * 60, 5.0);
     if (passes.empty()) {
       pass_label_->setText("未来 24h 无仰角 ≥5° 的过境");
-      fill_btn_->setEnabled(false);
+      setActionsEnabled(false);
       return;
     }
     const auto& p = passes.front();
     const auto fmt = [this](double min) {
       const auto dt =
-          tle_.Epoch() + libsgp4::TimeSpan(0, 0, static_cast<int>(min), 0);
+          (*tle_).Epoch() + libsgp4::TimeSpan(0, 0, static_cast<int>(min), 0);
       return QString("%1:%2:%3")
           .arg(dt.Hour(), 2, 10, QChar('0'))
           .arg(dt.Minute(), 2, 10, QChar('0'))
@@ -262,10 +297,10 @@ void SatellitePanel::refreshPasses() {
     pass_label_->setText(QString("下次过境 AOS %1 TCA %2 LOS %3 · 最大仰角 %4°")
                              .arg(fmt(p.aos_min), fmt(p.tca_min), fmt(p.los_min),
                                   QString::number(p.max_el_deg, 'f', 1)));
-    fill_btn_->setEnabled(true);
+    setActionsEnabled(true);
   } catch (const std::exception& e) {
     pass_label_->setText(QString("过境计算失败: %1").arg(e.what()));
-    fill_btn_->setEnabled(false);
+    setActionsEnabled(false);
   }
 }
 

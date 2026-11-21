@@ -41,7 +41,8 @@ set(APP_SRC
   self_check_dialog.cpp
   wsjtx_panel.cpp
   ft8_panel.cpp
-  satellite_panel.cpp)
+  satellite_panel.cpp
+  satellite_tracker.cpp)
 
 # Android 用 qt_add_executable：它会挂上 androiddeployqt 的部署设置与 apk 目标
 if(ANDROID)
