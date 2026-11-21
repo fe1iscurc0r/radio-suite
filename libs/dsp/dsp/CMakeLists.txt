@@ -3,7 +3,8 @@
 add_library(radio_dsp STATIC
   fft.cpp
   waterfall_frame.cpp
-  synth.cpp)
+  synth.cpp
+  wave_io.cpp)
 
 add_library(radio::dsp ALIAS radio_dsp)
 

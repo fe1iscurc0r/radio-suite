@@ -28,6 +28,8 @@ add_executable(radio_tests
   test_tle_source.cpp
   # W2.4 写频策略：死区/间隔/发射中拒写（纯离线）
   test_track_policy.cpp
+  # W3.2 录制/回放：WAV 往返/采样率变异拒读/AFSK 回放幂等（纯离线）
+  test_wave_io.cpp
   # 纯数学，不碰控件：放这里而不是 radio_ui_tests，gui=OFF 的 CI 腿才跑得到
   test_waterfall_axis.cpp
   "${CMAKE_SOURCE_DIR}/apps/spike/scope_wire.cpp")
@@ -182,6 +184,7 @@ endif()
 
 if(TARGET radio::aprs_db)
   find_package(Qt6 REQUIRED COMPONENTS Sql)
+  # SQL 测试目标：qt_test_app.h 已改为堆分配永不析构的 app（#106 对症修复）
   add_executable(radio_aprs_db_tests test_aprs_persist.cpp)
   target_link_libraries(radio_aprs_db_tests PRIVATE
     radio::aprs_db
@@ -195,6 +198,7 @@ endif()
 
 if(TARGET radio::logbook)
   find_package(Qt6 REQUIRED COMPONENTS Sql)
+  # 同上：qt_test_app.h 堆分配 app（#106 对症修复）
   add_executable(radio_logbook_tests test_logbook.cpp)
   target_include_directories(radio_logbook_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

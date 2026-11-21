@@ -49,6 +49,21 @@ class AfskDemodulator {
   size_t bits() const { return bits_in_; }
   size_t flags() const { return flags_; }
 
+  // W3.2 解码计数（总线 /api/state 与设备台账消费的口径）：
+  // decode_ok = CRC 通过；decode_fails = FCS 失败；dropped = 溢出丢弃。
+  // rejected_by_gate 属发射门禁路径，不在此层（不造第二套计数）。
+  struct DecodeStats {
+    size_t decode_ok = 0;
+    size_t decode_fails = 0;
+    size_t dropped = 0;
+    size_t corrected = 0;
+    size_t bits = 0;
+    size_t flags = 0;
+  };
+  DecodeStats stats() const {
+    return {frames_, crc_errors_, overflows_, corrected_, bits_in_, flags_};
+  }
+
  private:
   void onTone(bool mark, int64_t sample_index);
   void onBit(int bit);
