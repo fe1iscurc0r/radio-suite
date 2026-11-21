@@ -9,6 +9,7 @@
 #include "app/network_audio.h"
 #include "app/repeater_dialog.h"
 #include "app/satellite_panel.h"
+#include "app/satellite_tracker.h"
 #include "app/touch_dialog.h"
 
 #include <QButtonGroup>
@@ -214,6 +215,27 @@ void MainWindow::buildAndroidUi() {
                               .arg(rx, 0, 'f', 0)
                               .arg(tx, 0, 'f', 0),
                           false);
+            });
+    // W2.4：跟踪接线与桌面同一套（策略在 satellite_track_policy，写在 SatelliteTracker）
+    connect(satTracker(), &radio::app::SatelliteTracker::statusChanged, panel,
+            &radio::app::SatellitePanel::setTrackerStatus, Qt::UniqueConnection);
+    connect(satTracker(), &radio::app::SatelliteTracker::trackingStopped, panel,
+            [this, panel](const QString& reason) {
+              panel->setTrackingActive(false);
+              flashStatus(QString("卫星跟踪已停：%1").arg(reason), false);
+            });
+    connect(panel, &QObject::destroyed, this, [this] {
+      if (sat_tracker_) sat_tracker_->stop("面板已关闭");
+    });
+    connect(panel, &radio::app::SatellitePanel::trackToggled, this,
+            [this, panel](bool on) {
+              auto* tr = satTracker();
+              if (!on) {
+                tr->stop("手动停止");
+                return;
+              }
+              tr->start(panel->currentTle(), panel->station(),
+                        panel->nominalDownlinkHz());
             });
     pages_->addWidget(page);
   }

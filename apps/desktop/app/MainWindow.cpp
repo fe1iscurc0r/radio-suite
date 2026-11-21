@@ -10,6 +10,7 @@
 #include "app/ft8_panel.h"
 #include "app/meter_widgets.h"
 #include "app/network_audio.h"
+#include "app/satellite_tracker.h"
 #include "app/touch_dialog.h"
 #include "app/wsjtx_panel.h"  // eventFilter 里比较面板指针需要完整类型
 
@@ -401,6 +402,17 @@ void MainWindow::flashStatus(const QString& text, bool warn) {
   status_label_->setStyleSheet(
       warn ? "color: #ff5252; font-weight: bold;" : "color: #69f0ae;");
   status_timer_.start(3000);
+}
+
+// W2.4：跟踪的「会话执行者」。写频走 session_.tuneTo（宽 RX 范围门禁 + 发射中拒写
+// 都在会话层，跟踪层不另开一条写路径）；tx 状态每拍从状态单源现读。
+radio::app::SatelliteTracker* MainWindow::satTracker() {
+  if (!sat_tracker_) {
+    sat_tracker_ = std::make_unique<radio::app::SatelliteTracker>(
+        [this](double hz) { session_.tuneTo(static_cast<uint64_t>(hz)); },
+        [this] { return session_.store().snapshot().ptt_on; });
+  }
+  return sat_tracker_.get();
 }
 
 void MainWindow::onBenchTick() {
