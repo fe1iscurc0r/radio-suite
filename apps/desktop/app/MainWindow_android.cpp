@@ -20,6 +20,7 @@
 #include <QListWidget>
 #include <QScrollArea>
 #include <QScroller>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStringList>
@@ -243,6 +244,22 @@ void MainWindow::buildAndroidUi() {
   for (auto* b : central->findChildren<QPushButton*>()) {
     if (b->minimumHeight() < 44) b->setMinimumHeight(44);
   }
+
+#ifdef Q_OS_ANDROID
+  // #101 滚动撕裂缓解（总纲 §7.3 唯一被批的修法：仅安卓、仅滚动期、正确性换功耗）。
+  // 成因假设：滚动期 backing store → ANativeWindow 的部分区域 flush（缝在 x≈148）。
+  // 滚动事件里对顶层窗 repaint() = 同步整窗重绘 + 整窗 flush，绕开部分 flush 路径。
+  // 注意：§7.1 证伪过的是 update() 逐拍强绘（桌面实测 paints=0，走合并）；repaint()
+  // 是同步硬绘，不经脏区合并，是另一条路。功耗/帧率与「缝是否消失」两个判定
+  // 都要真机实测（W4.1/W4.3），本条不预支实验结论；缝若仍在 ⇒ 推翻 partial-flush
+  // 假设，按 §7.2 当场停手并写进 HANDOVER §7。
+  for (auto* sa : central->findChildren<QScrollArea*>()) {
+    connect(sa->verticalScrollBar(), &QAbstractSlider::valueChanged, this,
+            [this](int) {
+              if (isWindow()) repaint();
+            });
+  }
+#endif
 
   setCentralWidget(central);
   setWindowTitle("radio-suite — IC-705 控制台");
