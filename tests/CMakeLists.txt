@@ -220,6 +220,8 @@ if(BUILD_GUI AND TARGET radio::ui_common)
     test_touch_dialog.cpp
     test_launch_config.cpp
     test_device_report.cpp
+    # 卫星页构造回归（真机启动崩溃教训：占位 Tle 抛异常，tests 抓 UI 构造）
+    "${CMAKE_SOURCE_DIR}/apps/desktop/app/satellite_panel.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/launch_config.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/connect_dialog.cpp"
     "${CMAKE_SOURCE_DIR}/apps/desktop/app/cw_keyer.cpp"
@@ -238,6 +240,7 @@ if(BUILD_GUI AND TARGET radio::ui_common)
   target_link_libraries(radio_ui_tests PRIVATE
     radio::core
     radio::session
+    radio::satellite
     Qt6::Widgets
     Qt6::Network
     Catch2::Catch2WithMain)

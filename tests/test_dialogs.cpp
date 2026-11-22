@@ -18,6 +18,7 @@
 #include "app/cw_keyer.h"
 #include "app/memory_channel.h"
 #include "app/repeater_dialog.h"
+#include "app/satellite_panel.h"
 #include "session/session.h"
 #include "app/set_mode_dialog.h"
 #include "core/transport_mock.h"
@@ -171,4 +172,14 @@ TEST_CASE("repeater dialog shows both frequencies and applies tone settings", "[
   UiFixture::find<QPushButton>(&dlg, "rep_dtcs_apply")->click();
   CHECK(f.transport->sim().dtcs_code == 23);
   CHECK(f.session->store().snapshot().dtcs_code == 23);
+}
+
+// 卫星页构造回归：真机上启动即崩的教训（占位 Tle("1 1","2 1") 抛 TleException，
+// evidence/2026-11-22-k40/）。面板构造不许抛、不依赖任何星历缓存。
+TEST_CASE("satellite panel: construction never throws", "[ui]") {
+  app();  // QApplication（离屏环境由调用方给 QT_QPA_PLATFORM）
+  radio::app::SatellitePanel panel;
+  REQUIRE(panel.parent() == nullptr);
+  // 未选中卫星：填频不可用，标签给出「未选中」提示而不是崩
+  CHECK(panel.findChild<QPushButton*>() != nullptr);
 }
