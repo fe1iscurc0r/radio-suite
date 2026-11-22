@@ -61,10 +61,15 @@ SatellitePanel::SatellitePanel(QWidget* parent) : QWidget(parent) {
   connect(sat_combo_, &QComboBox::currentIndexChanged, this, [this](int idx) {
     selected_ = idx;
     tle_valid_ = false;
+    tle_.reset();
     if (idx >= 0 && idx < static_cast<int>(entries_.size())) {
       const auto& e = entries_[idx];
-      tle_ = libsgp4::Tle(e.line1, e.line2);
-      tle_valid_ = true;
+      try {
+        tle_ = libsgp4::Tle(e.line1, e.line2);
+        tle_valid_ = true;
+      } catch (const std::exception& e2) {
+        now_label_->setText(QString("星历无效: %1").arg(e2.what()));
+      }
       refreshPasses();
     }
   });
@@ -92,7 +97,8 @@ SatellitePanel::SatellitePanel(QWidget* parent) : QWidget(parent) {
   connect(fill_btn_, &QPushButton::clicked, this, [this] {
     if (!tle_valid_ || selected_ < 0) return;
     const auto look = radio::satellite::look_at(
-        tle_, radio::satellite::tsince_min(tle_, libsgp4::DateTime::Now()), station());
+        *tle_, radio::satellite::tsince_min(*tle_, libsgp4::DateTime::Now()),
+        station());
     const double dl = nominalDownlinkHz();
     const double rx = dl + radio::satellite::doppler_hz(dl, look.range_rate_kms);
     const double tx = radio::satellite::linear_uplink_hz(nominalUplinkHz(),
@@ -195,8 +201,8 @@ void SatellitePanel::refreshNow() {
   }
   try {
     const auto now = libsgp4::DateTime::Now();
-    const double ts = radio::satellite::tsince_min(tle_, now);
-    const auto look = radio::satellite::look_at(tle_, ts, station());
+    const double ts = radio::satellite::tsince_min(*tle_, now);
+    const auto look = radio::satellite::look_at(*tle_, ts, station());
     const double dl = nominalDownlinkHz();
     const double ul = nominalUplinkHz();
     const double dop = radio::satellite::doppler_hz(dl, look.range_rate_kms);
@@ -242,9 +248,9 @@ void SatellitePanel::refreshPasses() {
   pass_label_->setEnabled(true);
   try {
     const auto now = libsgp4::DateTime::Now();
-    const double ts0 = radio::satellite::tsince_min(tle_, now);
-    const auto passes =
-        radio::satellite::find_passes(tle_, station(), ts0, ts0 + 24 * 60, 5.0);
+    const double ts0 = radio::satellite::tsince_min(*tle_, now);
+    const auto passes = radio::satellite::find_passes(*tle_, station(), ts0,
+                                                      ts0 + 24 * 60, 5.0);
     if (passes.empty()) {
       pass_label_->setText("未来 24h 无仰角 ≥5° 的过境");
       fill_btn_->setEnabled(false);
@@ -253,7 +259,7 @@ void SatellitePanel::refreshPasses() {
     const auto& p = passes.front();
     const auto fmt = [this](double min) {
       const auto dt =
-          tle_.Epoch() + libsgp4::TimeSpan(0, 0, static_cast<int>(min), 0);
+          tle_->Epoch() + libsgp4::TimeSpan(0, 0, static_cast<int>(min), 0);
       return QString("%1:%2:%3")
           .arg(dt.Hour(), 2, 10, QChar('0'))
           .arg(dt.Minute(), 2, 10, QChar('0'))

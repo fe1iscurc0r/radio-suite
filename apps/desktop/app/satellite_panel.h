@@ -12,6 +12,7 @@
 #include <QWidget>
 
 #include <memory>
+#include <optional>
 
 #include "satellite/sat_track.h"
 #include "satellite/tle_source.h"
@@ -45,7 +46,9 @@ class SatellitePanel : public QWidget {
   std::unique_ptr<radio::satellite::TleStore> store_;
   std::vector<radio::satellite::TleEntry> entries_;
   int selected_ = -1;
-  libsgp4::Tle tle_ = libsgp4::Tle("1 1", "2 1");  // 占位，选中后替换
+  // 占位 Tle 会抛 TleException（"1 1" 长度非法）——真机上启动即崩的教训
+  // （evidence/2026-11-22-k40/）。未选中卫星时就是没有 Tle 对象，用 optional。
+  std::optional<libsgp4::Tle> tle_;
   bool tle_valid_ = false;
   bool ephemeris_stale_ = false;
 
