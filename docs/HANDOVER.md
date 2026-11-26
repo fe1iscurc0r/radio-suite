@@ -808,6 +808,7 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
 
 20. **`libsgp4::Tle` 构造时就会校验 69 列**——拿 `"1 1"` / `"2 1"` 当占位串，会在成员初始化那一刻直接抛 `TleException("Invalid length for line one")`。卫星页与跟踪器都吃过这一刀（2026-11-21 修成 `std::optional<libsgp4::Tle>`，未选中前为空）。凡是「先占位后替换」的对象，别挑一个自带校验的构造函数去占位。
 
+21. **Git Bash heredoc 写 .bat 会把 `>nul` 改写成 `>/dev/null`**：`call vcvars64.bat >nul 2>&1` 的重定向被换掉后 cmd 找不到该路径，vcvars 没执行，编译立刻报标准库头缺失（`qglobal.h(13): C1083 type_traits`）。批处理一律用写文件工具生成。同批装包坑：`pm install` 前后都比设备 `base.apk` 与构建产物的 md5，不一致就是装了旧包（2026-11-22 因此误判过一次「卫星页没进包」）。
 ## 8. 工单脉络
 
 | 单 | 主题 | 交付 |
