@@ -51,7 +51,7 @@ include 双根：`apps/desktop` + `libs/dsp`（`core/xxx.h`、`dsp/xxx.h` 前缀
 | CI-V over 串口（CAT 线） | ✅ `SerialCivTransport`：8N1、按 FD 定界、攒过 `civ::kMaxPendingStreamBytes`（4096，与 TCP 共用同一阈值）仍无尾就判流错位丢掉重同步；网关工具 `civ_tcp_gateway` 电台侧新增 `--serial/--baud`（不给就还是 mock），于是「手机 → TCP → 网关 → 串口 → 真电台」这条路打通 | tests `[serial]` 10 条：粘包/半包/脏前缀/超长无尾/开线与写失败/逐字节下发/空名与缺后端分开报错，外加**经网关驱动 mock 电台的端到端**一条。帧逻辑拆成不沾 `QSerialPort` 的 TU，所以**缺 SerialPort 的构建（CI 的 ubuntu 腿）照样编译、照样跑这 10 条**；真后端只在找到 `Qt6::SerialPort` 时出厂。台架没有 CAT 线：真串口只本地验到「`--serial COM99` 打不存在的口 → 退出 1 并转述系统错误」「`--serial ""` → 退出 1 且报空名、不谎称缺后端」，**真机 CAT 线未验**，CI-V 总线自听回波也未测 |
 | RS-BA1 V2 UDP | ✅ 控制协议+传输层（登录/鉴权/0xA8/ConnectTrans/重传重排）+ **50003 音频双通路已接 app**（RX 100 ms 重排→扬声器，麦克风→PTT 门禁上行）+ **本机三信道环回（假电台）** | tests `[rsba1]`/`[audio]`/`[rsba1][loopback]` 6 用例；假电台应答与 IC-705 fixtures 逐字节一致；真机未验（搁置），差异见 `docs/research/rsba1-audio-upstream-2026-10-30.md` |
 | 台架工具 fake_rig（WO-275 L1） | ✅ 假电台 LAN 化：`tools/fake_rig` 独立进程（默认 `127.0.0.1:50001-3`，非环回必须 `--i-know-this-is-lan` 否则退出不监听），8 故障场景 + `--selftest`（真客户端握手→CI-V 往返自证） | 8 场景矩阵实跑（见验收清单 §7b 表）；A-1.1/1.2/1.3 netstat 证据；**口径 = LAN 假电台**，不验真实抖动丢包/PTT 尾/音质保真；手机↔PC 跨机未跑（无第二机位） |
-| 卫星页（WO-275 L2） | ✅ tsince 时基 + 星历来源（离线缓存/校验/隔离区，不联网）+ 卫星页 UI（桌面大按键弹窗 + 手机第 6 页签）+ 写频策略层（死区/最小间隔/发射中拒写）；A-2.2 变异实验暴露「站坐标互换全盲」并补金值回归 | 卫星线 14/14 + 策略 1 条；Windows 全量 280/280；手机真机一帧未验（无 K40） |
+| 卫星页（WO-275 L2） | ✅ tsince 时基 + 星历来源（离线缓存/校验/隔离区，不联网）+ 卫星页 UI（桌面大按键弹窗 + 手机第 6 页签）+ 写频策略层 + **W2.4 自动跟踪执行者**（SatelliteTracker：死区/间隔/发射中拒写、LOS 自动停、面板关闭即停；写频走 `session_.tuneTo`）；A-2.2 变异实验暴露「站坐标互换全盲」并补金值回归 | 卫星线 14/14 + `[track]` 4；Windows 全量 284/280（本分支）；过境外部对账 `evidence/2026-11-21-satpass-crosscheck/`（11 过境 AOS/LOS 差 0.0 s）；手机真机一帧见 `evidence/2026-11-22-k40/`（#77），跟踪真机未验 |
 | 平台债 #106（Linux+Qt 6.10） | ✅ 定因+对症修复：进程退出期 QSql 析构序段错误（gdb 栈 6/6 命中 `__run_exit_handlers`→libQt6Sql；**ASan 0 复现 = sanitizer 量具盲区**）；`tests/qt_test_app.h` 改堆分配永不析构 | WSL Ubuntu-24.04 + Qt 6.10.1：修复前 8/10 崩 → 修复后 10/10 + 全量 188/188；取证 evidence/2026-11-20-linux-qt610/ |
 | rigctld 服务器 | ✅ 过 rigplane **全部轮询命令** | 真实 loopback TCP 测试 `[rigctld]` |
 | HTTP 总线 | ✅ `/api/state` `/api/spectrum` + 演示页；只有 HTTP，无 WS/控制 POST | 真实 HTTP 测试 `[bus]`（含 token/绑定门禁） |
@@ -805,6 +805,8 @@ cmd //c "build\android_build.bat apk"          # 打 APK（release 未签名，�
     WFM 的那个按钮、WFM 的回读谁都不点。凡是「按钮 ↔ 枚举」，把枚举值存在按钮旁边按值比，
     别赌下标顺序。**MainWindow 不在任何测试目标里**，这类控件不变量目前只有实窗证据
     （UIA 读 `selected`），要落成用例得先把 app 源文件编进一个 offscreen 测试目标。
+
+20. **`libsgp4::Tle` 构造时就会校验 69 列**——拿 `"1 1"` / `"2 1"` 当占位串，会在成员初始化那一刻直接抛 `TleException("Invalid length for line one")`。卫星页与跟踪器都吃过这一刀（2026-11-21 修成 `std::optional<libsgp4::Tle>`，未选中前为空）。凡是「先占位后替换」的对象，别挑一个自带校验的构造函数去占位。
 
 ## 8. 工单脉络
 

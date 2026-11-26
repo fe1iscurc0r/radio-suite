@@ -15,6 +15,7 @@
 #include "app/set_mode_dialog.h"
 #include "app/sstv_dialog.h"
 #include "app/satellite_panel.h"
+#include "app/satellite_tracker.h"
 #include "app/touch_dialog.h"
 #include "app/voice_memory.h"
 #include "app/wsjtx_panel.h"
@@ -462,9 +463,30 @@ std::vector<QPushButton*> MainWindow::buildBigButtons(QWidget* parent) {
                               .arg(tx, 0, 'f', 0),
                           false);
             });
+    // W2.4：跟踪的写频由 SatelliteTracker 执行（死区/最小间隔/发射中拒写走策略层），
+    // 面板只负责开与停和显示；面板一关就停，不许在看不见的地方继续写电台。
+    connect(satTracker(), &radio::app::SatelliteTracker::statusChanged, panel,
+            &radio::app::SatellitePanel::setTrackerStatus, Qt::UniqueConnection);
+    connect(satTracker(), &radio::app::SatelliteTracker::trackingStopped, panel,
+            [this, panel](const QString& reason) {
+              panel->setTrackingActive(false);
+              flashStatus(QString("卫星跟踪已停：%1").arg(reason), false);
+            });
+    connect(panel, &QObject::destroyed, this, [this] {
+      if (sat_tracker_) sat_tracker_->stop("面板已关闭");
+    });
+    connect(panel, &radio::app::SatellitePanel::trackToggled, this,
+            [this, panel](bool on) {
+              auto* tr = satTracker();
+              if (!on) {
+                tr->stop("手动停止");
+                return;
+              }
+              tr->start(panel->currentTle(), panel->station(),
+                        panel->nominalDownlinkHz());
+            });
     dlg.setWindowTitle("卫星跟踪");
-    dlg.exec();
-  });
+    dlg.exec();  });
 
   // 面板大按键切换显隐（独立顶层窗）
   // 三个面板互斥：手机上一屏放不下两扇独立窗，开一个就收掉另外两个
