@@ -27,6 +27,7 @@
 #include <thread>
 #include <vector>
 
+#include "core/civ.h"
 #include "core/rsba1_proto.h"
 #include "core/transport_udp.h"
 #include "fake_rsba1_server.h"
@@ -273,6 +274,7 @@ int runTool(const Args& a) {
 
   // ---- 主循环（线程化：与 selftest 并发跑场景事件）----
   size_t uplinks = 0;
+  uint64_t rig_hz = 14270000;  // 假电台的「当前频率」，写频会改它
   bool flap_failed = false;
   std::thread loop_thr([&] {
   ToneSource tone;
@@ -340,6 +342,47 @@ int runTool(const Args& a) {
         srv.sendAudio(f.part1, static_cast<uint16_t>(audio_seq & 0xFFFF));
         srv.sendAudio(f.part2, static_cast<uint16_t>(audio_seq & 0xFFFF));
         ++audio_seq;
+      }
+    }
+    // 最小电台模型（nominal 及其它非 nak 场景）：按请求回预置应答。
+    // 没有它，客户端会一直轮询却永远拿不到回帧——A-1.5 的「状态回读」在
+    // 真网络上必然失败（环回用例与 selftest 都是自己 sendCiv 塞一条，不是服务端自动回）。
+    if (a.scenario != "nak") {
+      for (auto& f : srv.drainCivFrames()) {
+        ++uplinks;
+        if (f.size() < 5) continue;
+        // 应答用 tests/fixtures 的真机抓包原文（IC-705，2026-08-18）：
+        // 会话层解析器认的是这套字节，自己拼的「看起来像」的帧会被静默丢。
+        std::vector<uint8_t> r;
+        const std::vector<uint8_t> body(f.begin() + 5, f.end() - 1);
+        switch (f[4]) {
+          case 0x03: {  // 读频率 → 当前 rig_hz
+            const auto bcd = radio::core::civ::freqToBcd5(rig_hz);
+            if (!bcd) break;
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x03};
+            r.insert(r.end(), bcd->begin(), bcd->end());
+            r.push_back(0xFD);
+            break;
+          }
+          case 0x05: {  // 写频率：收下，回 ACK(FB)
+            if (auto hz = radio::core::civ::bcdToFreq(body)) rig_hz = *hz;
+            r = {0xFE, 0xFE, 0xE0, 0xA4, 0xFB, 0xFD};
+            break;
+          }
+          case 0x04:  // 读模式 → FM / filter 1
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x04, 0x05, 0x01, 0xFD};
+            break;
+          case 0x1C:  // 读 PTT → RX
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x1C, 0x00, 0x00, 0xFD};
+            break;
+          case 0x1A:  // 读 S 表（子命令 0x03）→ S9
+            if (f.size() > 5 && f[5] == 0x03)
+              r = {0xFE, 0xFE, 0x00, 0xA4, 0x1A, 0x03, 0x78, 0xFD};
+            break;
+          default:
+            break;
+        }
+        if (!r.empty()) srv.sendCiv(r);
       }
     }
     // nak：镜像 dst/src 回 NAK，payload 带被拒命令字节（session.cpp:253 语义）
