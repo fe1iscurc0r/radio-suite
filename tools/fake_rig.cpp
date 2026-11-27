@@ -27,6 +27,7 @@
 #include <thread>
 #include <vector>
 
+#include "core/civ.h"
 #include "core/rsba1_proto.h"
 #include "core/transport_udp.h"
 #include "fake_rsba1_server.h"
@@ -273,6 +274,7 @@ int runTool(const Args& a) {
 
   // ---- 主循环（线程化：与 selftest 并发跑场景事件）----
   size_t uplinks = 0;
+  uint64_t rig_hz = 14270000;  // 假电台的「当前频率」，写频会改它
   bool flap_failed = false;
   std::thread loop_thr([&] {
   ToneSource tone;
@@ -352,10 +354,21 @@ int runTool(const Args& a) {
         // 应答用 tests/fixtures 的真机抓包原文（IC-705，2026-08-18）：
         // 会话层解析器认的是这套字节，自己拼的「看起来像」的帧会被静默丢。
         std::vector<uint8_t> r;
+        const std::vector<uint8_t> body(f.begin() + 5, f.end() - 1);
         switch (f[4]) {
-          case 0x03:  // 读频率 → 14.270000 MHz
-            r = {0xFE, 0xFE, 0x00, 0xA4, 0x03, 0x00, 0x00, 0x27, 0x14, 0x00, 0xFD};
+          case 0x03: {  // 读频率 → 当前 rig_hz
+            const auto bcd = radio::core::civ::freqToBcd5(rig_hz);
+            if (!bcd) break;
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x03};
+            r.insert(r.end(), bcd->begin(), bcd->end());
+            r.push_back(0xFD);
             break;
+          }
+          case 0x05: {  // 写频率：收下，回 ACK(FB)
+            if (auto hz = radio::core::civ::bcdToFreq(body)) rig_hz = *hz;
+            r = {0xFE, 0xFE, 0xE0, 0xA4, 0xFB, 0xFD};
+            break;
+          }
           case 0x04:  // 读模式 → FM / filter 1
             r = {0xFE, 0xFE, 0x00, 0xA4, 0x04, 0x05, 0x01, 0xFD};
             break;
