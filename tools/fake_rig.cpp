@@ -342,6 +342,36 @@ int runTool(const Args& a) {
         ++audio_seq;
       }
     }
+    // 最小电台模型（nominal 及其它非 nak 场景）：按请求回预置应答。
+    // 没有它，客户端会一直轮询却永远拿不到回帧——A-1.5 的「状态回读」在
+    // 真网络上必然失败（环回用例与 selftest 都是自己 sendCiv 塞一条，不是服务端自动回）。
+    if (a.scenario != "nak") {
+      for (auto& f : srv.drainCivFrames()) {
+        ++uplinks;
+        if (f.size() < 5) continue;
+        // 应答用 tests/fixtures 的真机抓包原文（IC-705，2026-08-18）：
+        // 会话层解析器认的是这套字节，自己拼的「看起来像」的帧会被静默丢。
+        std::vector<uint8_t> r;
+        switch (f[4]) {
+          case 0x03:  // 读频率 → 14.270000 MHz
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x03, 0x00, 0x00, 0x27, 0x14, 0x00, 0xFD};
+            break;
+          case 0x04:  // 读模式 → FM / filter 1
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x04, 0x05, 0x01, 0xFD};
+            break;
+          case 0x1C:  // 读 PTT → RX
+            r = {0xFE, 0xFE, 0x00, 0xA4, 0x1C, 0x00, 0x00, 0xFD};
+            break;
+          case 0x1A:  // 读 S 表（子命令 0x03）→ S9
+            if (f.size() > 5 && f[5] == 0x03)
+              r = {0xFE, 0xFE, 0x00, 0xA4, 0x1A, 0x03, 0x78, 0xFD};
+            break;
+          default:
+            break;
+        }
+        if (!r.empty()) srv.sendCiv(r);
+      }
+    }
     // nak：镜像 dst/src 回 NAK，payload 带被拒命令字节（session.cpp:253 语义）
     if (a.scenario == "nak") {
       for (auto& f : srv.drainCivFrames()) {
