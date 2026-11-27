@@ -4,7 +4,21 @@
 #include <QDateTime>
 #include <QDebug>
 
+#include <chrono>
+
 namespace radio::app {
+namespace {
+
+// 链路活性只认单调时钟：墙上时钟会被 NTP/VM 挂起往回拨，一拨就出现
+// 「判死用的是拨前的 now、现场算 age 用的是拨后的 now」这种自相矛盾
+// （2026-11-27 在 WSL 上实测到：同一次运行里日期跨了几天）。
+uint64_t monoMs() {
+  static const auto t0 = std::chrono::steady_clock::now();
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t0).count()) + 1;  // +1：0 是「从未收到」的哨兵
+}
+
+}  // namespace
 
 RadioSession::RadioSession(std::shared_ptr<core::ICivTransport> transport,
                            uint8_t radio_addr, QObject* parent)
@@ -50,7 +64,7 @@ void RadioSession::stop() {
 
 qint64 RadioSession::replyAgeMs() const {
   if (last_rx_ms_ == 0) return -1;
-  return static_cast<qint64>(nowMs() - last_rx_ms_);
+  return static_cast<qint64>(monoMs() - last_rx_ms_);
 }
 
 void RadioSession::refreshLinkLiveness(uint64_t now) {
@@ -108,8 +122,8 @@ void RadioSession::pollRadio() {
 }
 
 void RadioSession::onTick() {
-  const uint64_t now = nowMs();
-  refreshLinkLiveness(now);
+  refreshLinkLiveness(monoMs());
+  const uint64_t now = nowMs();  // PTT 门禁仍用墙钟（对外可见的剩余秒数按墙钟走）
   const core::PttPhase before = gate_.phase();
   gate_.tick(now);
   const core::PttPhase after = gate_.phase();
@@ -128,7 +142,7 @@ void RadioSession::onFrame(std::span<const uint8_t> raw) {
   if (!f) return;
   // 任何能解析的回帧都算「电台还在说话」。解析不出的字节不算——那可能只是
   // 流错位，拿它续命会把断链显示成在线。
-  last_rx_ms_ = nowMs();
+  last_rx_ms_ = monoMs();
 
   core::RadioState s = store_.snapshot();
   bool changed = false;
