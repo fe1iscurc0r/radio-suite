@@ -1,0 +1,8 @@
+scenario  : nominal
+ports     : 50001/50002/50003 (ctrl/serial/audio)
+鍋滄      : Ctrl+C锛堟垨 --duration 绉掑悗鑷鍔ㄩ鍑猴級
+==== fake_rig 閫鍑哄皬缁 ====
+scenario    : nominal
+CI-V 涓婅屽抚 : 7648 鏉
+serial open : yes
+disconnects : 0
