@@ -12,6 +12,12 @@
 namespace radio::app {
 namespace {
 
+// 台账四档的语义（词典口径，改行前先对这句话）：
+//   可用   = 现在就能用，说明里不许出现「尚未接入 / 不授予 / 不需要」；
+//   降级   = 能用但不完整，说明必须写清缺什么；
+//   缺失   = 该有但拿不到（错误 / 未授权 / 从未有数据）；
+//   不适用 = 本平台或本构建永远不会有，不是「有但没用上」。
+
 bool isAndroid(const ReportInput& in) {
   return in.platform == QLatin1String("android");
 }
@@ -67,11 +73,11 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
                         ? QStringLiteral("已授予（normal 权限，装机即给）")
                         : QStringLiteral("未授予：createMulticastLock 会抛 "
                                          "SecurityException，组播收不到包"));
-    rows << makeRow("权限", "存储（WRITE/READ_EXTERNAL）", ProbeState::Warn,
+    rows << makeRow("权限", "存储（WRITE/READ_EXTERNAL）", ProbeState::NotApplicable,
                     QStringLiteral("targetSdk 34 上系统不再授予历史遗留的存储权限；"
                                    "导出走 SAF 选择器，私有目录照常写，不需要它"));
     rows << makeRow("权限", "USB Host 特性",
-                    in.usb_host_feature ? ProbeState::Ok : ProbeState::Warn,
+                    in.usb_host_feature ? ProbeState::Warn : ProbeState::Missing,
                     in.usb_host_feature
                         ? QStringLiteral("本机支持 USB Host；串口后端尚未接入，"
                                          "插设备也还没有能读它的代码")
@@ -91,7 +97,7 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
                 .arg(in.link_name.isEmpty() ? QStringLiteral("未选择") : in.link_name)
           : QStringLiteral("%1 → %2").arg(in.link_name).arg(in.rig_host));
   if (in.rig_reply_age_ms < 0)
-    rows << makeRow("电台链路", "回帧活性", ProbeState::Warn,
+    rows << makeRow("电台链路", "回帧活性", ProbeState::Missing,
                     QStringLiteral("这条链路至今没给过一个能解析的回帧"
                                    "（没连上或刚启动）——不能据此显示在线"));
   else if (in.rig_link_alive)
