@@ -74,13 +74,12 @@ QVector<ReportRow> buildDeviceReport(const ReportInput& in) {
                         : QStringLiteral("未授予：createMulticastLock 会抛 "
                                          "SecurityException，组播收不到包"));
     rows << makeRow("权限", "存储（WRITE/READ_EXTERNAL）", ProbeState::NotApplicable,
-                    QStringLiteral("targetSdk 34 上系统不再授予历史遗留的存储权限；"
-                                   "导出走 SAF 选择器，私有目录照常写，不需要它"));
+                    QStringLiteral("targetSdk 34 上系统已移除这条权限：设置里也没有开关可授；"
+                                   "唯一的「所有文件访问」是安全设置，本应用不申请。导出走 SAF，私有目录照常写"));
     rows << makeRow("权限", "USB Host 特性",
                     in.usb_host_feature ? ProbeState::Warn : ProbeState::Missing,
                     in.usb_host_feature
-                        ? QStringLiteral("本机支持 USB Host；串口后端尚未接入，"
-                                         "插设备也还没有能读它的代码")
+                        ? QStringLiteral("本机支持 USB Host；OTG 串口后端在 WO-277 立项，接上后此行为可用")
                         : QStringLiteral("本机未报告 android.hardware.usb.host"));
   } else {
     rows << makeRow("权限", "运行时权限", ProbeState::NotApplicable,
