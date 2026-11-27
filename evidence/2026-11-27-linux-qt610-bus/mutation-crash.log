@@ -1,0 +1,48 @@
+"bus: http://127.0.0.1:38323/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:45227/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:43313/  (/api/state /api/spectrum)" （token 已启用）
+"bus: http://127.0.0.1:41443/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:41081/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:40165/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:38201/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:34265/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:36081/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:35683/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:35397/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:40837/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:34953/  (/api/state /api/spectrum)" 
+tuneTo rejected by RX range: 20000 Hz
+"bus: http://127.0.0.1:39899/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:34239/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:42121/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:45589/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:35001/  (/api/state /api/spectrum)" （token 已启用）
+"bus: http://127.0.0.1:33749/  (/api/state /api/spectrum)" 
+"rigctld: tcp://127.0.0.1:36905（WSJT-X/fldigi 即插；rigplane 语义移植）"
+tuneTo rejected by RX range: 1000 Hz
+"rigctld: tcp://127.0.0.1:38401（WSJT-X/fldigi 即插；rigplane 语义移植）"
+"rigctld: tcp://127.0.0.1:45685（WSJT-X/fldigi 即插；rigplane 语义移植）"
+"bus: http://127.0.0.1:38645/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:44917/  (/api/state /api/spectrum)" 
+"bus: http://127.0.0.1:44009/  (/api/state /api/spectrum)" 
+Randomness seeded to: 4014931716
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+radio_bus_tests is a Catch2 v3.7.1 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+bus state reports silence as dead but keeps the last known readings
+-------------------------------------------------------------------------------
+/root/rs/tests/test_bus_link_health.cpp:171
+...............................................................................
+
+/root/rs/tests/test_bus_link_health.cpp:186: FAILED:
+  CHECK( j.value("link_reply_age_ms").toInteger() > j.value("link_timeout_ms").toInteger() )
+with expansion:
+  -271 > 2000 (0x7d0)
+
+===============================================================================
+test cases:  25 |  24 passed | 1 failed
+assertions: 494 | 493 passed | 1 failed
+

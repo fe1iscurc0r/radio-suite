@@ -1,0 +1,4 @@
+fixed: PASS=9/10 (Qt 6.10.1 Debug, offscreen)
+mutation rc=139
+restored: pass
+post-fix (monotonic clock): PASS=30/30 (Qt 6.10.1 Debug, offscreen)
