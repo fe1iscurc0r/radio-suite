@@ -99,6 +99,27 @@ TEST_CASE("device report: mock link is degraded not ok", "[report]") {
   CHECK(link->note.contains(QStringLiteral("不许拿它打勾")));
 }
 
+TEST_CASE("device report: state words agree with their own notes", "[report]") {
+  // 词典守卫：状态词是一会事，说明里写着「尚未接入/不授予/不需要」就不能标「可用」。
+  const auto check_rows = [](const radio::app::ReportInput& in) {
+    for (const auto& row : radio::app::buildDeviceReport(in)) {
+      INFO(row.group.toStdString() << " / " << row.item.toStdString() << ": "
+                                   << row.note.toStdString());
+      if (row.state == radio::app::ProbeState::Ok) {
+        CHECK_FALSE(row.note.contains(QStringLiteral("尚未接入")));
+        CHECK_FALSE(row.note.contains(QStringLiteral("不授予")));
+        CHECK_FALSE(row.note.contains(QStringLiteral("不需要")));
+      }
+      if (row.state == radio::app::ProbeState::NotApplicable)
+        CHECK_FALSE(row.note.isEmpty());
+    }
+  };
+  check_rows(androidInput());
+  radio::app::ReportInput desktop;
+  desktop.platform = QStringLiteral("windows");
+  check_rows(desktop);
+}
+
 TEST_CASE("device report: android serial gap names the missing backend", "[report]") {
   auto in = androidInput();
   in.rig_serial_built = false;
@@ -113,7 +134,8 @@ TEST_CASE("device report: storage row explains targetSdk 34 legacy permission", 
   const auto rows = radio::app::buildDeviceReport(androidInput());
   const auto* storage = rowOf(rows, QStringLiteral("存储（WRITE/READ_EXTERNAL）"));
   REQUIRE(storage != nullptr);
-  CHECK(storage->state == radio::app::ProbeState::Warn);
+  // 系统不授予、而且 SAF 已覆盖需求 ⇒ 这不是「降级」，是「不适用」
+  CHECK(storage->state == radio::app::ProbeState::NotApplicable);
   CHECK(storage->note.contains(QStringLiteral("SAF")));
 }
 
@@ -204,11 +226,11 @@ TEST_CASE("probe state text covers all four states", "[report]") {
 TEST_CASE("device report: link liveness comes from replies, never from sends",
           "[report]") {
   auto in = androidInput();
-  in.rig_reply_age_ms = -1;  // 一个回帧都没给过
+  in.rig_reply_age_ms = -1;  // 一个回帧都没给过：没有数据，不是「降级」
   auto rows = radio::app::buildDeviceReport(in);
   const auto* age = rowOf(rows, QStringLiteral("回帧活性"));
   REQUIRE(age != nullptr);
-  CHECK(age->state == radio::app::ProbeState::Warn);
+  CHECK(age->state == radio::app::ProbeState::Missing);
 
   in.rig_reply_age_ms = 120;
   in.rig_link_alive = true;
